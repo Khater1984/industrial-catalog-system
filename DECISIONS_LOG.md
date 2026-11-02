@@ -35,3 +35,19 @@ Add a new ADR or update an existing entry only with:
 - Decision and rationale.
 - Consequences and migration/rollback impact.
 - Approval status and date.
+
+
+## Proposed schema corrections — 2026-11-03
+
+The user approved continuing the design correction work. The following are **proposed schema decisions**, not yet approved for production implementation. See [SCHEMA_V2_PROPOSAL.md](SCHEMA_V2_PROPOSAL.md).
+
+| ID | Proposed decision | Status | Rationale |
+|---|---|---|---|
+| ADR-022 | Separate canonical Products/Variants from Product_Source_Records/Variant_Source_Records | Proposed | Preserve multiple catalog/revision appearances without overwriting provenance or auto-merging identities. |
+| ADR-023 | Use a per-logical-key append-only specification event stream with monotonic Sequence_No and deterministic reducer | Proposed | Remove ambiguity from ADD/UPDATE/DELETE ordering; source assertions remain immutable. |
+| ADR-024 | Freeze binary asset records and add explicit immutable Paper_Versions | Proposed | Make published designs and historical PDFs reproducible. |
+| ADR-025 | Add Logical_Job_ID, Parent_Run_ID, Attempt_Number, many-to-many review links, and hash-bound approvals | Proposed | Make retries and review/promotion safe and auditable. |
+| ADR-026 | Require polymorphic target validation, hash manifests, integrity scans, and report-first recovery | Proposed | Compensate for Google Sheets' lack of native FK/transactions/immutable append-only guarantees. |
+| ADR-027 | Add non-secret System_Config registry and define a Sheets volume/backup gate | Proposed | Keep configuration controlled and prevent unmeasured scale assumptions. |
+
+No live resources or application code were created by these proposals. The ADRs become Approved only after the consolidated schema and acceptance suite are reviewed and the user explicitly approves implementation.
