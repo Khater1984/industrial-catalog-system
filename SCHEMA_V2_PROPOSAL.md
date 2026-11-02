@@ -19,13 +19,12 @@
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Product_ID | ID | Yes | PK; stable internal identity |
-| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Canonical_Notes | TEXT(2000) | No | Internal identity notes; not supplier evidence |
 | Created_At | DATETIME_UTC | Yes | Immutable creation time |
 | Created_By | ACTOR_ID | Yes | Actor |
-| Merged_Into_Product_ID | ID | Conditional | Required only for MERGED; cannot self-reference |
 
-Canonical product names/translations and descriptions remain in `Product_Company`. MERGED is a controlled identity-resolution event: do not delete the old ID or rewrite historical source records; resolve aliases through an audited canonical redirect and prohibit cycles.
+Canonical product names/translations and descriptions remain in `Product_Company`. Canonical merge/reparent is excluded from the initial release; suspected duplicates may be reviewed and archived, but records and historical references are never silently moved.
 
 ### 1.3 `Variants` — canonical model identity
 
@@ -39,7 +38,7 @@ Canonical product names/translations and descriptions remain in `Product_Company
 | Created_By | ACTOR_ID | Yes | Actor |
 | Merged_Into_Variant_ID | ID | Conditional | Required only for MERGED; same Product_ID; no cycles |
 
-A model number is not a canonical key. A changed supplier model number can remain the same Variant only after an explicit match decision. A genuinely different configuration receives a new Variant_ID.
+A model number is not a canonical key. A changed supplier model number can remain the same Variant only after an explicit match decision. A genuinely different configuration receives a new Variant_ID. Canonical merge/reparent is out of initial release.
 
 ### 1.4 `Product_Source_Records`
 
