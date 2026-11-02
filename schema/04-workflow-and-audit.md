@@ -22,7 +22,11 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Run_Type | ENUM | Yes | CATALOG_EXTRACTION, IMAGE_PROCESSING, PDF_GENERATION, PDF_REPRODUCTION, VALIDATION |
 | Catalog_ID | ID | No | FK → Catalogs for catalog runs |
 | Issued_Document_ID | ID | No | FK → Issued_Documents where applicable |
-| Logical_Job_ID | ID | Yes | Stable across attempts of one logical job |\n| Parent_Run_ID | ID | No | Self-FK to immediately preceding attempt |\n| Attempt_Number | INTEGER | Yes | Starts at 1; increments per Logical_Job_ID |\n| Retry_Reason | TEXT(1000) | No | Required for retry attempts |\n| Idempotency_Key | TEXT(160) | Yes | Unique per attempt, not per logical job |
+| Logical_Job_ID | ID | Yes | Stable across attempts of one logical job |
+| Parent_Run_ID | ID | No | Self-FK to immediately preceding attempt |
+| Attempt_Number | INTEGER | Yes | Starts at 1; increments per Logical_Job_ID |
+| Retry_Reason | TEXT(1000) | No | Required for retry attempts |
+| Idempotency_Key | TEXT(160) | Yes | Unique per attempt, not per logical job |
 | Run_Status | ENUM | Yes | QUEUED, RUNNING, WAITING_REVIEW, RETRY_PENDING, COMPLETED, FAILED, CANCELLED |
 | Current_Step | TEXT(120) | No | Human-readable step |
 | Total_Units | INTEGER | No | Pages/items expected |
