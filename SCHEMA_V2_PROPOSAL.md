@@ -32,11 +32,10 @@ Canonical product names/translations and descriptions remain in `Product_Company
 |---|---|---:|---|
 | Variant_ID | ID | Yes | PK; stable internal identity |
 | Product_ID | ID | Yes | FK → Products; immutable ownership |
-| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Canonical_Notes | TEXT(2000) | No | Internal notes |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
-| Merged_Into_Variant_ID | ID | Conditional | Required only for MERGED; same Product_ID; no cycles |
 
 A model number is not a canonical key. A changed supplier model number can remain the same Variant only after an explicit match decision. A genuinely different configuration receives a new Variant_ID. Canonical merge/reparent is out of initial release.
 
