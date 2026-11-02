@@ -58,25 +58,36 @@ Brand assets may be referenced by one or more brand versions. The version's immu
 
 ## 3. Paper and backgrounds
 
-### `Papers`
-| Column | Type | Required | Key / rule |
+### `Papers` — logical paper identity only
+
+| Column | Type | Required | Rule |
 |---|---|---:|---|
 | Paper_ID | ID | Yes | PK |
-| Paper_Name | TEXT(120) | Yes | e.g. Pure White, Linen Texture |
-| Paper_Type | ENUM | Yes | SOLID, TEXTURE, CUSTOM_BACKGROUND |
-| Page_Size_Default | ENUM | Yes | A4, A3, LETTER, CUSTOM |
-| Orientation_Default | ENUM | Yes | PORTRAIT, LANDSCAPE |
-| Width_MM | DECIMAL(8,2) | Conditional | Required for CUSTOM |
-| Height_MM | DECIMAL(8,2) | Conditional | Required for CUSTOM |
-| Background_Color_HEX | TEXT(9) | No | Validated #RRGGBB or #RRGGBBAA |
-| Texture_File_ID | DRIVE_FILE_ID | No | Required for TEXTURE |
-| Texture_SHA256 | HEX64 | No | Required when Texture_File_ID set |
-| Rendering_Config_JSON | JSON_TEXT(3000) | Yes | Scale, repeat, opacity, positioning |
+| Paper_Name | TEXT(120) | Yes | Logical label |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Created_At | DATETIME_UTC | Yes | System generated |
-| Updated_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-Linen Texture must use an actual texture asset, not merely a beige fill. For print workflows, texture/background behavior must be validated against printer requirements.
+All render-affecting paper settings belong to immutable `Paper_Versions`, not this logical row.
+
+### `Paper_Versions`
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Paper_Version_ID | ID | Yes | PK |
+| Paper_ID | ID | Yes | FK → Papers; logical identity for navigation |\n| Paper_Version_ID | ID | Yes | FK → Paper_Versions; exact immutable settings used |
+| Version_Number | INTEGER | Yes | Monotonic per Paper_ID |
+| Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
+| Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON configuration |
+| Config_SHA256 | HEX64 | Yes | Hash of exact config |
+| Texture_Asset_ID | ID | Conditional | Immutable asset; required for texture |
+| Texture_SHA256 | HEX64 | Conditional | Must match asset checksum |
+| Published_At | DATETIME_UTC | No | Required when published/retired |
+| Published_By | ACTOR_ID | No | Required when published/retired |
+| Created_At | DATETIME_UTC | Yes | |
+| Created_By | ACTOR_ID | Yes | |
+
+Unique: (Paper_ID, Version_Number). Page size, orientation, dimensions, color, texture, scale, opacity, and positioning changes require a new version. Published versions and referenced assets are immutable.
 
 ## 4. Templates
 
