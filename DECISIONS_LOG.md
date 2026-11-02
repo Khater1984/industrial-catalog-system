@@ -70,3 +70,5 @@ These proposals are documented in the domain schema and technical design files. 
 | ADR-035 | Exclude canonical Product/Variant merge and reparent workflows from the initial release | Proposed | Avoid exposing MERGED states without a fully tested child-mapping, rollback, and historical-reference protocol. |
 | ADR-036 | Separate immutable Catalog_Pages from per-run Run_Units checkpoints and worker leases | Proposed | Preserve page identity and extraction artifacts across retries and parser versions. |
 | ADR-037 | Separate issue-request idempotency key from content input fingerprint | Proposed | Allow an intentional new issue of identical content while making retries of one request idempotent. |
+
+| ADR-038 | Maintain one centralized enum registry alongside domain schemas | Proposed | Keep stored tokens consistent across Apps Script, frontend, worker, and acceptance tests. |
