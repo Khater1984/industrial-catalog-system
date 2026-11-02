@@ -157,9 +157,9 @@ Add these fields to `Specification_Changes`:
 - `Specification_Change_ID` remains immutable and unique.
 - `Operation`: ADD, UPDATE, DELETE.
 - `Target_Specification_ID`: required for source-backed UPDATE/DELETE; blank for ADD and for updates/deletes of company-added logical targets.
-- `Value_JSON` and `Unit`: typed payload; ADD/UPDATE require a complete effective value. Clearing is represented only by DELETE, not blank text.
+- `Value_JSON` and `Unit_Code`: typed payload; ADD/UPDATE require a complete effective value. Blank/NULL is never a clearing operation; use DELETE to suppress an assertion or a typed explicit-empty value only when the attribute definition explicitly permits it.
 - `Change_Status`: DRAFT, APPROVED, REJECTED. Do not mutate an approved event to SUPERSEDED; supersession is a new event.
-- `Approved_At`, `Approved_By`, `Reason`, `Created_At`, `Created_By` required as appropriate.
+- `Approved_At`, `Approved_By`, `Approval_Payload_SHA256`, `Reason`, `Created_At`, and `Created_By` required as appropriate.
 
 Sequence numbers are allocated at approval under a lock, not at draft creation. Gaps are allowed; duplicates are not. Rejected/draft events do not enter the effective stream. The effective stream is sorted by Sequence_No ascending; a duplicate sequence for one logical key is a hard integrity error. Timestamp and ID are audit metadata, never alternative ordering authorities.
 
