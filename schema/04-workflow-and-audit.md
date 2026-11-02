@@ -276,7 +276,7 @@ Canonical serialization must use UTF-8, stable field ordering, explicit null rep
 
 ### 8.3 Source matching and promotion staging
 
-Staging product/model rows are source assertion candidates, not canonical entities. Candidate_Product_ID/Candidate_Variant_ID are suggestions only. Human decision values are MATCH_EXISTING, CREATE_NEW, REJECT_SOURCE, or DEFER. Promotion creates/links the canonical entity and the corresponding Product_Source_Record/Variant_Source_Record. Persist Staging_ID → source-record ID and canonical ID mappings. A deterministic promotion key prevents duplicate canonical records after retries.
+Staging product/model rows are source assertion candidates, not canonical entities. Candidate_Product_ID/Candidate_Variant_ID are suggestions only. Human decision values are MATCH_EXISTING, CREATE_NEW, REJECT_SOURCE, or DEFER. Promotion creates/links the canonical entity and the corresponding Product_Source_Record/Variant_Source_Record. Promotion_Mappings is the authoritative Staging_ID → production/canonical ID map. The application validates Staging_Type + Staging_ID and Production_Entity_Type + Production_Entity_ID against the exact typed tables; Canonical_Entity_Type + Canonical_Entity_ID must agree with the identity decision and ownership chain. A deterministic promotion key prevents duplicate canonical records after retries.
 
 ### 8.4 Partial-write reconciliation
 
@@ -306,7 +306,7 @@ A retry is a new attempt under the same Logical_Job_ID, with a new Run_ID and Id
 
 ### 8.7 Operational integrity scan
 
-A scheduled/manual integrity scan checks primary-key uniqueness, required values, enum validity, foreign keys and ownership, duplicate sequence numbers, review hash drift, orphan polymorphic links, image redirect cycles, document-version pointer ownership, missing Drive files, and SHA256 mismatches. Findings are classified BLOCKING, REPAIRABLE, or WARNING. Repairs are report-first, idempotent, audited, and never auto-merge/delete data.
+A scheduled/manual integrity scan checks primary-key uniqueness, required values, enum validity, foreign keys and ownership, duplicate sequence numbers, review hash drift, orphan polymorphic links (Document_Links, Image_Links, Review_Staging_Links, Identity_Match_Decisions, Promotion_Mappings, Audit_Log, and Run_Events), image redirect cycles, document-version pointer ownership, missing Drive files, and SHA256 mismatches. Every polymorphic reference must be validated by a shared typed resolver on write and during scans. Findings are classified BLOCKING, REPAIRABLE, or WARNING. Repairs are report-first, idempotent, audited, and never auto-merge/delete data.
 
 
 ## 9. Promotion transaction ledgers
