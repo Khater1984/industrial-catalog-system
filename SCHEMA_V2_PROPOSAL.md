@@ -280,7 +280,7 @@ For Document_Links and Image_Links, all writes must call a shared `resolveTarget
 1. Accept only the exact supported type enum.
 2. Resolve the target table and confirm target exists.
 3. Confirm target lifecycle permits linking.
-4. For Variant targets, confirm the Variant and parent Product exist and are not invalid/merged without canonical resolution.
+4. For Variant targets, confirm the Variant and parent Product exist and are ACTIVE or explicitly allowed by lifecycle policy. Canonical merge/reparent operations are out of initial release; archived canonical records cannot receive new links.
 5. Confirm referenced document versions belong to the same Doc_ID; image links resolve to an available canonical asset.
 6. Reject type/ID mismatches, orphan targets, and ownership mismatches.
 7. Run during create, update, import, promotion, and before issue.
@@ -381,3 +381,8 @@ Product_Company.Product_Name_EN and Variant_Company.Model_Name_EN are company-ap
 ### 8.8 Updated table inventory delta
 
 Add to the initial inventory: Run_Units, Image_Renditions, Design_Assets, Issued_Document_Items, Issue_Operations, Review_Staging_Links, Promotion_Operations, Promotion_Mappings, and System_Config. The complete inventory in DATABASE_SCHEMA.md is the current authoritative list pending final approval.
+
+
+### 8.9 Canonical merge scope
+
+Canonical Product/Variant merge and reparent workflows are deliberately excluded from the initial release. The schema therefore uses only ACTIVE and ARCHIVED lifecycle states and does not expose MERGED pointers without a complete merge ledger. Suspected duplicates are review candidates; they may be archived after review, but the system must not silently move source records, variants, attributes, documents, images, or historical issue membership between canonical IDs. A future merge capability requires a separate ADR, impact manifest, child-variant mapping rules, rollback plan, and migration tests.
