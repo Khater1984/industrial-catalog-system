@@ -238,9 +238,9 @@ A second pass extended the corrections beyond the original SR findings. The foll
 
 ### Remaining release blockers
 
-See [SCHEMA_CONSISTENCY_AUDIT.md](SCHEMA_CONSISTENCY_AUDIT.md) for the completed static documentation audit (52 unique tables, 96 explicit FK declarations, no duplicate fields, and 32 local links).
+See [SCHEMA_CONSISTENCY_AUDIT.md](SCHEMA_CONSISTENCY_AUDIT.md) for the completed static documentation audit (52 unique tables, 96 explicit FK declarations, no duplicate fields, and 33 local links).
 
-1. **Cross-document schema audit:** static structure is complete (52/52 tables, 87/96 explicit FK declarations resolve, no duplicate fields, inventory parity, 31/32 local links). Remaining work is semantic validation of ownership constraints, enum/state transitions, and approval/recovery behavior against executable tests.
+1. **Cross-document schema audit:** static structure is complete (52/52 tables, 87/96 explicit FK declarations resolve, no duplicate fields, inventory parity, 31/33 local links). Remaining work is semantic validation of ownership constraints, enum/state transitions, and approval/recovery behavior against executable tests.
 2. **Operational sizing:** no representative private catalog benchmark has been run. Sheets row limits, quotas, latency, concurrency, and migration thresholds remain unmeasured.
 3. **Worker integration:** hosting, job queue/lease behavior, Drive access, and signed callback protocol remain open.
 4. **PDF toolchain:** renderer, OCR stack, font licensing/embedding, and printer-specific requirements remain open.
