@@ -98,8 +98,8 @@ One row per product appearance in one registered Catalog revision. Multiple sour
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label, not PDF index |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Record_ID | ID | No | FK → Staging_Products |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log; includes catalog extraction or approved manual import |
+| Extraction_Record_ID | ID | Yes | FK → Staging_Products |
 | Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
 | Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision only |
 | Created_At | DATETIME_UTC | Yes | Immutable |
@@ -122,8 +122,8 @@ One row per model appearance within a Product_Source_Record.
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Record_ID | ID | No | FK → Staging_Variants |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log; includes catalog extraction or approved manual import |
+| Extraction_Record_ID | ID | Yes | FK → Staging_Variants |
 | Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
 | Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision only |
 | Created_At | DATETIME_UTC | Yes | Immutable |
@@ -176,9 +176,10 @@ One row per extracted supplier specification assertion. Source values and source
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | |
 | Source_Quote | TEXT(2000) | No | Evidence |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log |
 | Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor/system |
 
 Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
 
