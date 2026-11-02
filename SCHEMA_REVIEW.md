@@ -236,6 +236,8 @@ A second pass extended the corrections beyond the original SR findings. The foll
 
 ### Remaining release blockers
 
+See [SCHEMA_CONSISTENCY_AUDIT.md](SCHEMA_CONSISTENCY_AUDIT.md) for the completed static documentation audit (52 unique tables, 85 FK target references, no duplicate fields, and 25 local links).
+
 1. **Cross-document schema audit:** verify all 52 unique table definitions, column names, FKs, ownership rules, enums, and inventory references. Some tables are defined in the domain documents while shared tables (for example Run_Log) are referenced across domains.
 2. **Operational sizing:** no representative private catalog benchmark has been run. Sheets row limits, quotas, latency, concurrency, and migration thresholds remain unmeasured.
 3. **Worker integration:** hosting, job queue/lease behavior, Drive access, and signed callback protocol remain open.
