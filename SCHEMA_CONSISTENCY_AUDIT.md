@@ -38,6 +38,9 @@ The 52 unique tables cover:
 8. Partial promotion and issue writes have deterministic operation envelopes and recovery mappings.
 9. Final issues pin exact Paper_Version_ID, design versions, data scope, assets/renditions, renderer fingerprints, and file hashes.
 10. Polymorphic document/image target links are validated by a shared resolver and periodic integrity scan.
+11. Each document version retains its own supplier/manual/external provenance; versions never inherit or overwrite another version's source evidence.
+12. PRINT_READY_PDF requires pinned printer specifications, ICC color profile, trim/bleed rules, and an approved conformance validator; DPI alone is insufficient.
+13. Canonical Product/Variant merge and reparenting are excluded from the initial release.
 
 ## 4. Remaining limitations and open gates
 
