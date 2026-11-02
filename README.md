@@ -38,8 +38,9 @@ These are approved technology directions, not evidence that runtime resources ha
 10. [UI/UX Specification](UI_UX_SPEC.md) — responsive experience and review workflows.
 11. [Test Strategy](TEST_STRATEGY.md) — test layers, fixtures, and release gates.
 12. [Security & Operations](SECURITY_OPERATIONS.md) — access, secrets, backup, recovery, and capacity.
-13. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
-14. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
+13. [Implementation Blueprint](IMPLEMENTATION_BLUEPRINT.md) — repository structure and vertical-slice build plan.
+14. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
+15. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
 
 ## Domain specifications
 
