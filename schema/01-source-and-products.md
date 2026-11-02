@@ -132,7 +132,27 @@ One row per model appearance within a Product_Source_Record.
 Variant.Product_ID must equal the Product_ID reached through Product_Source_Record_ID. Model-number collisions remain valid source evidence but cannot auto-merge identities.
 
 ### `Identity_Match_Decisions`
-Append-only human decision ledger: Match_Decision_ID (PK), Entity_Type (PRODUCT/VARIANT), Source_Staging_Type, Source_Staging_ID, Source_Staging_Hash, Parent_Product_Match_Decision_ID (required for VARIANT), Candidate_Canonical_ID, Decision (MATCH_EXISTING/CREATE_NEW/REJECT_SOURCE/DEFER), Result_Canonical_ID, Evidence_JSON_File_ID, Evidence_SHA256, Rationale, Decided_At, Decided_By, and optional Supersedes_Decision_ID. REJECT_SOURCE and DEFER remain in staging and do not create Product_Source_Records or Variant_Source_Records. A VARIANT match candidate must belong to the canonical Product resolved by its parent product decision. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
+Append-only human decision ledger. Rejected/deferred source candidates remain in staging and do not create production source records.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Match_Decision_ID | ID | Yes | PK |
+| Entity_Type | ENUM | Yes | PRODUCT, VARIANT |
+| Source_Staging_Type | ENUM | Yes | STAGING_PRODUCT, STAGING_VARIANT |
+| Source_Staging_ID | ID | Yes | Globally unique staging ID |
+| Source_Staging_Hash | HEX64 | Yes | Exact reviewed staging hash |
+| Parent_Product_Match_Decision_ID | ID | Conditional | Required for VARIANT; FK → Identity_Match_Decisions of PRODUCT type |
+| Candidate_Canonical_ID | ID | No | Suggested existing Product_ID or Variant_ID |
+| Decision | ENUM | Yes | MATCH_EXISTING, CREATE_NEW, REJECT_SOURCE, DEFER |
+| Result_Canonical_ID | ID | Conditional | Required for approved MATCH_EXISTING/CREATE_NEW |
+| Evidence_JSON_File_ID | DRIVE_FILE_ID | No | Immutable evidence/decision context |
+| Evidence_SHA256 | HEX64 | No | Required when evidence file exists |
+| Rationale | TEXT(1000) | Yes | Human explanation |
+| Decided_At | DATETIME_UTC | Yes | |
+| Decided_By | ACTOR_ID | Yes | |
+| Supersedes_Decision_ID | ID | No | FK → prior decision; append-only correction |
+
+A VARIANT decision must reference an approved parent PRODUCT decision; the candidate/result Variant must belong to that resolved Product_ID. MATCH_EXISTING must resolve to an active canonical entity. CREATE_NEW creates one new canonical entity and then the source record. REJECT_SOURCE and DEFER create no production entity/source record. A superseding decision does not silently rewrite historical decisions or issued snapshots; post-promotion correction requires a separate audited reconciliation. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
 
 ### `Specifications`
 One row per extracted supplier specification assertion. Source values and source wording are immutable.
