@@ -217,7 +217,7 @@ The user approved continuing the correction work. The proposed resolutions have 
 3. Define measured catalog-volume limits, backup cadence, RPO/RTO, worker hosting, and authentication protocol.
 4. Obtain explicit approval of the consolidated schema and acceptance suite.
 
-No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 40 acceptance scenarios are design-level tests, not yet executable tests.
+No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 44 acceptance scenarios are design-level tests, not yet executable tests.
 
 ## V2.1 engineering pass — 2026-11-03
 
