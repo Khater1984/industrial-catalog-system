@@ -171,3 +171,18 @@ Unique: (Image_A_ID, Image_B_ID, Algorithm). Distance thresholds only create rev
 - Never upscale and claim a higher native resolution.
 - After PDF generation, inspect embedded image dimensions where technically possible and compare to expected output.
 - Duplicate resolution sets Duplicate_Of and redirects active links to the canonical asset through audited operations; retain original asset record and file.
+
+
+## 4. V2 integrity and immutability contract
+
+### 4.1 Immutable binary assets
+
+Every Image_Assets row and every binary brand/font/graphic/watermark/paper asset record is immutable after creation. Original_File_ID, rendition file IDs, MIME type, dimensions, byte size, SHA256, and semantic role must not be edited in place once referenced by a published design or issued output. A replacement creates a new asset ID and checksum; old records and files remain available for historical outputs. Published manifests pin exact asset IDs and SHA256 values. Verify the checksum before rendering; mismatch blocks issuance/reproduction.
+
+### 4.2 Canonical target resolver
+
+Document_Links and Image_Links use Target_Type + Target_ID, so every create/update/import/promotion and pre-issue validation must call a shared resolveTarget(Target_Type, Target_ID) contract. It validates supported type, target existence, lifecycle, Variant→Product ownership, and any pinned document-version or canonical image-asset ownership. Orphan/type mismatch/ownership mismatch is rejected. Run periodic integrity scans because Sheets cannot enforce polymorphic foreign keys.
+
+### 4.3 Image duplicate redirect integrity
+
+Duplicate_Of_Image_ID must not equal Image_ID. Before accepting a redirect, resolve the full chain and reject cycles. The terminal canonical asset must be available and not quarantined; archived targets require an explicit audited override. Redirect active links as a separate audited operation. Preserve original assets and historical links; never delete an image because it is similar.
