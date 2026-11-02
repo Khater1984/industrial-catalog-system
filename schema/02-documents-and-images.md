@@ -47,6 +47,15 @@ Immutable file revisions. A new upload creates a new row; never replace the file
 | Uploaded_At | DATETIME_UTC | Yes | System generated |
 | Uploaded_By | ACTOR_ID | Yes | Actor |
 | Version_Notes | TEXT(1000) | No | Notes |
+| Source_Type | ENUM | Yes | CATALOG_EMBEDDED, MANUAL_UPLOAD, EXTERNAL_LINK, OTHER |
+| Source_Catalog_ID | ID | No | FK → Catalogs |
+| Source_Catalog_Page_ID | ID | No | FK → Catalog_Pages; must belong to Source_Catalog_ID |
+| Source_Product_Source_Record_ID | ID | No | FK → Product_Source_Records |
+| Source_Variant_Source_Record_ID | ID | No | FK → Variant_Source_Records |
+| Source_Quote | TEXT(2000) | No | Exact catalog/document evidence excerpt |
+| Source_URL | URL(2000) | No | Required for EXTERNAL_LINK; validated HTTPS/HTTP URL |
+| Extraction_Run_ID | ID | No | FK → Run_Log; required for CATALOG_EMBEDDED |
+| Extraction_Record_ID | ID | No | FK → Staging_Documents; required for CATALOG_EMBEDDED |
 | Supersedes_Version_ID | ID | No | Self-FK; same Doc_ID |
 | Lifecycle_Status | ENUM | Yes | AVAILABLE, QUARANTINED, ARCHIVED |
 
