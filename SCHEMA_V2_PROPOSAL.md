@@ -55,8 +55,8 @@ One row per product appearance in one registered Catalog revision. It is created
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence excerpt |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Record_ID | ID | No | FK → Staging_Products |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log |
+| Extraction_Record_ID | ID | Yes | FK → Staging_Products |
 | Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
 | Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision |
 | Created_At | DATETIME_UTC | Yes | Immutable |
@@ -80,8 +80,8 @@ One row per model/configuration appearance within a Product_Source_Record.
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence excerpt |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Record_ID | ID | No | FK → Staging_Variants |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log |
+| Extraction_Record_ID | ID | Yes | FK → Staging_Variants |
 | Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
 | Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision |
 | Created_At | DATETIME_UTC | Yes | Immutable |
@@ -136,9 +136,10 @@ One row per extracted supplier assertion, tied to exactly one source occurrence.
 | Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | |
 | Source_Quote | TEXT(2000) | No | Exact evidence excerpt |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
+| Extraction_Run_ID | ID | Yes | FK → Run_Log |
 | Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor/system |
 
 Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope. Page/catalog ownership must match the selected source record.
 
