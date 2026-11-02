@@ -1,4 +1,4 @@
-# Schema V2 Change Proposal — Identity, Determinism & Integrity
+# Schema V2.1 Change Proposal — Identity, Determinism & Integrity
 
 **Status:** Proposed revision following approval to continue design corrections; not yet final schema approval or implementation authorization.
 **Date:** 2026-11-03
