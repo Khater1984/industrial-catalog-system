@@ -92,6 +92,7 @@ One row per product appearance in one registered Catalog revision. Multiple sour
 | Product_ID | ID | Yes | FK → Products; set only after approved identity resolution; no silent reparenting |
 | Catalog_ID | ID | Yes | FK → Catalogs |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic source occurrence key within Catalog_ID; unique with Catalog_ID |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
 | Source_Product_Reference | TEXT(160) | No | Exact source reference |
 | Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must belong to Catalog_ID |
@@ -116,6 +117,7 @@ One row per model appearance within a Product_Source_Record.
 | Variant_ID | ID | Yes | FK → Variants; set only after approved identity resolution; no silent reparenting |
 | Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Source_Model_Number | TEXT(160) | Yes | Exact supplier wording; immutable |
 | Source_Model_Name | TEXT(250) | No | Exact supplier wording; immutable |
 | Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must belong to parent Product_Source_Record.Catalog_ID |
@@ -161,6 +163,7 @@ One row per extracted supplier specification assertion. Source values and source
 |---|---|---:|---|
 | Specification_ID | ID | Yes | PK |
 | Source_Assertion_Key | TEXT(160) | Yes | Stable deterministic assertion locator within its source record |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Scope | ENUM | Yes | PRODUCT, VARIANT |
 | Product_Source_Record_ID | ID | Conditional | Required for PRODUCT scope; FK → Product_Source_Records |
 | Variant_Source_Record_ID | ID | Conditional | Required for VARIANT scope; FK → Variant_Source_Records |
