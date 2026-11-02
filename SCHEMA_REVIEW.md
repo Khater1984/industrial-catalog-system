@@ -216,3 +216,33 @@ The user approved continuing the correction work. The proposed resolutions have 
 4. Obtain explicit approval of the consolidated schema and acceptance suite.
 
 No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 28 acceptance scenarios are design-level tests, not yet executable tests.
+
+## V2.1 engineering pass — 2026-11-03
+
+A second pass extended the corrections beyond the original SR findings. The following controls are now represented in the domain documents:
+
+| Area | Correction | Disposition |
+|---|---|---|
+| Source occurrence identity | Stable Product_Source_Record, Variant_Source_Record, and Source_Assertion keys; deterministic reprocessing. | Documented; acceptance pending |
+| Page/run separation | Catalog_Pages is immutable page identity; Run_Units stores per-run checkpoint and artifacts. | Documented; acceptance pending |
+| Canonical company labels | Product_Name_EN and Model_Name_EN separated from supplier source strings. | Documented |
+| Image pipeline | Immutable Image_Assets original + immutable Image_Renditions with pipeline and content hashes. | Documented; acceptance pending |
+| Design assets | Shared immutable Design_Assets registry; Brand_Assets are role associations. | Documented; acceptance pending |
+| Review set integrity | Review_Staging_Links is authoritative; ordered staging-set manifest and hash bind approval. | Documented; acceptance pending |
+| Promotion recovery | Promotion_Operations and Promotion_Mappings define multi-sheet reconciliation. | Documented; acceptance pending |
+| Issue recovery | Issue_Operations, Issued_Document_Items, Paper_Version_ID, and dependency manifest are required. | Documented; acceptance pending |
+| Document lifecycle | DRAFT → ACTIVE two-step first-version protocol now matches the schema enum. | Documented; acceptance pending |
+| Staging state | Approval lives in Review_Queue; staging no longer duplicates an APPROVED state; stale reviews are explicit. | Documented; acceptance pending |
+
+### Remaining release blockers
+
+1. **Cross-document schema audit:** verify all 51 table headings, column names, FKs, ownership rules, enums, and inventory references. Some tables are defined in the domain documents while shared tables (for example Run_Log) are referenced across domains.
+2. **Operational sizing:** no representative private catalog benchmark has been run. Sheets row limits, quotas, latency, concurrency, and migration thresholds remain unmeasured.
+3. **Worker integration:** hosting, job queue/lease behavior, Drive access, and signed callback protocol remain open.
+4. **PDF toolchain:** renderer, OCR stack, font licensing/embedding, and printer-specific requirements remain open.
+5. **Backup/recovery:** RPO/RTO, backup cadence, retention, and restore rehearsal remain open.
+6. **Acceptance execution:** SAT-001–SAT-040 are design-level scenarios only; no automated or live integration tests have run.
+
+### Current assessment
+
+The major schema design gaps identified in SR-001–SR-014 have documented resolutions. This does **not** mean the schema is approved or operationally proven. The next gate is a mechanical cross-document audit and final review of API, worker, security, and operations contracts. No production Sheets, Drive changes, application code, worker deployment, or legacy migration has been performed.
