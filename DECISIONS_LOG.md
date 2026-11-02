@@ -51,3 +51,17 @@ The user approved continuing the design correction work. The following are **pro
 | ADR-027 | Add non-secret System_Config registry and define a Sheets volume/backup gate | Proposed | Keep configuration controlled and prevent unmeasured scale assumptions. |
 
 No live resources or application code were created by these proposals. The ADRs become Approved only after the consolidated schema and acceptance suite are reviewed and the user explicitly approves implementation.
+
+## Additional V2.1 proposals — 2026-11-03
+
+| ID | Proposed decision | Status | Rationale |
+|---|---|---|---|
+| ADR-028 | Keep Catalog_Pages immutable and track processing in Run_Units | Proposed | Prevent retries/new extraction versions from overwriting page artifacts or status. |
+| ADR-029 | Separate Image_Assets originals from immutable Image_Renditions | Proposed | Preserve originals and pin exact preview/high-quality renditions. |
+| ADR-030 | Introduce shared immutable Design_Assets registry | Proposed | Give brand, font, paper texture, and watermark assets stable IDs and checksums. |
+| ADR-031 | Add Promotion_Operations and Promotion_Mappings | Proposed | Recover partial multi-sheet promotion without blind replay or duplicate records. |
+| ADR-032 | Add Issue_Operations and Issued_Document_Items | Proposed | Recover issue transactions and query membership of multi-product PDFs. |
+| ADR-033 | Bind review decisions to ordered staging-set manifests and hashes | Proposed | Support multiple staging records per review and stale approval invalidation. |
+| ADR-034 | Add canonical Product_Name_EN and Model_Name_EN company labels | Proposed | Separate internal display labels from exact supplier wording. |
+
+These proposals are documented in the domain schema and technical design files. They remain Proposed until the consolidated schema, API/security contracts, acceptance suite, and operational gates are explicitly approved.
