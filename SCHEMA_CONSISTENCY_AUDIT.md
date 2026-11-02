@@ -14,7 +14,7 @@
 | Duplicate field names within a table | 0 | No duplicate parsed column names found. |
 | Local Markdown links | 31 / 31 | All checked relative links resolve to files in the repository. |
 | Malformed literal line-break escapes in reviewed docs | 0 | Previously malformed table line breaks were repaired. |
-| Acceptance scenarios | 40 | SAT-001 through SAT-040 are documented design-level tests, not executed software tests. |
+| Acceptance scenarios | 40 | SAT-001 through SAT-044 are documented design-level tests, not executed software tests. |
 | Enum registry | 78 fields | ENUM_REGISTRY.md indexes all 78 typed enum fields.
 
 ## 2. Confirmed structural coverage
@@ -53,7 +53,7 @@ These require synthetic fixtures, a disposable test environment, representative 
 
 ## 5. Required next gate
 
-1. Review the consolidated schema and 40 acceptance scenarios.
+1. Review the consolidated schema and 44 acceptance scenarios.
 2. Resolve remaining design choices in API_CONTRACTS.md, WORKER_SPEC.md, and SECURITY_OPERATIONS.md.
 3. Run private extraction and PDF-generation benchmarks.
 4. Set measured capacity thresholds, backup cadence, RPO/RTO, and worker service objectives.
