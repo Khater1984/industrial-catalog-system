@@ -23,7 +23,7 @@ One row per logical document, independent of its physical file versions and targ
 | Language_Code | TEXT(10) | No | BCP-47 |
 | Description | TEXT(1500) | No | Company description |
 | Current_Version_ID | ID | No | FK → Document_Versions; must belong to same Doc_ID |
-| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
+| Lifecycle_Status | ENUM | Yes | DRAFT, ACTIVE, ARCHIVED |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
 | Updated_At | DATETIME_UTC | Yes | System generated |
