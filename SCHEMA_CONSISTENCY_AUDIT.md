@@ -10,9 +10,9 @@
 |---|---:|---|
 | Unique table definitions with explicit column grids | 52 / 52 | All unique domain tables have a structured column definition. Run_Log is referenced in Source & Products and defined in Workflow & Audit; it is one logical table. |
 | Schema inventory matches domain definitions | 52 / 52 | No defined table is missing from DATABASE_SCHEMA.md; no inventory-only table remains. |
-| Foreign-key target names resolve to defined tables | 85 / 85 | Static FK target-name check only; it does not prove row-level ownership or data validity. |
+| Foreign-key target names resolve to defined tables | 87 / 87 | Static FK target-name check only; it does not prove row-level ownership or data validity. |
 | Duplicate field names within a table | 0 | No duplicate parsed column names found. |
-| Local Markdown links | 28 / 28 | All checked relative links resolve to files in the repository. |
+| Local Markdown links | 29 / 29 | All checked relative links resolve to files in the repository. |
 | Malformed literal line-break escapes in reviewed docs | 0 | Previously malformed table line breaks were repaired. |
 | Acceptance scenarios | 40 | SAT-001 through SAT-040 are documented design-level tests, not executed software tests. |
 
