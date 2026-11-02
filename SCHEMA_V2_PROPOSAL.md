@@ -42,50 +42,53 @@ A model number is not a canonical key. A changed supplier model number can remai
 
 ### 1.4 `Product_Source_Records`
 
-One row per supplier's product-level appearance in one Catalog revision.
+One row per product appearance in one registered Catalog revision. It is created only after an approved identity decision.
 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Product_Source_Record_ID | ID | Yes | PK |
-| Product_ID | ID | Yes | FK → Products; set only after approved match/promotion |
+| Product_ID | ID | Yes | FK → Products; approved identity only |
 | Catalog_ID | ID | Yes | FK → Catalogs |
-| Source_Product_Name | TEXT(300) | Yes | Exact extracted/source wording; immutable |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic occurrence key; unique with Catalog_ID |
+| Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
 | Source_Product_Reference | TEXT(160) | No | Exact source reference |
-| Source_Page_Number | INTEGER | No | 1-based |
-| Catalog_Page_ID | ID | No | FK → Catalog_Pages; same Catalog_ID |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; same Catalog_ID |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence excerpt |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
 | Extraction_Record_ID | ID | No | FK → Staging_Products |
-| Match_Status | ENUM | Yes | PENDING, MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
-| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
+| Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision |
 | Created_At | DATETIME_UTC | Yes | Immutable |
-| Created_By | ACTOR_ID | Yes | Actor/system |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-Uniqueness is not based on source name. Prevent duplicate promotion of the same staging record and catalog/page/region assertion using a deterministic source assertion fingerprint.
+Unique (Catalog_ID, Source_Record_Key). REJECT_SOURCE and DEFER remain in staging and do not create source records. Raw source fields remain immutable; identity reassignment is not a routine edit.
 
 ### 1.5 `Variant_Source_Records`
 
-One row per model/configuration appearance within a product source record.
+One row per model/configuration appearance within a Product_Source_Record.
 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Variant_Source_Record_ID | ID | Yes | PK |
-| Variant_ID | ID | Yes | FK → Variants |
+| Variant_ID | ID | Yes | FK → Variants; approved identity only |
 | Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
+| Source_Record_Key | TEXT(160) | Yes | Unique within parent source record |
 | Source_Model_Number | TEXT(160) | Yes | Exact source string; immutable |
 | Source_Model_Name | TEXT(250) | No | Exact source string; immutable |
-| Source_Page_Number | INTEGER | No | 1-based; may differ from product heading page |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; same catalog as parent Product_Source_Record |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence excerpt |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
 | Extraction_Record_ID | ID | No | FK → Staging_Variants |
-| Match_Status | ENUM | Yes | PENDING, MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
-| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
+| Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-The Variant's Product_ID must equal the Product_ID of the referenced Product_Source_Record. Model-number collisions are allowed as source evidence but require review before matching.
+Unique (Product_Source_Record_ID, Source_Record_Key). The Variant.Product_ID must equal the Product_ID of the parent Product_Source_Record. A model number collision is evidence for review, never an automatic match.
 
 ### 1.6 `Identity_Match_Decisions`
 
@@ -95,44 +98,50 @@ Append-only human decision ledger.
 |---|---|---:|---|
 | Match_Decision_ID | ID | Yes | PK |
 | Entity_Type | ENUM | Yes | PRODUCT, VARIANT |
-| Source_Staging_ID | ID | Yes | FK to corresponding staging row |
-| Candidate_Canonical_ID | ID | No | Existing candidate; blank when creating new canonical identity |
+| Source_Staging_Type | ENUM | Yes | STAGING_PRODUCT, STAGING_VARIANT |
+| Source_Staging_ID | ID | Yes | Globally unique staging ID |
+| Source_Staging_Hash | HEX64 | Yes | Exact reviewed staging hash |
+| Parent_Product_Match_Decision_ID | ID | Conditional | Required for VARIANT; FK to approved PRODUCT decision |
+| Candidate_Canonical_ID | ID | No | Suggested existing candidate |
 | Decision | ENUM | Yes | MATCH_EXISTING, CREATE_NEW, REJECT_SOURCE, DEFER |
-| Result_Canonical_ID | ID | Conditional | Required for MATCH_EXISTING/CREATE_NEW |
-| Evidence_JSON_File_ID | DRIVE_FILE_ID | No | Exact compared evidence |
-| Evidence_SHA256 | HEX64 | No | Hash of evidence manifest |
-| Rationale | TEXT(1500) | Yes | Human rationale |
-| Decided_At | DATETIME_UTC | Yes | Immutable |
-| Decided_By | ACTOR_ID | Yes | Human actor |
+| Result_Canonical_ID | ID | Conditional | Required for approved MATCH_EXISTING/CREATE_NEW |
+| Evidence_JSON_File_ID | DRIVE_FILE_ID | No | Immutable evidence |
+| Evidence_SHA256 | HEX64 | No | Required when evidence file exists |
+| Rationale | TEXT(1000) | Yes | Human rationale |
+| Decided_At | DATETIME_UTC | Yes | |
+| Decided_By | ACTOR_ID | Yes | |
+| Supersedes_Decision_ID | ID | No | FK → Identity_Match_Decisions |
 
-A decision is valid only for the exact source staging payload hash reviewed. It is not editable; correction is a new decision that explicitly supersedes the prior decision. The application validates entity type, Product ownership, source catalog, and target lifecycle before promotion.
+REJECT_SOURCE and DEFER remain in staging. VARIANT decisions require an approved parent PRODUCT decision and a candidate/result Variant belonging to the resolved Product_ID. A correction appends a superseding decision; it never rewrites history.
 
 ### 1.7 `Specifications` — immutable source assertions
 
-Replace the old Catalog_ID-only provenance with exact source-record ownership.
+One row per extracted supplier assertion, tied to exactly one source occurrence.
 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Specification_ID | ID | Yes | PK |
-| Product_Source_Record_ID | ID | Conditional | FK → Product_Source_Records; required for product-scope assertion |
-| Variant_Source_Record_ID | ID | Conditional | FK → Variant_Source_Records; required for variant-scope assertion |
-| Product_ID | ID | Yes | Canonical FK; must match source record |
-| Variant_ID | ID | No | Canonical FK; required iff variant source record set |
+| Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator within source record |
 | Scope | ENUM | Yes | PRODUCT, VARIANT |
+| Product_Source_Record_ID | ID | Conditional | Required for PRODUCT scope |
+| Variant_Source_Record_ID | ID | Conditional | Required for VARIANT scope |
+| Product_ID | ID | Yes | Canonical FK; must match source record |
+| Variant_ID | ID | Conditional | Required iff VARIANT scope; must match source record |
 | Attribute_Key_Source | TEXT(160) | Yes | Exact source label |
 | Attribute_Value_Source | TEXT(2000) | Yes | Exact source value |
 | Unit_Source | TEXT(80) | No | Exact source unit |
 | Normalized_Key | TEXT(160) | No | Search/mapping only |
-| Normalized_Value_JSON | JSON_TEXT(1000) | No | Typed parsed value; raw source retained |
-| Normalized_Unit | TEXT(80) | No | Optional |
-| Source_Page_Number | INTEGER | No | 1-based |
+| Normalized_Value_JSON | JSON_TEXT(1000) | No | Typed parsed value; raw retained |
+| Normalized_Unit | TEXT(80) | No | Optional normalized unit |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must match source record |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | |
-| Source_Quote | TEXT(2000) | No | |
+| Source_Quote | TEXT(2000) | No | Exact evidence excerpt |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Confidence | DECIMAL(5,4) | No | 0..1, not approval |
+| Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 
-Exactly one source-record FK is populated according to Scope. Product_ID/Variant_ID must match the canonical identity resolved by that source record. If identity matching is unresolved, the specification remains in staging and is not promoted. Do not invent a product-wide assertion from a variant-only source record or vice versa.
+Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope. Page/catalog ownership must match the selected source record.
 
 ### 1.8 Catalog revisions and pages
 
