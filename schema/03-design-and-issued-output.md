@@ -345,7 +345,8 @@ One row per logical PDF issue request. Only completed operations create final Is
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Issue_Operation_ID | ID | Yes | PK |
-| Issue_Key | TEXT(180) | Yes | Unique deterministic idempotency key for exact scope + design versions + output profile |
+| Issue_Key | TEXT(180) | Yes | Unique idempotency key for one explicit user issue request; retries reuse it |
+| Input_Fingerprint_SHA256 | HEX64 | Yes | Hash of exact scope, resolved data, design versions, and output options; separate from request idempotency |
 | Run_ID | ID | Yes | FK → Run_Log |
 | Operation_Status | ENUM | Yes | PREPARED, PREFLIGHT, RENDERING, VALIDATING, IN_DOUBT, COMPLETED, FAILED, CANCELLED |
 | Intended_Issued_Document_ID | ID | Yes | Stable ID reserved for final issue |
@@ -361,4 +362,4 @@ One row per logical PDF issue request. Only completed operations create final Is
 | Error_Code | TEXT(80) | No | |
 | Recovery_Notes | TEXT(1500) | No | |
 
-An issue operation may be retried only with the same Issue_Key and identical scope/dependency hashes. If render-affecting input changes, create a new Issue_Key. A final issue is exposed only after PDF validation, dependency hash verification, and all final issue/item rows reconcile. A failed/partial issue is never exposed as a completed PDF.
+An issue operation may be retried only with the same Issue_Key and identical Input_Fingerprint_SHA256, scope, and dependency hashes. A new explicit user issue request receives a new Issue_Key even if its inputs are identical; changed render inputs always require a new Issue_Key. A final issue is exposed only after PDF validation, dependency hash verification, and all final issue/item rows reconcile. A failed/partial issue is never exposed as a completed PDF.
