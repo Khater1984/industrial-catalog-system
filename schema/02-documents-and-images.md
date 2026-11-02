@@ -53,7 +53,7 @@ Immutable file revisions. A new upload creates a new row; never replace the file
 Unique: (Doc_ID, SHA256) to prevent duplicate binary versions for the same logical document unless an explicit exception is recorded. A version must belong to the same Doc_ID referenced by Documents.Current_Version_ID or Document_Links.Pinned_Version_ID. Rollback changes the current pointer; it does not delete versions.
 
 ### `Document_Links`
-One row per logical document-target association.
+One row per document-target-mode association. This table intentionally allows both an EXCLUDE and an INCLUDE row for the same document and variant: the former cancels inherited product association; the latter represents a direct variant association.
 
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
@@ -68,33 +68,24 @@ One row per logical document-target association.
 | Created_By | ACTOR_ID | Yes | Actor |
 | Link_Notes | TEXT(500) | No | Optional |
 
-Unique: (Doc_ID, Target_Type, Target_ID). This prevents conflicting INCLUDE/EXCLUDE rows for one document and target. If a target needs to change mode, update the same logical link with an audit event rather than adding a duplicate row.
+Unique: (Doc_ID, Target_Type, Target_ID, Link_Mode). Application validation permits:
+- PRODUCT: INCLUDE only.
+- VARIANT: INCLUDE and/or EXCLUDE, at most one row of each mode for a given Doc_ID and target.
+- EXCLUDE is valid only when the document is inherited from a product-level INCLUDE association.
+- An EXCLUDE on a variant cancels only the inherited product association. A direct VARIANT INCLUDE remains effective independently.
+- A direct variant INCLUDE and inherited EXCLUDE may coexist as two rows; this is not a conflict.
+- Product-level EXCLUDE is invalid.
+- Effective display is de-duplicated by Doc_ID.
+- If a direct variant INCLUDE exists, its Display_Order and Pinned_Version_ID control the variant display; otherwise inherit product-link settings.
+- If no pinned version is resolved, use Documents.Current_Version_ID.
+- Every pinned version must belong to the same Doc_ID.
 
 Resolution:
-1. Product INCLUDE is inherited by its variants.
-2. Variant EXCLUDE cancels only the inherited product association for that Doc_ID.
-3. A direct Variant INCLUDE remains visible even if a separate inherited association is excluded; therefore do not represent a direct variant INCLUDE and inherited exclusion as two rows for the same Doc_ID/variant target. Store the direct INCLUDE on the variant and model the inherited exclusion separately in `Document_Exclusions` (see below). This avoids the uniqueness conflict and preserves both semantics.
-4. Effective display is de-duplicated by Doc_ID.
-5. A direct variant link controls display order and pinned-version choice for that variant; otherwise use the product link's settings.
-6. If no pinned version is resolved, use Documents.Current_Version_ID.
-
-### `Document_Exclusions`
-Explicit exception ledger for excluding a product-inherited document from one variant without suppressing a direct variant association.
-
-| Column | Type | Required | Key / rule |
-|---|---|---:|---|
-| Exclusion_ID | ID | Yes | PK |
-| Doc_ID | ID | Yes | FK → Documents |
-| Product_ID | ID | Yes | FK → Products |
-| Variant_ID | ID | Yes | FK → Variants; must belong to Product_ID |
-| Reason | TEXT(500) | No | Optional rationale |
-| Created_At | DATETIME_UTC | Yes | System generated |
-| Created_By | ACTOR_ID | Yes | Actor |
-| Status | ENUM | Yes | ACTIVE, REVOKED |
-
-Unique active rule: one active exclusion per (Doc_ID, Variant_ID). Exclusion applies only to the inherited Product INCLUDE link. A direct Variant INCLUDE remains effective. If an exclusion is revoked, inherited product association returns.
-
-**Model clarification:** The earlier compact inventory described EXCLUDE as a Document_Links mode. That representation conflicts with the simultaneous requirements for one unique target link and an independent direct variant INCLUDE. This detailed proposal separates inherited exceptions into Document_Exclusions while keeping Document_Links as INCLUDE associations. This is a schema-level refinement requiring review, not an already approved implementation change.
+1. Start with all PRODUCT INCLUDE links for the product.
+2. For the target variant, remove inherited Doc_IDs that have a VARIANT EXCLUDE link.
+3. Add all direct VARIANT INCLUDE links.
+4. De-duplicate by Doc_ID, resolving direct variant link settings over inherited settings.
+5. Resolve version: direct variant pin, else product pin, else Documents.Current_Version_ID.
 
 ## 2. Image asset library
 
