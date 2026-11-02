@@ -31,7 +31,7 @@ No live Google Sheets, Drive folders, application code, or legacy migration were
 - Make source specifications reference the exact source assertion IDs as well as canonical product/variant IDs used for resolution.
 - Require human-approved matching before two source assertions can be associated with one canonical product or variant.
 
-**Decision required:** confirm this canonical-entity/source-assertion model. It changes the product-domain table design and staging promotion mapping.
+**Disposition:** the user approved proceeding with this correction. The canonical-entity/source-assertion model is documented in SCHEMA_V2_PROPOSAL.md and schema/01-source-and-products.md; final schema acceptance remains open.
 
 ### SR-002 — Specification change ordering is not fully deterministic
 **Severity: BLOCKER**
@@ -70,7 +70,7 @@ Specifications.Catalog_ID plus Product_ID/Variant_ID does not fully express whic
 - Either add Paper_Versions with immutable config/checksum, or make the complete paper configuration and texture checksum part of the immutable issue snapshot and formally state that the snapshot—not a mutable Paper row—is the historical authority.
 - At issue time, snapshot resolved font files/checksums, logo/graphic files/checksums, paper settings/texture checksum, watermark settings/assets, template config, and export settings.
 
-**Decision required:** choose explicit Paper_Versions or snapshot-only paper versioning.
+**Disposition:** the correction pass selects explicit Paper_Versions. The full paper configuration and referenced asset checksums are also pinned in each issue snapshot.
 
 ### SR-005 — Run retry lineage is incomplete
 **Severity: HIGH**
