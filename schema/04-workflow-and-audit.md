@@ -77,7 +77,6 @@ The following columns appear in each staging sheet:
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, APPROVED, REJECTED, PROMOTED |
-| Review_Queue_ID | ID | No | FK → Review_Queue |
 | Promoted_Entity_ID | ID | No | Production ID after promotion |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Updated_At | DATETIME_UTC | Yes | System generated |
