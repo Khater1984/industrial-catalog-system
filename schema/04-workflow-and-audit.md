@@ -332,7 +332,7 @@ One row per logical promotion attempt spanning one or more sheets. It provides a
 
 ### `Promotion_Mappings`
 
-One row per promoted staging-to-production relationship. This is the authoritative mapping; Staging_*.Promoted_Entity_ID is only a convenience pointer.
+One row per promoted staging-to-production relationship. This is the authoritative mapping. Staging rows do not store production entity pointers; all promoted relationships are resolved through this ledger.
 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
