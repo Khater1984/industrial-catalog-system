@@ -54,7 +54,7 @@ The worker submits structured results and manifests to the Apps Script boundary.
 2. API builds a deterministic scope manifest and resolves all effective data.
 3. API resolves exact published Brand_Version, Template_Version, Paper_Version, approved Image_Renditions, documents, watermark, contact profile, and Export_Profile.
 4. Preflight creates a report and dependency manifest with SHA256 values.
-5. User resolves blocking errors and explicitly accepts any permitted warnings.
+5. User resolves blocking errors and explicitly accepts any permitted warnings. PRINT_READY_PDF is blocked unless the pinned printer specification, ICC profile, trim/bleed rules, and conformance validator are all available and pass.
 6. Issue_Operations is created; worker renders and validates the PDF.
 7. API verifies result hashes and writes final Issued_Documents and Issued_Document_Items.
 8. Original PDF and snapshot are immutable. Regeneration creates a separate reproduction operation; it never overwrites the original.
