@@ -252,3 +252,35 @@ Output terminology:
 - Digital PDF: screen-oriented output.
 - Print-oriented PDF: higher-resolution layout prepared for print review, but not certified for a specific print workflow.
 - Print-ready PDF: only after the actual printer's specifications (color space, PDF/X, bleed, trim, fonts, resolution, etc.) have been met and validated.
+
+
+## 9. V2 immutable dependency and paper versioning contract
+
+### 9.1 Immutable assets
+
+Brand_Assets and every font/logo/graphic/watermark/background asset are immutable binary records. Drive_File_ID, SHA256, MIME type, byte size, and role cannot be changed after creation or once referenced by a published version. Replacement creates a new asset record. Published Brand_Versions and Template_Versions must pin exact asset IDs and SHA256 values in their immutable configuration/manifest; mutable aliases such as "current logo" are forbidden. Verify every pinned checksum before rendering.
+
+### 9.2 Explicit Paper_Versions
+
+Use Papers as a logical identity only (Paper_ID, Paper_Name, Lifecycle_Status, Created_At, Created_By). Move all render-affecting settings into immutable Paper_Versions records:
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Paper_Version_ID | ID | Yes | PK |
+| Paper_ID | ID | Yes | FK → Papers |
+| Version_Number | INTEGER | Yes | Monotonic per Paper_ID |
+| Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
+| Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON config |
+| Config_SHA256 | HEX64 | Yes | Hash of exact config |
+| Texture_Asset_ID | ID | Conditional | Immutable asset; required for texture |
+| Texture_SHA256 | HEX64 | Conditional | Must match texture asset |
+| Published_At | DATETIME_UTC | No | Required when published |
+| Published_By | ACTOR_ID | No | Required when published |
+| Created_At | DATETIME_UTC | Yes | |
+| Created_By | ACTOR_ID | Yes | |
+
+Unique (Paper_ID, Version_Number). Dimensions, orientation, background, texture, scaling, opacity, and positioning changes require a new Paper_Version_ID. Published versions cannot be edited.
+
+### 9.3 Issued output dependency manifest
+
+Issued_Documents must pin Paper_Version_ID (not only Paper_ID) and retain SHA256 values for the paper config, brand/template configs, all referenced fonts/images/logos/watermarks, issue data snapshot, preflight report, renderer/worker version manifest, and final PDF. A Drive file ID is a locator, not proof of content integrity. Historical reproduction reads the exact pinned artifacts only; it must not resolve mutable "current" settings.
