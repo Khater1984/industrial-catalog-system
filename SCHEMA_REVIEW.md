@@ -191,3 +191,28 @@ Some Drive artifacts have hashes while others are represented only by file IDs. 
 Do not approve or implement the schema yet. Resolve the four primary design decisions and update the domain documents, then run the 15 acceptance scenarios against the revised model. After that, issue a schema candidate version and request explicit approval.
 
 This is an engineering review of repository documents, not a claim that the application or data layer has been implemented or tested.
+
+
+## V2 correction pass — disposition (2026-11-03)
+
+The user approved continuing the correction work. The proposed resolutions have now been written to [SCHEMA_V2_PROPOSAL.md](SCHEMA_V2_PROPOSAL.md) and propagated into the relevant domain documents. This changes the status of the findings from "unresolved recommendation" to "documented proposal", not to production-approved design.
+
+| Finding | V2 treatment | Current status |
+|---|---|---|
+| SR-001 / SR-003 | Canonical Products/Variants separated from Product_Source_Records/Variant_Source_Records; Specifications point to exact source assertions; human matching ledger added. | Addressed in proposal; acceptance pending |
+| SR-002 | Logical_Specification_Key, approval-time monotonic Sequence_No, append-only events, deterministic reducer and invalid-transition quarantine. | Addressed in proposal; acceptance pending |
+| SR-004 | Immutable asset records/manifests and explicit Paper_Versions; issue snapshots pin IDs and hashes. | Addressed in proposal/domain docs; acceptance pending |
+| SR-005 | Logical_Job_ID, Parent_Run_ID, Attempt_Number and per-attempt idempotency key. | Addressed in workflow doc; acceptance pending |
+| SR-006 / SR-007 | Review_Staging_Links many-to-many relation and hash-bound review decisions. | Addressed in workflow doc; acceptance pending |
+| SR-008 / SR-009 / SR-010 | Shared polymorphic target resolver, two-step document version creation, image redirect cycle prevention. | Addressed in proposal/domain docs; acceptance pending |
+| SR-011 / SR-014 | System_Config non-secret registry and SHA256 manifests for immutable artifacts. | Addressed in proposal/workflow; acceptance pending |
+| SR-012 | Sheets volume benchmark and migration trigger required before production. | Defined as a gate; benchmark not yet run |
+| SR-013 | Rename Brand_Label to Manufacturer_or_Product_Brand_Label. | Proposed; final consolidation pending |
+
+### Remaining work before schema approval
+1. Consolidate the proposed changes into one internally consistent version of all four domain schemas; remove any superseded wording and update the table inventory.
+2. Run a cross-document consistency audit (table names, fields, FKs, enum values, and acceptance tests).
+3. Define measured catalog-volume limits, backup cadence, RPO/RTO, worker hosting, and authentication protocol.
+4. Obtain explicit approval of the consolidated schema and acceptance suite.
+
+No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 28 acceptance scenarios are design-level tests, not yet executable tests.
