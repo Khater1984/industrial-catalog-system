@@ -238,3 +238,66 @@ A schema candidate passes this suite only when:
 **Given:** A manifest references an immutable artifact whose bytes no longer match its recorded SHA256.
 **When:** the integrity scan runs.
 **Expected:** Finding is BLOCKING for affected issue/reproduction paths; no auto-replacement or deletion occurs; a report and audited repair decision are required.
+
+
+## I. V2.1 checkpoint, rendition, and issue transaction tests
+
+### SAT-029 — Catalog page identity is independent of run processing
+**Given:** Catalog revision C has 40 physical PDF pages and extraction Run R1 processes them.
+**When:** R1 fails after page 18 and R2 retries using the same source file SHA256.
+**Expected:** Catalog_Pages retains exactly 40 stable page identities; Run_Units record R1/R2 progress independently; completed units are reused only when input and output hashes match; no page status or artifact is overwritten.
+
+### SAT-030 — Reprocessing with a new extraction engine
+**Given:** Catalog C was processed by worker build W1 and later W2 is introduced.
+**When:** the catalog is reprocessed.
+**Expected:** a new logical job or explicitly versioned processing run is created; W1 artifacts remain immutable; W2 results are separate and can be compared/reviewed; source occurrence keys prevent accidental duplicate promotion.
+
+### SAT-031 — Stable product occurrence key prevents duplicate source record
+**Given:** the same source catalog page and product block are submitted twice with identical source occurrence key and hash.
+**When:** promotion is attempted twice after a timeout.
+**Expected:** one Product_Source_Record exists for Catalog_ID + Source_Record_Key; second attempt resolves to the existing mapping; conflicting payload hash is quarantined rather than overwritten.
+
+### SAT-032 — Image rendition is immutable and correctly pinned
+**Given:** Image I has PREVIEW rendition P1 and HIGH_QUALITY rendition H1; a later pipeline creates H2.
+**When:** a new PDF issue is generated.
+**Expected:** the issue pins H2 only after approval/validation; prior issues still pin H1; a PREVIEW rendition cannot be used as a datasheet rendition; the original Image_Assets file is unchanged.
+
+### SAT-033 — Cross-image rendition link is rejected
+**Given:** Image_Link for Image I1 references a DataSheet_Rendition_ID belonging to Image I2.
+**When:** the link is created or preflight runs.
+**Expected:** write/issue is rejected with ownership mismatch; no fallback to another rendition occurs silently.
+
+### SAT-034 — Multi-product issue membership is complete
+**Given:** a Master Catalog includes 25 products and 41 variants.
+**When:** the issue completes.
+**Expected:** Issued_Document_Items contains exactly the ordered item membership represented by the immutable scope snapshot; item order and snapshot keys are unique; issue retrieval returns the exact PDF bytes.
+
+### SAT-035 — Issue transaction fails after PDF upload
+**Given:** worker uploads a candidate PDF and API writes part of the issue metadata, then the Apps Script request times out.
+**When:** recovery runs.
+**Expected:** Issue_Operations is IN_DOUBT; hashes and deterministic IDs are reconciled; final Issued_Documents is created only when all dependencies and item rows match; duplicate issue/PDF rows are not created.
+
+### SAT-036 — Paper version is mandatory for every final issue
+**Given:** an issue request references Paper_ID but omits Paper_Version_ID, or supplies a version belonging to a different Paper_ID.
+**When:** preflight or issue creation runs.
+**Expected:** issue is blocked; the worker never resolves a mutable "current paper" implicitly.
+
+### SAT-037 — Review set becomes stale when one linked staging row changes
+**Given:** one Review_Queue task covers three staging rows in Review_Staging_Links and is approved.
+**When:** one row's raw source quote or candidate Product_ID changes.
+**Expected:** the review becomes STALE; the set manifest hash no longer matches; promotion is blocked until the complete linked set is reviewed again.
+
+### SAT-038 — Document first-version creation is recoverable
+**Given:** a new Documents row is created with DRAFT status and blank Current_Version_ID, then the first version upload succeeds but pointer update fails.
+**When:** recovery runs.
+**Expected:** the document remains non-issuable; the first Document_Versions row is verified against Doc_ID and SHA256; pointer is restored under lock and audited before status becomes ACTIVE.
+
+### SAT-039 — Issue manifest asset checksum mismatch
+**Given:** the issue manifest pins Design_Asset D1 at SHA256 A but Drive returns bytes with SHA256 B.
+**When:** preflight or render begins.
+**Expected:** issuance is blocked before rendering; the system does not select a newer asset or mutable alias; a blocking integrity finding is recorded.
+
+### SAT-040 — Concurrent approval of specification changes
+**Given:** two users/processes attempt to approve competing changes for the same Logical_Specification_Key at the same time.
+**When:** both approval requests execute.
+**Expected:** the lock and latest-state re-read serialize approval; one valid transition is accepted first, and the other is revalidated against the new effective state or rejected; duplicate Sequence_No values cannot occur.
