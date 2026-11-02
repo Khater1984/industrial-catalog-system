@@ -341,7 +341,9 @@ One row per logical PDF issue request. Only completed operations create final Is
 | Rendered_PDF_File_ID | DRIVE_FILE_ID | No | Candidate PDF until validation passes |
 | Rendered_PDF_SHA256 | HEX64 | No | Candidate PDF hash |
 | Preflight_Report_File_ID | DRIVE_FILE_ID | No | Immutable preflight/validation report |
-| Started_At | DATETIME_UTC | Yes | |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Started_At | DATETIME_UTC | No | Set when PREFLIGHT begins |
 | Finished_At | DATETIME_UTC | No | |
 | Error_Code | TEXT(80) | No | |
 | Recovery_Notes | TEXT(1500) | No | |
