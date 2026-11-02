@@ -34,8 +34,8 @@ These are approved technology directions, not evidence that runtime resources ha
 7. [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md) — static table/FK/link audit and remaining gates.
 8. [Enum Registry](ENUM_REGISTRY.md) — authoritative case-sensitive stored values.
 9. [Data Model Overview](DATA_MODEL_OVERVIEW.md) — entity relationships and workflow diagrams.
-11. [Schema Approval Checklist](SCHEMA_APPROVAL_CHECKLIST.md) — final design gate before DEV implementation.
-10. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
+10. [Schema Approval Checklist](SCHEMA_APPROVAL_CHECKLIST.md) — final design gate before DEV implementation.
+11. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
 12. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
 13. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
 14. [UI/UX Specification](UI_UX_SPEC.md) — responsive experience and review workflows.
