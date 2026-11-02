@@ -106,11 +106,7 @@ The following columns appear in each staging sheet:
 | Extraction_Tool_Version | TEXT(120) | No | Exact parser/OCR build or service version |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, REJECTED, PROMOTED |
-| Promoted_Entity_ID | ID | No | Convenience pointer for single-entity staging rows only; mapping ledger is authoritative |
 | Staging_Record_Hash | HEX64 | Yes | Canonical hash of all decision-relevant staging fields |
-| Promotion_Key | TEXT(180) | No | Deterministic idempotency key assigned before promotion |
-| Promoted_At | DATETIME_UTC | No | Set only after verified promotion |
-| Promoted_By | ACTOR_ID | No | |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Updated_At | DATETIME_UTC | Yes | System generated |
 
@@ -344,9 +340,11 @@ One row per promoted staging-to-production relationship. This is the authoritati
 | Promotion_Operation_ID | ID | Yes | FK → Promotion_Operations |
 | Staging_Type | ENUM | Yes | PRODUCT, VARIANT, SPECIFICATION, IMAGE, DOCUMENT |
 | Staging_ID | ID | Yes | Globally unique staging ID |
-| Production_Entity_Type | ENUM | Yes | PRODUCT_SOURCE_RECORD, VARIANT_SOURCE_RECORD, SPECIFICATION, IMAGE_ASSET, DOCUMENT |
+| Production_Entity_Type | ENUM | Yes | PRODUCT, VARIANT, PRODUCT_SOURCE_RECORD, VARIANT_SOURCE_RECORD, SPECIFICATION, IMAGE_ASSET, DOCUMENT |
 | Production_Entity_ID | ID | Yes | Stable production ID |
+| Canonical_Entity_Type | ENUM | No | PRODUCT or VARIANT when the mapping also establishes canonical identity |
 | Canonical_Entity_ID | ID | No | Product_ID or Variant_ID where relevant |
+| Identity_Match_Decision_ID | ID | No | FK → Identity_Match_Decisions for PRODUCT/VARIANT identity mapping |
 | Payload_SHA256 | HEX64 | Yes | Exact promoted row payload |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 
