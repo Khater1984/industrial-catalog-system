@@ -333,3 +333,31 @@ One row per product/variant item included in a multi-item issue. This provides q
 Unique (Issued_Document_ID, Item_Order) and (Issued_Document_ID, Item_Snapshot_Key). For single-product/variant output, one row is still created. A master catalog uses many rows. Membership rows are immutable after issue.
 
 **Issue transaction rule:** write the issue header, item rows, immutable snapshot, dependency manifest, and PDF metadata as one logical operation. If Sheets writes are partially successful, mark the issue operation IN_DOUBT and reconcile by deterministic IDs/hashes before exposing the issue as ISSUED. A partially written issue is not downloadable as final output.
+
+
+## 11. Issue transaction ledger
+
+### `Issue_Operations`
+
+One row per logical PDF issue request. Only completed operations create final Issued_Documents and Issued_Document_Items rows.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Issue_Operation_ID | ID | Yes | PK |
+| Issue_Key | TEXT(180) | Yes | Unique deterministic idempotency key for exact scope + design versions + output profile |
+| Run_ID | ID | Yes | FK → Run_Log |
+| Operation_Status | ENUM | Yes | PREPARED, PREFLIGHT, RENDERING, VALIDATING, IN_DOUBT, COMPLETED, FAILED, CANCELLED |
+| Intended_Issued_Document_ID | ID | Yes | Stable ID reserved for final issue |
+| Scope_Manifest_File_ID | DRIVE_FILE_ID | Yes | Immutable ordered product/variant scope |
+| Scope_Manifest_SHA256 | HEX64 | Yes | Scope fingerprint |
+| Dependency_Manifest_File_ID | DRIVE_FILE_ID | No | Complete pinned render dependencies |
+| Dependency_Manifest_SHA256 | HEX64 | No | Required before rendering |
+| Rendered_PDF_File_ID | DRIVE_FILE_ID | No | Candidate PDF until validation passes |
+| Rendered_PDF_SHA256 | HEX64 | No | Candidate PDF hash |
+| Preflight_Report_File_ID | DRIVE_FILE_ID | No | Immutable preflight/validation report |
+| Started_At | DATETIME_UTC | Yes | |
+| Finished_At | DATETIME_UTC | No | |
+| Error_Code | TEXT(80) | No | |
+| Recovery_Notes | TEXT(1500) | No | |
+
+An issue operation may be retried only with the same Issue_Key and identical scope/dependency hashes. If render-affecting input changes, create a new Issue_Key. A final issue is exposed only after PDF validation, dependency hash verification, and all final issue/item rows reconcile. A failed/partial issue is never exposed as a completed PDF.
