@@ -294,24 +294,7 @@ Design_Assets are immutable binary records. Drive_File_ID, SHA256, MIME type, by
 
 ### 10.2 Explicit Paper_Versions
 
-Use Papers as a logical identity only (Paper_ID, Paper_Name, Lifecycle_Status, Created_At, Created_By). Move all render-affecting settings into immutable Paper_Versions records:
-
-| Column | Type | Required | Rule |
-|---|---|---:|---|
-| Paper_Version_ID | ID | Yes | PK |
-| Paper_ID | ID | Yes | FK → Papers |
-| Version_Number | INTEGER | Yes | Monotonic per Paper_ID |
-| Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
-| Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON config |
-| Config_SHA256 | HEX64 | Yes | Hash of exact config |
-| Texture_Asset_ID | ID | Conditional | Immutable asset; required for texture |
-| Texture_SHA256 | HEX64 | Conditional | Must match texture asset |
-| Published_At | DATETIME_UTC | No | Required when published |
-| Published_By | ACTOR_ID | No | Required when published |
-| Created_At | DATETIME_UTC | Yes | |
-| Created_By | ACTOR_ID | Yes | |
-
-Unique (Paper_ID, Version_Number). Dimensions, orientation, background, texture, scaling, opacity, and positioning changes require a new Paper_Version_ID. Published versions cannot be edited.
+The authoritative Paper_Versions column definition is in section 3 above. This section adds the following versioning invariants: every render-affecting setting (dimensions, orientation, margins, background, texture, scale, opacity, and positioning) is stored in the immutable Paper_Config_File_ID and covered by Config_SHA256. Published versions cannot be edited; changes create a new Paper_Version_ID. Texture_Asset_ID must resolve to an immutable Design_Assets record whose SHA256 is pinned in the paper config and issue manifest.
 
 ### 10.3 Issued output dependency manifest
 
