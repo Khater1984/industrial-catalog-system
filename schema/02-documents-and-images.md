@@ -96,8 +96,6 @@ One row per logical image asset. Original file is preserved; derived renditions 
 |---|---|---:|---|
 | Image_ID | ID | Yes | PK |
 | Original_File_ID | DRIVE_FILE_ID | Yes | Preserved original |
-| High_Quality_File_ID | DRIVE_FILE_ID | No | PDF rendition; may equal original when suitable |
-| Preview_File_ID | DRIVE_FILE_ID | No | UI-only preview |
 | Original_File_Name | TEXT(255) | Yes | Original filename |
 | MIME_Type | TEXT(100) | Yes | Validated MIME |
 | Width_PX | INTEGER | Yes | > 0 |
@@ -110,8 +108,11 @@ One row per logical image asset. Original file is preserved; derived renditions 
 | PHash | TEXT(64) | No | Perceptual hash algorithm/version documented |
 | Source_Type | ENUM | Yes | CATALOG_EMBEDDED, PAGE_RENDER, MANUAL_UPLOAD, OTHER |
 | Source_Catalog_ID | ID | No | FK → Catalogs |
-| Source_Document_ID | ID | No | FK → Documents if extracted from a document |
-| Source_Page | INTEGER | No | 1-based |
+| Source_Catalog_Page_ID | ID | No | FK → Catalog_Pages; must belong to Source_Catalog_ID |
+| Source_Product_Source_Record_ID | ID | No | FK → Product_Source_Records |
+| Source_Variant_Source_Record_ID | ID | No | FK → Variant_Source_Records |
+| Source_Document_Version_ID | ID | No | FK → Document_Versions |
+| Source_Page_Label | TEXT(80) | No | Printed page label if known |
 | Quality_Status | ENUM | Yes | UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, CORRUPT, NEEDS_REVIEW |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, QUARANTINED |
 | Duplicate_Of_Image_ID | ID | No | Self-FK to canonical asset; no deletion |
@@ -120,6 +121,26 @@ One row per logical image asset. Original file is preserved; derived renditions 
 
 Unique SHA256 for active original assets should be enforced by application-level duplicate checks. Exact match can reuse an existing asset. PHash is only a candidate signal and must never automatically merge/delete.
 
+### `Image_Renditions`
+Immutable derived files generated from an Image_Assets original. A new processing recipe or output creates a new rendition row; never overwrite an existing rendition.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Image_Rendition_ID | ID | Yes | PK |
+| Image_ID | ID | Yes | FK → Image_Assets |
+| Rendition_Type | ENUM | Yes | PREVIEW, HIGH_QUALITY, THUMBNAIL, NORMALIZED_ORIGINAL |
+| Drive_File_ID | DRIVE_FILE_ID | Yes | Immutable binary file |
+| SHA256 | HEX64 | Yes | Exact rendition checksum |
+| MIME_Type | TEXT(100) | Yes | Validated |
+| Width_PX | INTEGER | Yes | > 0 |
+| Height_PX | INTEGER | Yes | > 0 |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| Pipeline_Version | TEXT(80) | Yes | Exact generation build |
+| Source_SHA256 | HEX64 | Yes | Original asset hash used as input |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+
+Unique (Image_ID, Rendition_Type, SHA256). A PDF issue pins the exact Image_Rendition_ID and SHA256 in its issue manifest.
+
 ### `Image_Links`
 Associates one image asset with a product or variant. The same Image_ID may have multiple links.
 
@@ -127,6 +148,8 @@ Associates one image asset with a product or variant. The same Image_ID may have
 |---|---|---:|---|
 | Image_Link_ID | ID | Yes | PK |
 | Image_ID | ID | Yes | FK → Image_Assets |
+| Catalog_Rendition_ID | ID | No | FK → Image_Renditions; same Image_ID, type PREVIEW or approved catalog rendition |
+| DataSheet_Rendition_ID | ID | No | FK → Image_Renditions; same Image_ID, type HIGH_QUALITY |
 | Target_Type | ENUM | Yes | PRODUCT, VARIANT |
 | Target_ID | ID | Yes | FK resolved by Target_Type |
 | Is_Primary | BOOLEAN | Yes | UI/list primary only; not an approval |
@@ -165,7 +188,7 @@ Unique: (Image_A_ID, Image_B_ID, Algorithm). Distance thresholds only create rev
 - Effective image selection for a target: approved variant images first, then approved product images; no unapproved fallback by default.
 - Catalog and datasheet selections are resolved independently.
 - If no approved image exists, Preflight warns and offers export-without-image or explicit approval.
-- PDF worker reads High_Quality_File_ID only; Preview_File_ID is forbidden in PDF generation.
+- UI reads PREVIEW renditions only. PDF worker reads the exact approved HIGH_QUALITY rendition selected/pinned for the issue; it must never use a PREVIEW rendition.
 - Compute effective DPI after crop and at actual rendered dimensions in the template. Calculate horizontal and vertical DPI; use the lower value for threshold decisions.
 - Digital target default: 150 DPI. Print-oriented target default: 300 DPI. These are configurable targets, not guarantees.
 - Never upscale and claim a higher native resolution.
