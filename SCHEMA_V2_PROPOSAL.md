@@ -49,6 +49,7 @@ One row per product appearance in one registered Catalog revision. It is created
 | Product_ID | ID | Yes | FK → Products; approved identity only |
 | Catalog_ID | ID | Yes | FK → Catalogs |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic occurrence key; unique with Catalog_ID |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
 | Source_Product_Reference | TEXT(160) | No | Exact source reference |
 | Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; same Catalog_ID |
@@ -74,6 +75,7 @@ One row per model/configuration appearance within a Product_Source_Record.
 | Variant_ID | ID | Yes | FK → Variants; approved identity only |
 | Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
 | Source_Record_Key | TEXT(160) | Yes | Unique within parent source record |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Source_Model_Number | TEXT(160) | Yes | Exact source string; immutable |
 | Source_Model_Name | TEXT(250) | No | Exact source string; immutable |
 | Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; same catalog as parent Product_Source_Record |
@@ -121,6 +123,7 @@ One row per extracted supplier assertion, tied to exactly one source occurrence.
 |---|---|---:|---|
 | Specification_ID | ID | Yes | PK |
 | Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator within source record |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Exact key-generation algorithm version |
 | Scope | ENUM | Yes | PRODUCT, VARIANT |
 | Product_Source_Record_ID | ID | Conditional | Required for PRODUCT scope |
 | Variant_Source_Record_ID | ID | Conditional | Required for VARIANT scope |
