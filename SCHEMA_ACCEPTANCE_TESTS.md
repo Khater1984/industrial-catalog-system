@@ -301,3 +301,26 @@ A schema candidate passes this suite only when:
 **Given:** two users/processes attempt to approve competing changes for the same Logical_Specification_Key at the same time.
 **When:** both approval requests execute.
 **Expected:** the lock and latest-state re-read serialize approval; one valid transition is accepted first, and the other is revalidated against the new effective state or rejected; duplicate Sequence_No values cannot occur.
+
+
+## J. V2.1 identity scope and typed transaction tests
+
+### SAT-041 — Canonical merge is not supported in the initial release
+**Given:** Two canonical Products appear to be duplicates after separate promotions.
+**When:** an operator attempts to merge/reparent one Product and its Variants, source records, attributes, images, and documents.
+**Expected:** the initial-release API rejects the merge operation; the operator may archive a duplicate only after review; no source record, link, variant, or historical issue is silently reassigned. A future merge feature requires a separate approved ADR and migration test suite.
+
+### SAT-042 — Promotion mapping rejects a typed-reference mismatch
+**Given:** Promotion_Mappings declares Staging_Type=VARIANT but Staging_ID resolves only to Staging_Products, or Production_Entity_Type=VARIANT but Production_Entity_ID resolves to a Product.
+**When:** promotion validation or integrity scan runs.
+**Expected:** the mapping is rejected/quarantined; no canonical/source record is promoted; the exact type mismatch is recorded as a blocking finding.
+
+### SAT-043 — PDF reproduction preserves the original issued document
+**Given:** Issued Document I1 is archived with PDF hash H1.
+**When:** a reproduction operation is requested against I1 using a newer worker or renderer.
+**Expected:** Issue_Operations records Source_Issued_Document_ID=I1; the original I1/PDF hash H1 remains unchanged; any regenerated output is stored as a separate issue/reproduction artifact with its own hash and runtime fingerprint.
+
+### SAT-044 — Duplicate worker event callback is idempotent
+**Given:** a worker submits the same Run_Event twice with the same Event_Idempotency_Key after an API timeout.
+**When:** the API receives the duplicate callback.
+**Expected:** exactly one Run_Events row is retained; the second request returns the prior accepted result and does not increment progress twice or duplicate state transitions.
