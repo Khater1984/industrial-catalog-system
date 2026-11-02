@@ -119,7 +119,9 @@ One row per logical image asset. Original file is preserved; derived renditions 
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-Source provenance rules: CATALOG_EMBEDDED and PAGE_RENDER require Source_Catalog_ID and Source_Catalog_Page_ID; the page must belong to that catalog. If a Product_Source_Record_ID or Variant_Source_Record_ID is supplied, its catalog/page ownership must match the source catalog/page. Source_Document_Version_ID, when supplied, must resolve to an available version. MANUAL_UPLOAD records require an authenticated Created_By and must not invent catalog provenance. OTHER requires a documented source note/manifest in the audit trail.\n\nUnique SHA256 for active original assets should be enforced by application-level duplicate checks. Exact match can reuse an existing asset. PHash is only a candidate signal and must never automatically merge/delete.
+Source provenance rules: CATALOG_EMBEDDED and PAGE_RENDER require Source_Catalog_ID and Source_Catalog_Page_ID; the page must belong to that catalog. If a Product_Source_Record_ID or Variant_Source_Record_ID is supplied, its catalog/page ownership must match the source catalog/page. Source_Document_Version_ID, when supplied, must resolve to an available version. MANUAL_UPLOAD records require an authenticated Created_By and must not invent catalog provenance. OTHER requires a documented source note/manifest in the audit trail.
+
+Unique SHA256 for active original assets should be enforced by application-level duplicate checks. Exact match can reuse an existing asset. PHash is only a candidate signal and must never automatically merge/delete.
 
 ### `Image_Renditions`
 Immutable derived files generated from an Image_Assets original. A new processing recipe or output creates a new rendition row; never overwrite an existing rendition.
