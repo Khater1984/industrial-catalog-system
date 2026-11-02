@@ -75,7 +75,8 @@ All render-affecting paper settings belong to immutable `Paper_Versions`, not th
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Paper_Version_ID | ID | Yes | PK |
-| Paper_ID | ID | Yes | FK → Papers; logical identity for navigation |\n| Paper_Version_ID | ID | Yes | FK → Paper_Versions; exact immutable settings used |
+| Paper_ID | ID | Yes | FK → Papers; logical identity for navigation |
+| Paper_Version_ID | ID | Yes | FK → Paper_Versions; exact immutable settings used |
 | Version_Number | INTEGER | Yes | Monotonic per Paper_ID |
 | Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
 | Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON configuration |
