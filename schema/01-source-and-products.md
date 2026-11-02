@@ -60,9 +60,8 @@ One row per canonical internal product.
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Product_ID | ID | Yes | PK; immutable |
-| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Canonical_Notes | TEXT(2000) | No | Internal notes only |
-| Merged_Into_Product_ID | ID | Conditional | Required only for MERGED; no self-reference/cycles |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
 
@@ -77,11 +76,10 @@ One row per canonical model/configuration, with exactly one parent Product.
 | Product_ID | ID | Yes | FK → Products; immutable ownership |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
 | Canonical_Notes | TEXT(2000) | No | Internal notes |
-| Merged_Into_Variant_ID | ID | Conditional | Required only for MERGED; same Product_ID; no cycles |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-A supplier model number is not globally unique and is not a canonical key. Matching across source catalogs requires an explicit human decision.
+A supplier model number is not globally unique and is not a canonical key. Matching across source catalogs requires an explicit human decision. Canonical merge/reparent operations are out of v1 scope; duplicate canonical records may be archived but are never silently merged.
 
 ## 4. Supplier source assertions and immutable specifications
 
@@ -91,7 +89,7 @@ One row per product appearance in one registered Catalog revision. Multiple sour
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Product_Source_Record_ID | ID | Yes | PK |
-| Product_ID | ID | Yes | FK → Products; only after approved identity resolution |
+| Product_ID | ID | Yes | FK → Products; set only after approved identity resolution; no silent reparenting |
 | Catalog_ID | ID | Yes | FK → Catalogs |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic source occurrence key within Catalog_ID; unique with Catalog_ID |
 | Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
@@ -113,7 +111,7 @@ One row per model appearance within a Product_Source_Record.
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Variant_Source_Record_ID | ID | Yes | PK |
-| Variant_ID | ID | Yes | FK → Variants |
+| Variant_ID | ID | Yes | FK → Variants; set only after approved identity resolution; no silent reparenting |
 | Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
 | Source_Model_Number | TEXT(160) | Yes | Exact supplier wording; immutable |
