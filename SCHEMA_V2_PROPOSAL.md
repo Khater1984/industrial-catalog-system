@@ -290,7 +290,7 @@ Sheets cannot enforce this as a native FK; this is a mandatory application contr
 
 ### 5.2 Document first-version protocol
 
-Under a script lock: create Documents row with Current_Version_ID blank and lifecycle DRAFT/INCOMPLETE; create immutable first Document_Versions row; validate same Doc_ID and file hash; update Current_Version_ID; then mark document ACTIVE and append audit event. A failed sequence leaves a non-issuable incomplete document for reconciliation. Rollback changes the pointer to an existing valid version and is audited; versions are never edited/deleted.
+Under a script lock: create Documents row with Current_Version_ID blank and lifecycle DRAFT; create immutable first Document_Versions row; validate same Doc_ID and file hash; update Current_Version_ID; then mark document ACTIVE and append audit event. A failed sequence leaves a non-issuable incomplete document for reconciliation. Rollback changes the pointer to an existing valid version and is audited; versions are never edited/deleted.
 
 ### 5.3 Image duplicate canonicalization
 
