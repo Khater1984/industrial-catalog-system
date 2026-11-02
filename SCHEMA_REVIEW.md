@@ -16,6 +16,8 @@ No live Google Sheets, Drive folders, application code, or legacy migration were
 
 ## Findings
 
+> The following SR-001–SR-014 descriptions record the initial baseline defects as found during the first-pass review. Their current dispositions are summarized in the V2 and V2.1 sections below; do not read the historical 'Current design' descriptions as the latest schema state.
+
 ### SR-001 — Canonical product identity is coupled to a single catalog
 **Severity: BLOCKER**
 
