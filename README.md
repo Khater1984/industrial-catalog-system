@@ -33,15 +33,15 @@ These are approved technology directions, not evidence that runtime resources ha
 6. [Schema Acceptance Tests](SCHEMA_ACCEPTANCE_TESTS.md) — design-level scenarios and expected outcomes.
 7. [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md) — static table/FK/link audit and remaining gates.
 8. [Enum Registry](ENUM_REGISTRY.md) — authoritative case-sensitive stored values.
-7. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
-8. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
-9. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
-10. [UI/UX Specification](UI_UX_SPEC.md) — responsive experience and review workflows.
-11. [Test Strategy](TEST_STRATEGY.md) — test layers, fixtures, and release gates.
-12. [Security & Operations](SECURITY_OPERATIONS.md) — access, secrets, backup, recovery, and capacity.
-13. [Implementation Blueprint](IMPLEMENTATION_BLUEPRINT.md) — repository structure and vertical-slice build plan.
-14. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
-15. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
+9. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
+10. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
+11. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
+12. [UI/UX Specification](UI_UX_SPEC.md) — responsive experience and review workflows.
+13. [Test Strategy](TEST_STRATEGY.md) — test layers, fixtures, and release gates.
+14. [Security & Operations](SECURITY_OPERATIONS.md) — access, secrets, backup, recovery, and capacity.
+15. [Implementation Blueprint](IMPLEMENTATION_BLUEPRINT.md) — repository structure and vertical-slice build plan.
+16. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
+17. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
 
 ## Domain specifications
 
