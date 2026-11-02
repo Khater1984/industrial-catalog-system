@@ -32,6 +32,7 @@ These are approved technology directions, not evidence that runtime resources ha
 5. [Schema Review](SCHEMA_REVIEW.md) — engineering findings and disposition.
 6. [Schema Acceptance Tests](SCHEMA_ACCEPTANCE_TESTS.md) — design-level scenarios and expected outcomes.
 7. [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md) — static table/FK/link audit and remaining gates.
+8. [Enum Registry](ENUM_REGISTRY.md) — authoritative case-sensitive stored values.
 7. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
 8. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
 9. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
