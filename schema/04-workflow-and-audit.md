@@ -35,6 +35,8 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Worker_Version | TEXT(80) | No | Build identifier |
 | Started_At | DATETIME_UTC | No | |
 | Heartbeat_At | DATETIME_UTC | No | Detect stalled workers |
+| Worker_Lease_ID | TEXT(160) | No | Current worker claim token/identifier; never a secret |
+| Lease_Expires_At | DATETIME_UTC | No | Lease expiry; reclaim only after expiry and reconciliation |
 | Finished_At | DATETIME_UTC | No | |
 | Error_Code | TEXT(80) | No | Machine-readable |
 | Error_Summary | TEXT(1500) | No | No secrets or sensitive payloads |
@@ -65,7 +67,7 @@ One row per logical work unit within a run (normally one catalog page for extrac
 | Error_Code | TEXT(80) | No | |
 | Created_At | DATETIME_UTC | Yes | |
 
-Unique (Run_ID, Unit_Type, Unit_Key). A completed unit is reusable only if its input fingerprint and output manifest hash verify. The page identity itself is in Catalog_Pages; processing artifacts/status belong here, not on Catalog_Pages.
+Unique (Run_ID, Unit_Type, Unit_Key). A completed unit is reusable only if its input fingerprint and output manifest hash verify and it belongs to the same Logical_Job_ID; cross-job reuse requires an explicit approved artifact-reuse policy. The page identity itself is in Catalog_Pages; processing artifacts/status belong here, not on Catalog_Pages.
 
 ### `Run_Events`
 Append-only event history for progress, retries, and diagnostics.
@@ -73,8 +75,9 @@ Append-only event history for progress, retries, and diagnostics.
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Run_Event_ID | ID | Yes | PK |
+| Event_Idempotency_Key | TEXT(180) | Yes | Unique; duplicate callback/event is ignored |
 | Run_ID | ID | Yes | FK → Run_Log |
-| Event_Type | ENUM | Yes | CREATED, STARTED, PROGRESS, WARNING, ERROR, RETRY, WAITING_REVIEW, RESUMED, COMPLETED, CANCELLED |
+| Event_Type | ENUM | Yes | CREATED, STARTED, PROGRESS, WARNING, ERROR, RETRY, WAITING_REVIEW, RESUMED, LEASE_ACQUIRED, LEASE_EXPIRED, UNIT_REUSED, RESULT_ACCEPTED, COMPLETED, CANCELLED |
 | Unit_Type | TEXT(80) | No | PAGE, IMAGE, PRODUCT, VARIANT, PDF |
 | Unit_Reference_ID | ID | No | Related unit |
 | Progress_Count | INTEGER | No | |
