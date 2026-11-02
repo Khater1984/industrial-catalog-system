@@ -19,7 +19,7 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Run_ID | ID | Yes | PK |
-| Run_Type | ENUM | Yes | CATALOG_EXTRACTION, IMAGE_PROCESSING, PDF_GENERATION, PDF_REPRODUCTION, VALIDATION |
+| Run_Type | ENUM | Yes | CATALOG_EXTRACTION, IMAGE_PROCESSING, PDF_GENERATION, PDF_REPRODUCTION, VALIDATION, MANUAL_IMPORT |
 | Catalog_ID | ID | No | FK → Catalogs for catalog runs |
 | Issued_Document_ID | ID | No | FK → Issued_Documents where applicable |
 | Logical_Job_ID | ID | Yes | Stable across attempts of one logical job |
@@ -32,7 +32,6 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Total_Units | INTEGER | No | Pages/items expected |
 | Completed_Units | INTEGER | Yes | >= 0 and <= Total_Units when known |
 | Failed_Units | INTEGER | Yes | >= 0 |
-| Retry_Count | INTEGER | Yes | >= 0 |
 | Worker_Version | TEXT(80) | No | Build identifier |
 | Started_At | DATETIME_UTC | No | |
 | Heartbeat_At | DATETIME_UTC | No | Detect stalled workers |
@@ -45,6 +44,28 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Created_By | ACTOR_ID | Yes | Actor |
 
 Unique: Idempotency_Key and (Logical_Job_ID, Attempt_Number). A retry creates a new Run_ID, points Parent_Run_ID to the immediately preceding attempt, and increments Attempt_Number. Terminal runs are never reset. Reuse completed work units only when input fingerprint and output manifest hash match.
+
+### `Run_Units`
+One row per logical work unit within a run (normally one catalog page for extraction). This is the durable checkpoint ledger used for resume and retry decisions.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Run_Unit_ID | ID | Yes | PK |
+| Run_ID | ID | Yes | FK → Run_Log |
+| Unit_Type | ENUM | Yes | CATALOG_PAGE, IMAGE, PRODUCT_BATCH, PDF_STAGE, OTHER |
+| Unit_Key | TEXT(180) | Yes | Stable logical key within this run, e.g. Catalog_Page_ID |
+| Catalog_Page_ID | ID | No | FK → Catalog_Pages when unit is a page |
+| Unit_Status | ENUM | Yes | PENDING, RUNNING, COMPLETED, FAILED, SKIPPED, REUSED |
+| Input_SHA256 | HEX64 | Yes | Exact input fingerprint for this unit |
+| Output_Manifest_File_ID | DRIVE_FILE_ID | No | Immutable outputs for this unit |
+| Output_SHA256 | HEX64 | No | Exact output manifest fingerprint |
+| Reused_From_Run_Unit_ID | ID | No | FK → Run_Units; allowed only when input/output fingerprints verify |
+| Attempt_Started_At | DATETIME_UTC | No | |
+| Attempt_Finished_At | DATETIME_UTC | No | |
+| Error_Code | TEXT(80) | No | |
+| Created_At | DATETIME_UTC | Yes | |
+
+Unique (Run_ID, Unit_Type, Unit_Key). A completed unit is reusable only if its input fingerprint and output manifest hash verify. The page identity itself is in Catalog_Pages; processing artifacts/status belong here, not on Catalog_Pages.
 
 ### `Run_Events`
 Append-only event history for progress, retries, and diagnostics.
@@ -73,26 +94,30 @@ The following columns appear in each staging sheet:
 |---|---|---:|---|
 | Staging_ID | ID | Yes | PK |
 | Run_ID | ID | Yes | FK → Run_Log |
-| Catalog_ID | ID | Yes | FK → Catalogs |
-| Catalog_Page_ID | ID | No | FK → Catalog_Pages |
+| Catalog_ID | ID | No | FK → Catalogs; required for catalog-derived rows, null for manual uploads |
+| Catalog_Page_ID | ID | No | FK → Catalog_Pages; required when page-level source evidence exists |
 | Source_Page_Number | INTEGER | No | 1-based |
 | Source_Region | TEXT(120) | No | Coordinates/region label |
 | Raw_Extract_File_ID | DRIVE_FILE_ID | No | Evidence payload |
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, APPROVED, REJECTED, PROMOTED |
-| Promoted_Entity_ID | ID | No | Production ID after promotion |
+| Promoted_Entity_ID | ID | No | Convenience pointer for single-entity staging rows only; mapping ledger is authoritative |
+| Staging_Record_Hash | HEX64 | Yes | Canonical hash of all decision-relevant staging fields |
+| Promotion_Key | TEXT(180) | No | Deterministic idempotency key assigned before promotion |
+| Promoted_At | DATETIME_UTC | No | Set only after verified promotion |
+| Promoted_By | ACTOR_ID | No | |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Updated_At | DATETIME_UTC | Yes | System generated |
 
 ### `Staging_Products`
-Additional fields: Proposed_Product_Name_EN TEXT(300), Proposed_Product_Reference TEXT(120), Candidate_Product_ID ID nullable (candidate only, not an FK commitment until confirmed), Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4).
+Additional fields: Proposed_Product_Name_EN TEXT(300), Proposed_Product_Reference TEXT(120), Candidate_Product_ID ID nullable (suggestion only), Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4), Source_Record_Key TEXT(160) required for deterministic source occurrence identity.
 
 ### `Staging_Variants`
-Additional fields: Parent_Staging_Product_ID ID required (FK → Staging_Products), Proposed_Model_Number TEXT(160), Proposed_Model_Name TEXT(250), Candidate_Variant_ID ID nullable, Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4).
+Additional fields: Parent_Staging_Product_ID ID required (FK → Staging_Products), Proposed_Model_Number TEXT(160), Proposed_Model_Name TEXT(250), Candidate_Variant_ID ID nullable (suggestion only), Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4), Source_Record_Key TEXT(160) required within the parent product source occurrence.
 
 ### `Staging_Specifications`
-Additional fields: Parent_Staging_Product_ID ID required, Parent_Staging_Variant_ID ID nullable, Attribute_Key_Raw TEXT(160), Value_Raw TEXT(2000), Unit_Raw TEXT(80), Normalized_Key TEXT(160), Normalized_Value TEXT(500), Normalized_Unit TEXT(80), Parse_Status ENUM (UNPARSED, PARSED, AMBIGUOUS, INVALID).
+Additional fields: Parent_Staging_Product_ID ID required, Parent_Staging_Variant_ID ID nullable, Source_Assertion_Key TEXT(160) required, Scope ENUM (PRODUCT, VARIANT), Attribute_Key_Raw TEXT(160), Value_Raw TEXT(2000), Unit_Raw TEXT(80), Normalized_Key TEXT(160), Normalized_Value_JSON JSON_TEXT(1000), Normalized_Unit TEXT(80), Parse_Status ENUM (UNPARSED, PARSED, AMBIGUOUS, INVALID). Scope=VARIANT requires Parent_Staging_Variant_ID; Scope=PRODUCT forbids it.
 
 ### `Staging_Images`
 Additional fields: Proposed_Image_File_ID DRIVE_FILE_ID required, Original_File_Name TEXT(255), MIME_Type TEXT(100), Width_PX INTEGER, Height_PX INTEGER, SHA256 HEX64, PHash TEXT(64), Candidate_Product_ID ID nullable, Candidate_Variant_ID ID nullable, Image_Role TEXT(80), Quality_Status ENUM (UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, NEEDS_REVIEW).
@@ -117,14 +142,17 @@ One row per human-review task. Multiple staging records may be grouped under one
 | Priority | ENUM | Yes | LOW, NORMAL, HIGH |
 | Review_Status | ENUM | Yes | OPEN, IN_REVIEW, APPROVED, REJECTED, DEFERRED |
 | Proposed_Action | TEXT(500) | No | Suggested action, not executed automatically |
-| Decision_JSON_File_ID | DRIVE_FILE_ID | No | Structured decision payload |
+| Decision_JSON_File_ID | DRIVE_FILE_ID | No | Immutable structured decision payload; required for final decision |
+| Decision_SHA256 | HEX64 | No | Required when Decision_JSON_File_ID is set |
+| Staging_Record_Hash | HEX64 | No | Hash of exact staging payload reviewed |
+| Reviewed_Payload_Hash | HEX64 | No | Hash of exact decision + reviewed staging payload |
 | Decision_Notes | TEXT(1500) | No | Human rationale |
 | Assigned_Actor_ID | ACTOR_ID | No | Optional |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Reviewed_At | DATETIME_UTC | No | |
 | Reviewed_By | ACTOR_ID | No | Required for final decision |
 
-Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Store immutable decision JSON and hashes of the exact staging payload and reviewed decision payload.
+Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Final decisions require immutable decision JSON, Decision_SHA256, Staging_Record_Hash, and Reviewed_Payload_Hash. Promotion re-computes and compares the current staging hash; mismatch invalidates the approval.
 
 ## 5. Audit log
 
@@ -134,6 +162,8 @@ Append-only record of material user/system changes to company-managed data, appr
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Audit_ID | ID | Yes | PK |
+| Event_Idempotency_Key | TEXT(180) | Yes | Unique; prevents duplicate audit writes during retry |
+| Payload_SHA256 | HEX64 | Yes | Canonical event payload hash |
 | Event_At | DATETIME_UTC | Yes | System timestamp |
 | Actor_ID | ACTOR_ID | Yes | Human or service actor |
 | Action | ENUM | Yes | CREATE, UPDATE, APPROVE, REJECT, PROMOTE, ARCHIVE, PUBLISH, ISSUE, RESTORE_POINTER, LINK, UNLINK, OVERRIDE_WARNING |
@@ -203,9 +233,23 @@ Staging product/model rows are source assertion candidates, not canonical entiti
 
 Before a multi-sheet promotion, persist an operation ID, deterministic promotion key, intended entity IDs, and payload hashes. If any write fails, mark the operation IN_DOUBT. Reconcile actual rows by IDs and hashes before retrying. Complete missing rows or quarantine conflicting rows; never blindly rerun the entire promotion. Audit every repair.
 
-### 8.5 System configuration
+### 8.5 `System_Config`
+Non-secret configuration registry only.
 
-Add `System_Config` for non-secret configuration only: Config_Key, Value_Type, Value_Text, Environment_ID, Schema_Version, Updated_At, Updated_By, Description. It may contain spreadsheet IDs, Drive folder IDs, non-secret feature flags, and initialization state. Credentials, API keys, OAuth tokens, signing secrets, and worker credentials belong in Script Properties or a managed secret store, never GitHub or Sheets.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Config_ID | ID | Yes | PK |
+| Config_Key | TEXT(160) | Yes | Unique within Environment_ID |
+| Value_Type | ENUM | Yes | TEXT, INTEGER, BOOLEAN, JSON, DRIVE_FILE_ID, SPREADSHEET_ID |
+| Value_Text | TEXT(4000) | Yes | Validated according to Value_Type; large config uses Drive JSON file + checksum |
+| Environment_ID | ENUM | Yes | DEV, TEST, PROD |
+| Schema_Version | TEXT(40) | Yes | Compatible schema version |
+| Is_Secret | BOOLEAN | Yes | Must always be false in this table |
+| Updated_At | DATETIME_UTC | Yes | System generated |
+| Updated_By | ACTOR_ID | Yes | Actor |
+| Description | TEXT(500) | No | Purpose |
+
+Unique (Environment_ID, Config_Key). Credentials, API keys, OAuth tokens, signing secrets, and worker credentials belong in Script Properties or a managed secret store, never GitHub or Sheets.
 
 ### 8.6 Run retry semantics
 
@@ -214,3 +258,47 @@ A retry is a new attempt under the same Logical_Job_ID, with a new Run_ID and Id
 ### 8.7 Operational integrity scan
 
 A scheduled/manual integrity scan checks primary-key uniqueness, required values, enum validity, foreign keys and ownership, duplicate sequence numbers, review hash drift, orphan polymorphic links, image redirect cycles, document-version pointer ownership, missing Drive files, and SHA256 mismatches. Findings are classified BLOCKING, REPAIRABLE, or WARNING. Repairs are report-first, idempotent, audited, and never auto-merge/delete data.
+
+
+## 9. Promotion transaction ledgers
+
+### `Promotion_Operations`
+
+One row per logical promotion attempt spanning one or more sheets. It provides a recoverable transaction envelope because Sheets cannot provide atomic multi-sheet transactions.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Promotion_Operation_ID | ID | Yes | PK |
+| Promotion_Key | TEXT(180) | Yes | Unique deterministic key for the approved staging set and decision version |
+| Run_ID | ID | Yes | FK → Run_Log |
+| Operation_Status | ENUM | Yes | PREPARED, APPLYING, IN_DOUBT, COMPLETED, QUARANTINED, CANCELLED |
+| Staging_Set_Manifest_File_ID | DRIVE_FILE_ID | Yes | Immutable ordered staging ID/hash manifest |
+| Staging_Set_SHA256 | HEX64 | Yes | Manifest hash |
+| Intended_Output_Manifest_File_ID | DRIVE_FILE_ID | Yes | Intended IDs and row payload hashes |
+| Intended_Output_SHA256 | HEX64 | Yes | Manifest hash |
+| Started_At | DATETIME_UTC | Yes | |
+| Finished_At | DATETIME_UTC | No | |
+| Recovery_Notes | TEXT(1500) | No | Audited recovery rationale |
+
+### `Promotion_Mappings`
+
+One row per promoted staging-to-production relationship. This is the authoritative mapping; Staging_*.Promoted_Entity_ID is only a convenience pointer.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Promotion_Mapping_ID | ID | Yes | PK |
+| Promotion_Operation_ID | ID | Yes | FK → Promotion_Operations |
+| Staging_Type | ENUM | Yes | PRODUCT, VARIANT, SPECIFICATION, IMAGE, DOCUMENT |
+| Staging_ID | ID | Yes | Globally unique staging ID |
+| Production_Entity_Type | ENUM | Yes | PRODUCT_SOURCE_RECORD, VARIANT_SOURCE_RECORD, SPECIFICATION, IMAGE_ASSET, DOCUMENT |
+| Production_Entity_ID | ID | Yes | Stable production ID |
+| Canonical_Entity_ID | ID | No | Product_ID or Variant_ID where relevant |
+| Payload_SHA256 | HEX64 | Yes | Exact promoted row payload |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+
+Unique (Staging_Type, Staging_ID, Production_Entity_Type). Recovery must compare both IDs and hashes before completing an operation; conflicts are quarantined, never overwritten.
+
+## 10. Hashing and canonical payload contract
+
+All application-generated hashes use SHA-256 over UTF-8 canonical JSON. Canonicalization rules: lexicographically sorted object keys; stable array ordering by explicit key; explicit null; no NaN/Infinity; decimal values serialized as canonical decimal strings; timestamps normalized to UTC ISO-8601; Unicode normalized to NFC; no locale-dependent formatting. File hashes are computed over exact bytes. Hashing a Drive file ID or URL is not a content hash.
+
