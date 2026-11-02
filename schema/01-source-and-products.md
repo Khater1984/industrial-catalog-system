@@ -53,75 +53,114 @@ One row per page in a registered catalog, created during processing.
 
 Unique: (Catalog_ID, Page_Number). Page records and artifacts are evidence; retries update run/page processing state without duplicating the page identity.
 
-## 3. Supplier-derived product identity
+## 3. Canonical product and model identities
+
+The canonical entities are internal identities and are deliberately independent of any supplier catalog.
 
 ### `Products`
-One row per supplier-derived commercial product identity. Company-owned names and annotations do not belong here.
+One row per canonical internal product.
 
-| Column | Type | Required | Key / rule |
+| Column | Type | Required | Rule |
 |---|---|---:|---|
 | Product_ID | ID | Yes | PK; immutable |
-| Source_Catalog_ID | ID | Yes | FK → Catalogs |
-| Source_Product_Name_EN | TEXT(300) | Yes | Immutable extracted/source wording |
-| Source_Product_Reference | TEXT(120) | No | Supplier item/reference |
-| Source_Page_Number | INTEGER | No | 1-based source page |
-| Source_Section | TEXT(200) | No | Source heading/region |
-| Source_Quote | TEXT(2000) | No | Supporting excerpt where practical |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Record_ID | ID | No | FK → staging record, retained provenance |
-| Identity_Status | ENUM | Yes | PROPOSED, APPROVED, REJECTED, SUPERSEDED |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Canonical_Notes | TEXT(2000) | No | Internal notes only |
+| Merged_Into_Product_ID | ID | Conditional | Required only for MERGED; no self-reference/cycles |
 | Created_At | DATETIME_UTC | Yes | System generated |
-| Approved_At | DATETIME_UTC | No | Required when APPROVED |
-| Approved_By | ACTOR_ID | No | Required when APPROVED |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-Do not use product display names as keys. Matching across catalogs is a review workflow, not an implicit merge. If a product is sourced from multiple catalogs, retain each source assertion/provenance explicitly; do not overwrite the first source record.
+Company names/translations remain in Product_Company. Supplier names, references, pages, quotes, and extraction provenance must never be stored as canonical identity fields.
 
 ### `Variants`
-One row per supplier-derived model/configuration, with exactly one parent Product.
+One row per canonical model/configuration, with exactly one parent Product.
 
-| Column | Type | Required | Key / rule |
+| Column | Type | Required | Rule |
 |---|---|---:|---|
 | Variant_ID | ID | Yes | PK |
-| Product_ID | ID | Yes | FK → Products |
-| Source_Model_Number | TEXT(160) | Yes | Immutable supplier model number |
-| Source_Model_Name | TEXT(250) | No | Immutable source model name |
-| Source_Catalog_ID | ID | Yes | FK → Catalogs |
-| Source_Page_Number | INTEGER | No | 1-based |
-| Source_Section | TEXT(200) | No | Source location |
-| Source_Quote | TEXT(2000) | No | Supporting excerpt |
-| Extraction_Run_ID | ID | No | FK → Run_Log |
-| Identity_Status | ENUM | Yes | PROPOSED, APPROVED, REJECTED, SUPERSEDED |
+| Product_ID | ID | Yes | FK → Products; immutable ownership |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Canonical_Notes | TEXT(2000) | No | Internal notes |
+| Merged_Into_Variant_ID | ID | Conditional | Required only for MERGED; same Product_ID; no cycles |
 | Created_At | DATETIME_UTC | Yes | System generated |
-| Approved_At | DATETIME_UTC | No | Required when APPROVED |
-| Approved_By | ACTOR_ID | No | Required when APPROVED |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-A supplier model number is not assumed globally unique. Candidate uniqueness is (Product_ID, normalized Source_Model_Number, Source_Catalog_ID); collisions require review.
+A supplier model number is not globally unique and is not a canonical key. Matching across source catalogs requires an explicit human decision.
 
-## 4. Immutable supplier specifications
+## 4. Supplier source assertions and immutable specifications
 
-### `Specifications`
-One row per extracted source specification assertion. Source values are append-only and never edited to reflect company corrections.
+### `Product_Source_Records`
+One row per product appearance in one registered Catalog revision. Multiple source records may point to one canonical Product_ID.
 
-| Column | Type | Required | Key / rule |
+| Column | Type | Required | Rule |
 |---|---|---:|---|
-| Specification_ID | ID | Yes | PK |
+| Product_Source_Record_ID | ID | Yes | PK |
+| Product_ID | ID | Yes | FK → Products; only after approved identity resolution |
 | Catalog_ID | ID | Yes | FK → Catalogs |
-| Product_ID | ID | Yes | FK → Products |
-| Variant_ID | ID | No | FK → Variants; if present must belong to Product_ID |
-| Attribute_Key_Source | TEXT(160) | Yes | Source label/key as captured |
-| Attribute_Value_Source | TEXT(2000) | Yes | Source value as captured |
-| Unit_Source | TEXT(80) | No | Source unit as captured |
-| Normalized_Key | TEXT(160) | No | Normalized matching key; does not replace source label |
-| Normalized_Value | DECIMAL_OR_TEXT | No | Optional parsed value; retain raw value regardless |
-| Normalized_Unit | TEXT(80) | No | Optional normalized unit |
+| Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
+| Source_Product_Reference | TEXT(160) | No | Exact source reference |
+| Catalog_Page_ID | ID | No | FK → Catalog_Pages; same Catalog_ID |
 | Source_Page_Number | INTEGER | No | 1-based |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
-| Extraction_Confidence | DECIMAL(5,4) | No | 0..1; model estimate, not truth |
-| Created_At | DATETIME_UTC | Yes | Immutable capture timestamp |
+| Extraction_Record_ID | ID | No | FK → Staging_Products |
+| Match_Status | ENUM | Yes | MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
+| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-At least one of Product_ID / Variant_ID is conceptually targeted; Product_ID remains required to enforce ownership. If Variant_ID is present, it must belong to Product_ID. A specification may be product-wide (Variant_ID blank) or variant-specific.
+### `Variant_Source_Records`
+One row per model appearance within a Product_Source_Record.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Variant_Source_Record_ID | ID | Yes | PK |
+| Variant_ID | ID | Yes | FK → Variants |
+| Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
+| Source_Model_Number | TEXT(160) | Yes | Exact supplier wording; immutable |
+| Source_Model_Name | TEXT(250) | No | Exact supplier wording; immutable |
+| Source_Page_Number | INTEGER | No | 1-based |
+| Source_Section | TEXT(200) | No | Source location |
+| Source_Quote | TEXT(2000) | No | Evidence |
+| Extraction_Run_ID | ID | No | FK → Run_Log |
+| Extraction_Record_ID | ID | No | FK → Staging_Variants |
+| Match_Status | ENUM | Yes | MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
+| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor |
+
+Variant.Product_ID must equal the Product_ID reached through Product_Source_Record_ID. Model-number collisions remain valid source evidence but cannot auto-merge identities.
+
+### `Identity_Match_Decisions`
+Append-only human decision ledger: Entity_Type (PRODUCT/VARIANT), Source_Staging_ID, Candidate_Canonical_ID, Decision (MATCH_EXISTING/CREATE_NEW/REJECT_SOURCE/DEFER), Result_Canonical_ID, Evidence_JSON_File_ID, Evidence_SHA256, Rationale, Decided_At, Decided_By, and optional Supersedes_Decision_ID. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
+
+### `Specifications`
+One row per extracted supplier specification assertion. Source values and source wording are immutable.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Specification_ID | ID | Yes | PK |
+| Scope | ENUM | Yes | PRODUCT, VARIANT |
+| Product_Source_Record_ID | ID | Conditional | Required for PRODUCT scope; FK → Product_Source_Records |
+| Variant_Source_Record_ID | ID | Conditional | Required for VARIANT scope; FK → Variant_Source_Records |
+| Product_ID | ID | Yes | Canonical FK; must match source record |
+| Variant_ID | ID | Conditional | Required iff VARIANT scope; must match source record |
+| Attribute_Key_Source | TEXT(160) | Yes | Exact source label |
+| Attribute_Value_Source | TEXT(2000) | Yes | Exact source value |
+| Unit_Source | TEXT(80) | No | Exact source unit |
+| Normalized_Key | TEXT(160) | No | Search/mapping only |
+| Normalized_Value | DECIMAL_OR_TEXT | No | Parsed value; raw value retained |
+| Normalized_Unit | TEXT(80) | No | Optional normalized unit |
+| Source_Page_Number | INTEGER | No | 1-based |
+| Source_Section | TEXT(200) | No | |
+| Source_Quote | TEXT(2000) | No | Evidence |
+| Extraction_Run_ID | ID | No | FK → Run_Log |
+| Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+
+Exactly one source-record FK is populated according to Scope. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
+
+Catalogs remain one immutable registered source file/revision per Catalog_ID. A changed PDF/revision creates a new Catalog_ID and new Catalog_Pages; old source records and page evidence remain intact. A Catalog has many Product_Source_Records; each product source record may have many Variant_Source_Records.
 
 ## 5. Company-managed product layer
 
@@ -222,35 +261,29 @@ Unique: (Variant_ID, Attribute_ID). Definition must permit VARIANT scope. No ove
 ## 8. Central specification change ledger
 
 ### `Specification_Changes`
-Append-only operation ledger; latest approved applicable operation is resolved deterministically. Never edit source Specifications.
+Append-only event ledger. Effective values are computed by a deterministic reducer; never edit source Specifications.
 
-| Column | Type | Required | Key / rule |
-|---|---|---:|---|
-| Specification_Change_ID | ID | Yes | PK |
-| Operation | ENUM | Yes | UPDATE, ADD, DELETE |
-| Target_Specification_ID | ID | Conditional | FK → Specifications for UPDATE/DELETE; blank for ADD |
-| Product_ID | ID | Yes | FK → Products |
-| Variant_ID | ID | No | FK → Variants; must belong to Product_ID |
-| Attribute_Key | TEXT(160) | Conditional | Required for ADD; for UPDATE may override display key if allowed |
-| Value | TEXT(2000) | Conditional | Required for ADD; for UPDATE may be blank only if explicit clear semantics are later approved |
-| Unit | TEXT(80) | No | Company display unit |
-| Change_Status | ENUM | Yes | DRAFT, APPROVED, REJECTED, SUPERSEDED |
-| Effective_Order | INTEGER | Yes | Monotonic per target; server assigned |
-| Reason | TEXT(1000) | No | Change rationale |
-| Created_At | DATETIME_UTC | Yes | System generated |
-| Created_By | ACTOR_ID | Yes | Actor |
-| Approved_At | DATETIME_UTC | No | Required when APPROVED |
-| Approved_By | ACTOR_ID | No | Required when APPROVED |
-| Supersedes_Change_ID | ID | No | Self-FK; prior operation being replaced |
+Required fields: Specification_Change_ID (PK), Logical_Specification_Key, Sequence_No, Operation (ADD/UPDATE/DELETE), Target_Specification_ID (required for source-backed UPDATE/DELETE; blank for ADD), Product_ID, optional Variant_ID, Attribute_Key, Value_JSON, Unit, Change_Status (DRAFT/APPROVED/REJECTED), Reason, Created_At/By, Approved_At/By.
 
-Validation:
-- UPDATE/DELETE must target an existing source Specification_ID with matching Product_ID/Variant_ID ownership.
-- ADD must not reference Target_Specification_ID and must carry company-owned Attribute_Key and Value.
-- Only APPROVED operations affect effective specifications.
-- Do not permit two simultaneously active approved operations for the same target and operation slot without an explicit supersession chain.
-- DELETE suppresses source output; it never deletes the source row.
-- Effective specifications are computed, not manually edited or stored as a competing source of truth.
-- Define and test ordering for multiple operations before implementation; this schema uses Effective_Order plus Supersedes_Change_ID and rejects ambiguous ties.
+Logical key rules:
+- Source assertion: `SRC:<Specification_ID>`.
+- Company-created assertion: `ADD:<Specification_Change_ID of the first ADD>`; later events reuse this key.
+- Sequence_No is assigned at approval under a script lock, strictly increasing per logical key. Gaps are allowed; duplicate values are integrity failures.
+- Only APPROVED events participate. Sort solely by Sequence_No; never by sheet row, timestamp, or last edit.
+- ADD is valid only from ABSENT and requires a complete value.
+- UPDATE is valid only from ACTIVE and replaces the complete effective value.
+- DELETE is valid only from ACTIVE and suppresses output without deleting source data.
+- UPDATE/ADD after DELETE is invalid. Reinstatement requires a new ADD/logical key with an explicit reason.
+- A malformed or invalid transition quarantines that logical key from output; do not skip the bad event.
+- Blank value is not a clearing operation. Use DELETE.
+
+Reducer examples:
+- Source 10 bar → UPDATE 12 bar → UPDATE 14 bar = effective 14 bar.
+- Source 10 bar → DELETE = suppressed.
+- ADD Noise 72 dB → UPDATE 70 dB → DELETE = suppressed.
+- Source values remain immutable in all cases.
+
+Approval must re-read the latest sequence and validate the transition while holding the lock. A lock/Sheets failure fails closed; never allocate from cached state.
 
 ## 9. Domain integrity checks
 1. Every Variant.Product_ID exists.
