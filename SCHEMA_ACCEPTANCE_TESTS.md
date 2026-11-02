@@ -170,3 +170,71 @@ A schema candidate passes this suite only when:
 3. Rejection paths are safe and do not leave partial production records.
 4. Tests can be automated against a disposable spreadsheet after implementation.
 5. All blocker/high findings in SCHEMA_REVIEW.md are resolved or explicitly accepted as documented limitations.
+
+
+## H. V2 identity, event ordering, and integrity tests
+
+### SAT-016 — Source appearance matched to an existing canonical product
+**Given:** Product P already exists from Catalog A; Catalog B contains a similar product with different wording and a new page reference.
+**When:** The staging candidate is reviewed and MATCH_EXISTING is approved against the exact staging hash.
+**Expected:** A new Product_Source_Record is created for Catalog B and points to P; P is not duplicated; source wording/page/quote remain distinct; the decision and payload hash are auditable. Without approval, no production source record is created.
+
+### SAT-017 — Unresolved source identity cannot promote specifications
+**Given:** A staged product/model and its specifications have no approved canonical identity decision.
+**When:** promotion is attempted.
+**Expected:** Promotion is blocked; specifications remain in staging; no canonical Product, Variant, source record, or production Specification is created.
+
+### SAT-018 — Specification event sequence contains an invalid transition
+**Given:** A source specification is deleted at Sequence_No 2.
+**When:** an UPDATE is appended at Sequence_No 3 for the same logical key.
+**Expected:** The event is rejected or the key is quarantined if discovered after insertion; effective output remains suppressed; no silent resurrection occurs; correction is audited.
+
+### SAT-019 — Duplicate sequence number for one logical key
+**Given:** Two approved events share the same Logical_Specification_Key and Sequence_No.
+**When:** effective specifications are resolved.
+**Expected:** The key is quarantined and excluded from output; integrity scan reports a blocking conflict; no timestamp or row-order tie-breaker is applied.
+
+### SAT-020 — Published asset checksum mismatch
+**Given:** A published template manifest pins asset A with SHA256 H1.
+**When:** the worker reads the referenced Drive file and calculates H2.
+**Expected:** Issuance/reproduction is blocked; no substitute "current" asset is selected; a diagnostic event records expected and actual hashes.
+
+### SAT-021 — Paper setting changes after an issue
+**Given:** Issued PDF I pins Paper_Version P1 and its config hash.
+**When:** a new paper version P2 is published with changed dimensions/texture.
+**Expected:** I still resolves P1 and the original texture; a new issue may use P2; P1 is never edited.
+
+### SAT-022 — Polymorphic link points to a missing or mismatched target
+**Given:** Image_Links contains Target_Type=VARIANT with a nonexistent Variant_ID, or a document version belonging to another Doc_ID.
+**When:** create/update/import or pre-issue validation runs.
+**Expected:** The write/issue is rejected; no orphan link is silently accepted; integrity scan reports the exact row and ownership failure.
+
+### SAT-023 — Multi-sheet promotion partially fails
+**Given:** A promotion writes a canonical Product and Product_Source_Record but fails before writing the staging mapping/audit completion.
+**When:** recovery runs.
+**Expected:** The operation is marked IN_DOUBT; reconciliation finds existing rows by deterministic IDs/promotion key and hashes; it completes missing writes or quarantines conflict; it does not create a second Product.
+
+### SAT-024 — Retry lineage and safe work reuse
+**Given:** Run R1 fails after pages 1–20 are committed; R2 is created as its retry.
+**When:** R2 resumes.
+**Expected:** R2 has the same Logical_Job_ID, Parent_Run_ID=R1, Attempt_Number=2, and a new Idempotency_Key. Pages are reused only if input fingerprints and output hashes match; changed catalog input requires a new logical job.
+
+### SAT-025 — Multiple independent reviews and changed payload
+**Given:** One Staging_ID is linked to PRODUCT_MATCH and SPECIFICATION reviews. It is edited after both reviews.
+**When:** promotion is attempted.
+**Expected:** Both review links and decisions remain; the staging hash mismatch blocks promotion; new reviews are required for the changed payload.
+
+### SAT-026 — First document version creation interrupted
+**Given:** Documents is created but first Document_Versions row or current pointer update fails.
+**When:** recovery runs.
+**Expected:** The document remains incomplete/non-issuable; recovery validates the first version's Doc_ID and hash, then sets Current_Version_ID under lock; no invalid active document is exposed.
+
+### SAT-027 — Image duplicate redirect cycle
+**Given:** A→B already exists and an operator proposes B→A.
+**When:** redirect validation runs.
+**Expected:** The cycle is rejected before changing links; all original image records/files remain unchanged.
+
+### SAT-028 — Integrity scan finds Drive hash mismatch
+**Given:** A manifest references an immutable artifact whose bytes no longer match its recorded SHA256.
+**When:** the integrity scan runs.
+**Expected:** Finding is BLOCKING for affected issue/reproduction paths; no auto-replacement or deletion occurs; a report and audited repair decision are required.
