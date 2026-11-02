@@ -72,3 +72,5 @@ These proposals are documented in the domain schema and technical design files. 
 | ADR-037 | Separate issue-request idempotency key from content input fingerprint | Proposed | Allow an intentional new issue of identical content while making retries of one request idempotent. |
 
 | ADR-038 | Maintain one centralized enum registry alongside domain schemas | Proposed | Keep stored tokens consistent across Apps Script, frontend, worker, and acceptance tests. |
+
+| ADR-039 | Treat PRINT_READY_PDF as a printer-validated output class, not a DPI preset | Proposed | Require pinned printer specs, ICC profile asset, trim/bleed rules, and conformance verification before using the label. |
