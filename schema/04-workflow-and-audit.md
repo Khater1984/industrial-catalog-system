@@ -25,7 +25,7 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Logical_Job_ID | ID | Yes | Stable across attempts of one logical job |
 | Parent_Run_ID | ID | No | Self-FK to immediately preceding attempt |
 | Attempt_Number | INTEGER | Yes | Starts at 1; increments per Logical_Job_ID |
-| Retry_Reason | TEXT(1000) | No | Required for retry attempts |
+| Retry_Reason | TEXT(1000) | Conditional | Required when Attempt_Number > 1 |
 | Idempotency_Key | TEXT(160) | Yes | Unique per attempt, not per logical job |
 | Run_Status | ENUM | Yes | QUEUED, RUNNING, WAITING_REVIEW, RETRY_PENDING, COMPLETED, FAILED, CANCELLED |
 | Current_Step | TEXT(120) | No | Human-readable step |
@@ -43,7 +43,7 @@ One row per worker operation, including catalog extraction, image processing, PD
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-Unique: Idempotency_Key and (Logical_Job_ID, Attempt_Number). A retry creates a new Run_ID, points Parent_Run_ID to the immediately preceding attempt, and increments Attempt_Number. Terminal runs are never reset. Reuse completed work units only when input fingerprint and output manifest hash match.
+Unique: Idempotency_Key and (Logical_Job_ID, Attempt_Number). Attempt 1 has no Parent_Run_ID; each later attempt points to the immediately preceding Run_ID, uses the same Run_Type and exact logical input manifest, and increments Attempt_Number by one. Retry_Reason is required for attempts >1. Terminal runs are never reset. Reuse completed work units only when input fingerprint and output manifest hash match. A changed catalog file SHA256 or logical input manifest requires a new Logical_Job_ID.
 
 ### `Run_Units`
 One row per logical work unit within a run (normally one catalog page for extraction). This is the durable checkpoint ledger used for resume and retry decisions.
@@ -130,29 +130,28 @@ Do not create a separate staging sheet for every catalog or product. Staging she
 ## 4. Review queue
 
 ### `Review_Queue`
-One row per human-review task. Multiple staging records may be grouped under one review item using the payload manifest.
+One row per human-review task. Membership is represented only by Review_Staging_Links; the immutable review manifest captures the exact linked staging IDs and hashes.
 
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Review_Queue_ID | ID | Yes | PK |
 | Run_ID | ID | Yes | FK → Run_Log |
 | Review_Type | ENUM | Yes | PRODUCT_MATCH, VARIANT_MATCH, SPECIFICATION, IMAGE_DUPLICATE, IMAGE_QUALITY, DOCUMENT_MATCH, EXTRACTION_AMBIGUITY, OTHER |
-| Target_Staging_ID | ID | No | Related staging record |
-| Related_Staging_IDs_File_ID | DRIVE_FILE_ID | No | Manifest for multiple related records |
 | Priority | ENUM | Yes | LOW, NORMAL, HIGH |
 | Review_Status | ENUM | Yes | OPEN, IN_REVIEW, APPROVED, REJECTED, DEFERRED |
 | Proposed_Action | TEXT(500) | No | Suggested action, not executed automatically |
 | Decision_JSON_File_ID | DRIVE_FILE_ID | No | Immutable structured decision payload; required for final decision |
 | Decision_SHA256 | HEX64 | No | Required when Decision_JSON_File_ID is set |
-| Staging_Record_Hash | HEX64 | No | Hash of exact staging payload reviewed |
-| Reviewed_Payload_Hash | HEX64 | No | Hash of exact decision + reviewed staging payload |
+| Staging_Set_Manifest_File_ID | DRIVE_FILE_ID | No | Immutable ordered list of linked staging IDs and their hashes |
+| Staging_Set_SHA256 | HEX64 | No | Hash of the exact staging set manifest |
+| Reviewed_Payload_Hash | HEX64 | No | Hash of exact decision + staging set manifest |
 | Decision_Notes | TEXT(1500) | No | Human rationale |
 | Assigned_Actor_ID | ACTOR_ID | No | Optional |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Reviewed_At | DATETIME_UTC | No | |
 | Reviewed_By | ACTOR_ID | No | Required for final decision |
 
-Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Final decisions require immutable decision JSON, Decision_SHA256, Staging_Record_Hash, and Reviewed_Payload_Hash. Promotion re-computes and compares the current staging hash; mismatch invalidates the approval.
+Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Final decisions require immutable decision JSON, Decision_SHA256, Staging_Set_Manifest_File_ID, Staging_Set_SHA256, and Reviewed_Payload_Hash. Promotion re-computes each current staging row hash and the ordered set manifest; any mismatch invalidates the approval.
 
 ## 5. Audit log
 
@@ -206,7 +205,7 @@ The exact locking, batching, and recovery implementation belongs to the later te
 
 ### 8.1 `Review_Staging_Links`
 
-The singular Review_Queue_ID has been removed from the common staging envelope. One staging row may require several independent reviews. Use this join sheet:
+The singular Review_Queue_ID has been removed from the common staging envelope. One staging row may require several independent reviews, and one review may cover multiple staging rows. Use this join sheet:
 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
@@ -217,13 +216,13 @@ The singular Review_Queue_ID has been removed from the common staging envelope. 
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-Unique (Review_Queue_ID, Staging_ID, Review_Role). Never overwrite prior review links.
+Unique (Review_Queue_ID, Staging_ID, Review_Role). Never overwrite prior review links. Staging_ID is globally unique across all typed staging sheets; the application verifies exactly one typed target exists.
 
 ### 8.2 Hash-bound review decisions
 
 For every staging record, compute a canonical SHA256 over all decision-relevant values: raw source strings, source Catalog/Page/Region, normalized proposals, candidate canonical IDs, parent staging IDs, and relevant file checksums. The review decision stores Staging_Record_Hash and Reviewed_Payload_Hash. Promotion is allowed only if both hashes verify and the current staging hash equals the hash approved by the reviewer. Any changed value invalidates approval and requires a new review decision. Decision corrections append a new decision; they do not rewrite old review history.
 
-Canonical serialization must use UTF-8, stable field ordering, explicit null representation, and locale-independent numeric formatting.
+Canonical serialization must use UTF-8, stable field ordering, explicit null representation, and locale-independent numeric formatting. Staging_Record_Hash excludes its own hash field and volatile system timestamps; it includes all source evidence, proposals, candidate IDs, parent IDs, and relevant file checksums. Any edit to a decision-relevant field recomputes the hash and invalidates prior review approvals.
 
 ### 8.3 Source matching and promotion staging
 
