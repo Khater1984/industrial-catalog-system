@@ -1,6 +1,6 @@
 # Project Rules — Industrial Catalog System
 
-**Status:** Initial baseline; changes require explicit approval.
+**Status:** Active engineering baseline; implementation remains gated by final schema and operational approval.
 **Project:** Industrial Equipment Catalog System
 **Repository:** `Khater1984/industrial-catalog-system`
 
@@ -9,15 +9,16 @@ Build an internal, single-primary-user system for managing industrial equipment 
 
 ## 2. Core principles
 1. Preserve supplier source data as immutable evidence.
-2. Separate supplier/source data, company-managed data, and issued outputs.
-3. Use stable IDs for records and relationships; do not rely on row numbers or display names as identifiers.
-4. Never silently delete source files, source values, image originals, document versions, or issued PDFs.
-5. Avoid duplicate physical files when one asset can be safely referenced by multiple records.
-6. Derived states must be calculated from authoritative data, not maintained as competing sources of truth.
-7. Keep human review for ambiguous extraction; AI suggestions are not automatically approved facts.
-8. Every material company-side change must be auditable.
-9. An issued PDF must remain unchanged when products, templates, identities, or assets are later edited.
-10. Do not claim extraction accuracy, print readiness, or reproducibility without tests that support the claim.
+2. Keep canonical Product/Variant identities separate from supplier catalog occurrences; human approval is required for cross-source matching.
+3. Separate supplier/source data, company-managed data, and issued outputs.
+4. Use stable IDs for records and relationships; do not rely on row numbers or display names as identifiers.
+5. Never silently delete source files, source values, image originals, document versions, or issued PDFs.
+6. Avoid duplicate physical files when one asset can be safely referenced by multiple records.
+7. Derived states must be calculated from authoritative data, not maintained as competing sources of truth.
+8. Keep human review for ambiguous extraction; AI suggestions are not automatically approved facts.
+9. Every material company-side change must be auditable.
+10. An issued PDF must remain unchanged when products, templates, identities, or assets are later edited.
+11. Do not claim extraction accuracy, print readiness, or reproducibility without tests that support the claim.
 
 ## 3. Approved initial technology direction
 - Frontend: HTML, CSS, and JavaScript.
