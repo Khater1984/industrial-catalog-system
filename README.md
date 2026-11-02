@@ -31,8 +31,14 @@ These are approved technology directions, not evidence that runtime resources ha
 4. [Schema V2 Proposal](SCHEMA_V2_PROPOSAL.md) — corrective design decisions and integrity contracts.
 5. [Schema Review](SCHEMA_REVIEW.md) — engineering findings and disposition.
 6. [Schema Acceptance Tests](SCHEMA_ACCEPTANCE_TESTS.md) — design-level scenarios and expected outcomes.
-7. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
-8. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
+7. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
+8. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
+9. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
+10. [UI/UX Specification](UI_UX_SPEC.md) — responsive experience and review workflows.
+11. [Test Strategy](TEST_STRATEGY.md) — test layers, fixtures, and release gates.
+12. [Security & Operations](SECURITY_OPERATIONS.md) — access, secrets, backup, recovery, and capacity.
+13. [Delivery Roadmap](ROADMAP.md) — gated implementation sequence.
+14. [Decision Log](DECISIONS_LOG.md) — approved decisions and proposals.
 
 ## Domain specifications
 
