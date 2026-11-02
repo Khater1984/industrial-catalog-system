@@ -103,6 +103,7 @@ The following columns appear in each staging sheet:
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
 | Extraction_Method | ENUM | Yes | EMBEDDED_TEXT, TABLE_PARSER, OCR, IMAGE_EXTRACTION, MANUAL |
 | Extraction_Tool_Version | TEXT(120) | No | Exact parser/OCR build or service version |
+| Source_Key_Algorithm_Version | TEXT(80) | No | Required for product, variant, and specification staging |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, REJECTED, PROMOTED |
 | Staging_Record_Hash | HEX64 | Yes | Canonical hash of all decision-relevant staging fields |
@@ -129,6 +130,7 @@ The following columns appear in each staging sheet:
 | Identity_Match_Method | TEXT(80) | No | Method/version used to suggest candidate |
 | Match_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Must match common staging envelope |
 
 ### `Staging_Specifications`
 | Column | Type | Required | Rule |
@@ -136,6 +138,7 @@ The following columns appear in each staging sheet:
 | Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
 | Parent_Staging_Variant_ID | ID | No | FK → Staging_Variants; required iff Scope=VARIANT |
 | Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator |
+| Source_Key_Algorithm_Version | TEXT(80) | Yes | Must match common staging envelope |
 | Scope | ENUM | Yes | PRODUCT, VARIANT |
 | Attribute_Key_Raw | TEXT(160) | Yes | Exact source label |
 | Value_Raw | TEXT(2000) | Yes | Exact source value |
