@@ -1,6 +1,6 @@
 # Database Schema — Detailed Review Package
 
-**Status:** V2.1 consolidated schema candidate for review; not approved for implementation. See [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md).
+**Status:** V2.1 schema approved by the user on 2026-11-03 as the basis for the first isolated DEV implementation slice. Production use and full infrastructure rollout remain gated. See [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md).
 **Storage target:** Google Sheets for structured records; Google Drive for binary files and large immutable JSON artifacts.
 **Scope:** Initial single-primary-user industrial equipment catalog system.
 **Important:** This package does not create live Sheets, modify Drive content, migrate legacy records, or authorize application code.
@@ -209,4 +209,4 @@ This package proposes detailed data structures but does not settle all infrastru
 - [ ] Google Sheets integrity/locking limitations accepted with mitigation plan.
 - [ ] User explicitly approves the schema and architecture before live Sheets or application code are created.
 
-**Implementation gate:** No live Google Sheets creation, production Drive changes, code generation, or legacy migration is authorized by this proposal. The next step after review is to resolve comments and obtain explicit approval.
+**Implementation gate:** Schema approval authorizes only the bounded first DEV slice. Do not create production resources, migrate legacy data, or enable worker callbacks until the remaining security, hosting, capacity, and backup gates are resolved.
