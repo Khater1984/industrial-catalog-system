@@ -21,6 +21,8 @@ The files are a coordinated proposal and must be reviewed together. A table list
 
 ## 2. Shared type conventions
 
+The case-sensitive allowed values for every ENUM field are indexed in [ENUM_REGISTRY.md](ENUM_REGISTRY.md). The domain table definitions remain authoritative for field-specific validation and state-transition rules.
+
 | Logical type | Meaning / validation |
 |---|---|
 | ID | Stable opaque generated identifier; recommended prefixed UUID/ULID string. Never a row number or display name. |
