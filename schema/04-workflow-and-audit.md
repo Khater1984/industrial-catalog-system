@@ -180,12 +180,11 @@ Do not create a separate staging sheet for every catalog or product. Staging she
 ## 4. Review queue
 
 ### `Review_Queue`
-One row per human-review task. Membership is represented only by Review_Staging_Links; the immutable review manifest captures the exact linked staging IDs and hashes.
+One row per human-review task. It may cover linked staging rows from one or more runs. Membership is represented only by Review_Staging_Links; the immutable review manifest captures the exact linked staging IDs and hashes. Run lineage is derived from the linked staging records.
 
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Review_Queue_ID | ID | Yes | PK |
-| Run_ID | ID | Yes | FK → Run_Log |
 | Review_Type | ENUM | Yes | PRODUCT_MATCH, VARIANT_MATCH, SPECIFICATION, IMAGE_DUPLICATE, IMAGE_QUALITY, DOCUMENT_MATCH, EXTRACTION_AMBIGUITY, OTHER |
 | Priority | ENUM | Yes | LOW, NORMAL, HIGH |
 | Review_Status | ENUM | Yes | OPEN, IN_REVIEW, APPROVED, REJECTED, DEFERRED, STALE, SUPERSEDED |
