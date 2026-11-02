@@ -14,7 +14,8 @@ The schema is split by domain so each part can be reviewed and revised independe
 | [01 — Source & Products](schema/01-source-and-products.md) | Catalog registry, source product/model identities, immutable specifications, company product data, families, typed attributes, specification change ledger |
 | [02 — Documents & Images](schema/02-documents-and-images.md) | Shared document versions and links, central image assets, approvals, duplicate review, effective image quality |
 | [03 — Design & Issued Output](schema/03-design-and-issued-output.md) | Brand identities/versions, papers, templates, watermarks, status defaults, contacts, export profiles, issued PDFs and snapshots |
-| [04 — Workflow & Audit](schema/04-workflow-and-audit.md) | Run lineage, typed staging, many-to-many review links, hash-bound approvals, audit and recovery |\n| [Schema V2 Change Proposal](SCHEMA_V2_PROPOSAL.md) | Normative correction proposal for canonical identities, deterministic specification reducer, immutable design dependencies, retry lineage, integrity and recovery |
+| [04 — Workflow & Audit](schema/04-workflow-and-audit.md) | Run lineage, typed staging, many-to-many review links, hash-bound approvals, audit and recovery |
+| [Schema V2 Change Proposal](SCHEMA_V2_PROPOSAL.md) | Normative correction proposal for canonical identities, deterministic specification reducer, immutable design dependencies, retry lineage, integrity and recovery |
 
 The files are a coordinated proposal and must be reviewed together. A table listed in an earlier inventory is not automatically an approved production schema.
 
@@ -79,7 +80,8 @@ The files are a coordinated proposal and must be reviewed together. A table list
 - `Brands`
 - `Brand_Versions`
 - `Brand_Assets`
-- `Papers`\n- `Paper_Versions`
+- `Papers`
+- `Paper_Versions`
 - `Templates`
 - `Template_Versions`
 - `Template_Identity_Links`
