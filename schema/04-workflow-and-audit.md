@@ -96,10 +96,11 @@ The following columns appear in each staging sheet:
 | Run_ID | ID | Yes | FK → Run_Log |
 | Catalog_ID | ID | No | FK → Catalogs; required for catalog-derived rows, null for manual uploads |
 | Catalog_Page_ID | ID | No | FK → Catalog_Pages; required when page-level source evidence exists |
-| Source_Page_Number | INTEGER | No | 1-based |
 | Source_Region | TEXT(120) | No | Coordinates/region label |
 | Raw_Extract_File_ID | DRIVE_FILE_ID | No | Evidence payload |
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
+| Extraction_Method | ENUM | Yes | EMBEDDED_TEXT, TABLE_PARSER, OCR, IMAGE_EXTRACTION, MANUAL |
+| Extraction_Tool_Version | TEXT(120) | No | Exact parser/OCR build or service version |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, REJECTED, PROMOTED |
 | Promoted_Entity_ID | ID | No | Convenience pointer for single-entity staging rows only; mapping ledger is authoritative |
@@ -118,7 +119,7 @@ The following columns appear in each staging sheet:
 | Candidate_Product_ID | ID | No | Suggested canonical candidate only |
 | Identity_Match_Method | TEXT(80) | No | Method/version used to suggest candidate |
 | Match_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
-| Source_Record_Key | TEXT(160) | Yes | Deterministic occurrence key within Catalog_ID |
+| Source_Record_Key | TEXT(160) | Yes | Catalog_ID is required for product staging; deterministic occurrence key within Catalog_ID |
 
 ### `Staging_Variants`
 | Column | Type | Required | Rule |
