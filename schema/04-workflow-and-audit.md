@@ -101,7 +101,7 @@ The following columns appear in each staging sheet:
 | Raw_Extract_File_ID | DRIVE_FILE_ID | No | Evidence payload |
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
-| Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, APPROVED, REJECTED, PROMOTED |
+| Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, REJECTED, PROMOTED |
 | Promoted_Entity_ID | ID | No | Convenience pointer for single-entity staging rows only; mapping ledger is authoritative |
 | Staging_Record_Hash | HEX64 | Yes | Canonical hash of all decision-relevant staging fields |
 | Promotion_Key | TEXT(180) | No | Deterministic idempotency key assigned before promotion |
@@ -138,7 +138,7 @@ One row per human-review task. Membership is represented only by Review_Staging_
 | Run_ID | ID | Yes | FK → Run_Log |
 | Review_Type | ENUM | Yes | PRODUCT_MATCH, VARIANT_MATCH, SPECIFICATION, IMAGE_DUPLICATE, IMAGE_QUALITY, DOCUMENT_MATCH, EXTRACTION_AMBIGUITY, OTHER |
 | Priority | ENUM | Yes | LOW, NORMAL, HIGH |
-| Review_Status | ENUM | Yes | OPEN, IN_REVIEW, APPROVED, REJECTED, DEFERRED |
+| Review_Status | ENUM | Yes | OPEN, IN_REVIEW, APPROVED, REJECTED, DEFERRED, STALE, SUPERSEDED |
 | Proposed_Action | TEXT(500) | No | Suggested action, not executed automatically |
 | Decision_JSON_File_ID | DRIVE_FILE_ID | No | Immutable structured decision payload; required for final decision |
 | Decision_SHA256 | HEX64 | No | Required when Decision_JSON_File_ID is set |
@@ -151,7 +151,7 @@ One row per human-review task. Membership is represented only by Review_Staging_
 | Reviewed_At | DATETIME_UTC | No | |
 | Reviewed_By | ACTOR_ID | No | Required for final decision |
 
-Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Final decisions require immutable decision JSON, Decision_SHA256, Staging_Set_Manifest_File_ID, Staging_Set_SHA256, and Reviewed_Payload_Hash. Promotion re-computes each current staging row hash and the ordered set manifest; any mismatch invalidates the approval.
+Approval must identify exactly which staging record(s) and proposed values were accepted. Rejected/deferred items remain traceable. A review decision does not silently modify source evidence. Final decisions require immutable decision JSON, Decision_SHA256, Staging_Set_Manifest_File_ID, Staging_Set_SHA256, and Reviewed_Payload_Hash. A staging payload change moves every linked APPROVED review to STALE through an audited event. Promotion re-computes each current staging row hash and the ordered set manifest; any mismatch invalidates the approval.
 
 ## 5. Audit log
 
@@ -220,7 +220,7 @@ Unique (Review_Queue_ID, Staging_ID, Review_Role). Never overwrite prior review 
 
 ### 8.2 Hash-bound review decisions
 
-For every staging record, compute a canonical SHA256 over all decision-relevant values: raw source strings, source Catalog/Page/Region, normalized proposals, candidate canonical IDs, parent staging IDs, and relevant file checksums. The review decision stores Staging_Record_Hash and Reviewed_Payload_Hash. Promotion is allowed only if both hashes verify and the current staging hash equals the hash approved by the reviewer. Any changed value invalidates approval and requires a new review decision. Decision corrections append a new decision; they do not rewrite old review history.
+For every staging record, compute a canonical SHA256 over all decision-relevant values: raw source strings, source Catalog/Page/Region, normalized proposals, candidate canonical IDs, parent staging IDs, and relevant file checksums. The review decision stores Staging_Record_Hash and Reviewed_Payload_Hash. Promotion is allowed only if both hashes verify and the current staging hash equals the hash approved by the reviewer. Any changed value transitions the prior review to STALE and requires a new review decision. A superseded review is retained as SUPERSEDED; neither status can authorize promotion. Decision corrections append a new decision; they do not rewrite old review history.
 
 Canonical serialization must use UTF-8, stable field ordering, explicit null representation, and locale-independent numeric formatting. Staging_Record_Hash excludes its own hash field and volatile system timestamps; it includes all source evidence, proposals, candidate IDs, parent IDs, and relevant file checksums. Any edit to a decision-relevant field recomputes the hash and invalidates prior review approvals.
 
