@@ -45,13 +45,10 @@ One row per page in a registered catalog, created during processing.
 | Catalog_Page_ID | ID | Yes | PK |
 | Catalog_ID | ID | Yes | FK → Catalogs |
 | Page_Number | INTEGER | Yes | 1-based; unique with Catalog_ID |
-| Page_Label | TEXT(80) | No | Printed page label, if different |
-| Page_Image_File_ID | DRIVE_FILE_ID | No | Rendered page image used for review |
-| Page_Text_File_ID | DRIVE_FILE_ID | No | Optional extracted text artifact |
-| Processing_Status | ENUM | Yes | PENDING, PROCESSED, FAILED, SKIPPED |
+| Page_Label | TEXT(80) | No | Printed page label, if different from PDF page index |
 | Created_At | DATETIME_UTC | Yes | System generated |
 
-Unique: (Catalog_ID, Page_Number). Page records and artifacts are evidence; retries update run/page processing state without duplicating the page identity.
+Unique: (Catalog_ID, Page_Number). Catalog_Pages is immutable page identity only. Rendered page images, extracted text, OCR, and processing state are per-run artifacts tracked in Run_Units; a retry must not overwrite evidence from a prior run.
 
 ## 3. Canonical product and model identities
 
@@ -96,16 +93,17 @@ One row per product appearance in one registered Catalog revision. Multiple sour
 | Product_Source_Record_ID | ID | Yes | PK |
 | Product_ID | ID | Yes | FK → Products; only after approved identity resolution |
 | Catalog_ID | ID | Yes | FK → Catalogs |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic source occurrence key within Catalog_ID; unique with Catalog_ID |
 | Source_Product_Name | TEXT(300) | Yes | Exact supplier wording; immutable |
 | Source_Product_Reference | TEXT(160) | No | Exact source reference |
-| Catalog_Page_ID | ID | No | FK → Catalog_Pages; same Catalog_ID |
-| Source_Page_Number | INTEGER | No | 1-based |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must belong to Catalog_ID |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label, not PDF index |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
 | Extraction_Record_ID | ID | No | FK → Staging_Products |
-| Match_Status | ENUM | Yes | MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
-| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
+| Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision only |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
@@ -117,22 +115,24 @@ One row per model appearance within a Product_Source_Record.
 | Variant_Source_Record_ID | ID | Yes | PK |
 | Variant_ID | ID | Yes | FK → Variants |
 | Product_Source_Record_ID | ID | Yes | FK → Product_Source_Records |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
 | Source_Model_Number | TEXT(160) | Yes | Exact supplier wording; immutable |
 | Source_Model_Name | TEXT(250) | No | Exact supplier wording; immutable |
-| Source_Page_Number | INTEGER | No | 1-based |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must belong to parent Product_Source_Record.Catalog_ID |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | Source location |
 | Source_Quote | TEXT(2000) | No | Evidence |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
 | Extraction_Record_ID | ID | No | FK → Staging_Variants |
-| Match_Status | ENUM | Yes | MATCHED, NEW_CANONICAL, REJECTED, SUPERSEDED |
-| Match_Decision_ID | ID | No | FK → Identity_Match_Decisions |
+| Identity_Resolution | ENUM | Yes | MATCH_EXISTING, CREATE_NEW |
+| Match_Decision_ID | ID | Yes | FK → Identity_Match_Decisions; approved decision only |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
 Variant.Product_ID must equal the Product_ID reached through Product_Source_Record_ID. Model-number collisions remain valid source evidence but cannot auto-merge identities.
 
 ### `Identity_Match_Decisions`
-Append-only human decision ledger: Entity_Type (PRODUCT/VARIANT), Source_Staging_ID, Candidate_Canonical_ID, Decision (MATCH_EXISTING/CREATE_NEW/REJECT_SOURCE/DEFER), Result_Canonical_ID, Evidence_JSON_File_ID, Evidence_SHA256, Rationale, Decided_At, Decided_By, and optional Supersedes_Decision_ID. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
+Append-only human decision ledger: Match_Decision_ID (PK), Entity_Type (PRODUCT/VARIANT), Source_Staging_Type, Source_Staging_ID, Source_Staging_Hash, Parent_Product_Match_Decision_ID (required for VARIANT), Candidate_Canonical_ID, Decision (MATCH_EXISTING/CREATE_NEW/REJECT_SOURCE/DEFER), Result_Canonical_ID, Evidence_JSON_File_ID, Evidence_SHA256, Rationale, Decided_At, Decided_By, and optional Supersedes_Decision_ID. REJECT_SOURCE and DEFER remain in staging and do not create Product_Source_Records or Variant_Source_Records. A VARIANT match candidate must belong to the canonical Product resolved by its parent product decision. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
 
 ### `Specifications`
 One row per extracted supplier specification assertion. Source values and source wording are immutable.
@@ -140,6 +140,7 @@ One row per extracted supplier specification assertion. Source values and source
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Specification_ID | ID | Yes | PK |
+| Source_Assertion_Key | TEXT(160) | Yes | Stable deterministic assertion locator within its source record |
 | Scope | ENUM | Yes | PRODUCT, VARIANT |
 | Product_Source_Record_ID | ID | Conditional | Required for PRODUCT scope; FK → Product_Source_Records |
 | Variant_Source_Record_ID | ID | Conditional | Required for VARIANT scope; FK → Variant_Source_Records |
@@ -149,16 +150,17 @@ One row per extracted supplier specification assertion. Source values and source
 | Attribute_Value_Source | TEXT(2000) | Yes | Exact source value |
 | Unit_Source | TEXT(80) | No | Exact source unit |
 | Normalized_Key | TEXT(160) | No | Search/mapping only |
-| Normalized_Value | DECIMAL_OR_TEXT | No | Parsed value; raw value retained |
+| Normalized_Value_JSON | JSON_TEXT(1000) | No | Typed parsed value; raw value always retained |
 | Normalized_Unit | TEXT(80) | No | Optional normalized unit |
-| Source_Page_Number | INTEGER | No | 1-based |
+| Catalog_Page_ID | ID | Yes | FK → Catalog_Pages; must match the linked source record's catalog |
+| Printed_Page_Label | TEXT(80) | No | Supplier-printed page label |
 | Source_Section | TEXT(200) | No | |
 | Source_Quote | TEXT(2000) | No | Evidence |
 | Extraction_Run_ID | ID | No | FK → Run_Log |
 | Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 
-Exactly one source-record FK is populated according to Scope. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
+Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
 
 Catalogs remain one immutable registered source file/revision per Catalog_ID. A changed PDF/revision creates a new Catalog_ID and new Catalog_Pages; old source records and page evidence remain intact. A Catalog has many Product_Source_Records; each product source record may have many Variant_Source_Records.
 
@@ -170,6 +172,7 @@ One row per Product_ID; company-owned fields only.
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Product_ID | ID | Yes | PK and FK → Products |
+| Product_Name_EN | TEXT(300) | No | Company-approved canonical display name; not source evidence |
 | Product_Name_AR | TEXT(300) | No | Company translation; editable |
 | Company_Description | TEXT(4000) | No | Company-authored |
 | Manufacturer_or_Product_Brand_Label | TEXT(160) | No | Product/manufacturer brand label; unrelated to document-design Brands |
@@ -184,6 +187,7 @@ One row per Variant_ID.
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Variant_ID | ID | Yes | PK and FK → Variants |
+| Model_Name_EN | TEXT(250) | No | Company-approved canonical model display name; not source evidence |
 | Model_Name_AR | TEXT(250) | No | Company translation |
 | Company_Model_Notes | TEXT(2000) | No | Company-authored |
 | Updated_At | DATETIME_UTC | Yes | System generated |
@@ -285,7 +289,7 @@ Reducer examples:
 
 Approval must re-read the latest sequence and validate the transition while holding the lock. A lock/Sheets failure fails closed; never allocate from cached state.
 
-## 9. Domain integrity checks
+## 10. Domain integrity checks
 1. Every Variant.Product_ID exists.
 2. Every source assertion references the exact Product_Source_Record_ID or Variant_Source_Record_ID and retains Catalog/Page/Section/Quote provenance when available.
 3. Every Variant_Company row references an existing Variant.
