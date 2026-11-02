@@ -12,7 +12,7 @@
 | Schema inventory matches domain definitions | 52 / 52 | No defined table is missing from DATABASE_SCHEMA.md; no inventory-only table remains. |
 | Explicit FK declarations resolve to defined table names | 96 / 96 | Static FK target-name check only; it does not prove row-level ownership or data validity. |
 | Duplicate field names within a table | 0 | No duplicate parsed column names found. |
-| Local Markdown links | 32 / 32 | All checked relative links resolve to files in the repository. |
+| Local Markdown links | 33 / 33 | All checked relative links resolve to files in the repository. |
 | Malformed literal line-break escapes in reviewed docs | 0 | Previously malformed table line breaks were repaired. |
 | Acceptance scenarios | 48 | SAT-001 through SAT-048 are documented design-level tests, not executed software tests. |
 | Enum registry | 79 fields | ENUM_REGISTRY.md indexes all 79 typed enum fields.
