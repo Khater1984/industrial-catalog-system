@@ -1,7 +1,7 @@
 # Schema V2.1 Approval Checklist
 
 **Purpose:** Record the final design gate before persistent DEV resources and application implementation.  
-**Current status:** Candidate prepared; explicit user approval pending.
+**Current status:** Schema V2.1 and the current table inventory were explicitly approved by the user on 2026-11-03 as the basis for the first isolated DEV implementation slice. This does not approve production use or waive the remaining security and operations gates.
 
 ## 1. Structural readiness
 
@@ -60,6 +60,8 @@ Before implementation:
 - [ ] Backup, restore, capacity, and security gates are approved.
 
 ## 5. First permitted implementation slice after approval
+
+**Approval recorded:** 2026-11-03. Initial Apps Script source scaffolding has been added to the repository for schema initialization, health reporting, and secure DEV catalog registration. No Google Sheet, Drive folder, Apps Script deployment, or worker service has been provisioned or runtime-tested. The worker/API authentication, hosting, Drive access, capacity, and backup decisions above remain open.
 
 Create isolated DEV-only resources and implement:
 1. schema initialization/version verification;
