@@ -399,3 +399,8 @@ Canonical Product/Variant merge and reparent workflows are deliberately excluded
 ### 8.10 Document-version provenance
 
 Each Document_Versions row preserves the provenance of that exact binary revision. CATALOG_EMBEDDED versions require catalog, page, extraction run, and staging-document references. MANUAL_UPLOAD versions record the authenticated uploader and do not invent catalog provenance. EXTERNAL_LINK versions retain the source URL and retrieval/verification notes while storing and hashing the downloaded bytes. Product/variant source-record links, when present, must resolve to the same catalog/page context. A later document version never overwrites the provenance of an earlier version.
+
+
+### 8.11 Print-ready output is a verified capability, not a resolution preset
+
+PRINT_READY_PDF requires an immutable printer specification file and checksum, explicit trim/bleed/safe-area requirements, the required color profile/ICC asset, and a PDF standard/conformance verification path. A high Target_DPI value is not sufficient. Chromium-only rendering cannot be labeled CMYK/PDF-X compliant without a proven prepress conversion and validation stage. Until a real printer specification and validation workflow are supplied, the product may issue DIGITAL_PDF or PRINT_ORIENTED_PDF only.
