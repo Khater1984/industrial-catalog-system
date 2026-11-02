@@ -197,6 +197,7 @@ One row per human-review task. It may cover linked staging rows from one or more
 | Decision_Notes | TEXT(1500) | No | Human rationale |
 | Assigned_Actor_ID | ACTOR_ID | No | Optional |
 | Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
 | Reviewed_At | DATETIME_UTC | No | |
 | Reviewed_By | ACTOR_ID | No | Required for final decision |
 
