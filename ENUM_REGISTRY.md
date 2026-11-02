@@ -138,7 +138,7 @@
 
 | Field | Required | Allowed stored values |
 |---|---|---|
-| `Asset_Type` | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, TEXTURE, WATERMARK, OTHER |
+| `Asset_Type` | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, TEXTURE, WATERMARK, ICC_PROFILE, OTHER |
 
 ### `Brands`
 
