@@ -1,0 +1,182 @@
+# Detailed Schema — Documents & Images
+
+**Status:** Detailed proposal for review; not implementation authorization.
+**Storage:** Google Sheets metadata; Google Drive stores binary files.
+
+## Shared conventions
+- IDs are stable opaque strings; never use row numbers.
+- Drive_File_ID is a Drive file identifier, not a public URL.
+- SHA256 is lowercase 64-character hexadecimal.
+- All timestamps are UTC ISO-8601.
+- Binary originals and historical versions are retained; lifecycle status is not a delete command.
+
+## 1. Documents
+
+### `Documents`
+One row per logical document, independent of its physical file versions and target associations.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Doc_ID | ID | Yes | PK |
+| Document_Type | ENUM | Yes | USER_MANUAL, BROCHURE, CERTIFICATE, WARRANTY, OTHER |
+| Title | TEXT(250) | Yes | Company display title |
+| Language_Code | TEXT(10) | No | BCP-47 |
+| Description | TEXT(1500) | No | Company description |
+| Current_Version_ID | ID | No | FK → Document_Versions; must belong to same Doc_ID |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Updated_At | DATETIME_UTC | Yes | System generated |
+| Updated_By | ACTOR_ID | Yes | Actor |
+
+Current_Version_ID is the only current-version authority. Blank is allowed while a document is first registered, but an ACTIVE document offered for output must have a valid current version.
+
+### `Document_Versions`
+Immutable file revisions. A new upload creates a new row; never replace the file of an existing version.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Version_ID | ID | Yes | PK |
+| Doc_ID | ID | Yes | FK → Documents |
+| Version_Label | TEXT(80) | Yes | Human label, e.g. Rev B |
+| Drive_File_ID | DRIVE_FILE_ID | Yes | Immutable stored file |
+| Original_File_Name | TEXT(255) | Yes | Uploaded filename |
+| MIME_Type | TEXT(100) | Yes | Validated |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| SHA256 | HEX64 | Yes | Exact file fingerprint |
+| Uploaded_At | DATETIME_UTC | Yes | System generated |
+| Uploaded_By | ACTOR_ID | Yes | Actor |
+| Version_Notes | TEXT(1000) | No | Notes |
+| Supersedes_Version_ID | ID | No | Self-FK; same Doc_ID |
+| Lifecycle_Status | ENUM | Yes | AVAILABLE, QUARANTINED, ARCHIVED |
+
+Unique: (Doc_ID, SHA256) to prevent duplicate binary versions for the same logical document unless an explicit exception is recorded. A version must belong to the same Doc_ID referenced by Documents.Current_Version_ID or Document_Links.Pinned_Version_ID. Rollback changes the current pointer; it does not delete versions.
+
+### `Document_Links`
+One row per logical document-target association.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Link_ID | ID | Yes | PK |
+| Doc_ID | ID | Yes | FK → Documents |
+| Target_Type | ENUM | Yes | PRODUCT, VARIANT |
+| Target_ID | ID | Yes | FK resolved by Target_Type |
+| Link_Mode | ENUM | Yes | INCLUDE, EXCLUDE |
+| Pinned_Version_ID | ID | No | FK → Document_Versions; same Doc_ID |
+| Display_Order | INTEGER | Yes | Default 0 |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Link_Notes | TEXT(500) | No | Optional |
+
+Unique: (Doc_ID, Target_Type, Target_ID). This prevents conflicting INCLUDE/EXCLUDE rows for one document and target. If a target needs to change mode, update the same logical link with an audit event rather than adding a duplicate row.
+
+Resolution:
+1. Product INCLUDE is inherited by its variants.
+2. Variant EXCLUDE cancels only the inherited product association for that Doc_ID.
+3. A direct Variant INCLUDE remains visible even if a separate inherited association is excluded; therefore do not represent a direct variant INCLUDE and inherited exclusion as two rows for the same Doc_ID/variant target. Store the direct INCLUDE on the variant and model the inherited exclusion separately in `Document_Exclusions` (see below). This avoids the uniqueness conflict and preserves both semantics.
+4. Effective display is de-duplicated by Doc_ID.
+5. A direct variant link controls display order and pinned-version choice for that variant; otherwise use the product link's settings.
+6. If no pinned version is resolved, use Documents.Current_Version_ID.
+
+### `Document_Exclusions`
+Explicit exception ledger for excluding a product-inherited document from one variant without suppressing a direct variant association.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Exclusion_ID | ID | Yes | PK |
+| Doc_ID | ID | Yes | FK → Documents |
+| Product_ID | ID | Yes | FK → Products |
+| Variant_ID | ID | Yes | FK → Variants; must belong to Product_ID |
+| Reason | TEXT(500) | No | Optional rationale |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Status | ENUM | Yes | ACTIVE, REVOKED |
+
+Unique active rule: one active exclusion per (Doc_ID, Variant_ID). Exclusion applies only to the inherited Product INCLUDE link. A direct Variant INCLUDE remains effective. If an exclusion is revoked, inherited product association returns.
+
+**Model clarification:** The earlier compact inventory described EXCLUDE as a Document_Links mode. That representation conflicts with the simultaneous requirements for one unique target link and an independent direct variant INCLUDE. This detailed proposal separates inherited exceptions into Document_Exclusions while keeping Document_Links as INCLUDE associations. This is a schema-level refinement requiring review, not an already approved implementation change.
+
+## 2. Image asset library
+
+### `Image_Assets`
+One row per logical image asset. Original file is preserved; derived renditions are separately referenced.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Image_ID | ID | Yes | PK |
+| Original_File_ID | DRIVE_FILE_ID | Yes | Preserved original |
+| High_Quality_File_ID | DRIVE_FILE_ID | No | PDF rendition; may equal original when suitable |
+| Preview_File_ID | DRIVE_FILE_ID | No | UI-only preview |
+| Original_File_Name | TEXT(255) | Yes | Original filename |
+| MIME_Type | TEXT(100) | Yes | Validated MIME |
+| Width_PX | INTEGER | Yes | > 0 |
+| Height_PX | INTEGER | Yes | > 0 |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| Has_Alpha | BOOLEAN | Yes | True/false |
+| Color_Space | ENUM | No | SRGB, DISPLAY_P3, CMYK, GRAYSCALE, UNKNOWN |
+| Orientation | ENUM | Yes | NORMALIZED, EXIF_ROTATED, UNKNOWN |
+| SHA256 | HEX64 | Yes | Exact original-file hash |
+| PHash | TEXT(64) | No | Perceptual hash algorithm/version documented |
+| Source_Type | ENUM | Yes | CATALOG_EMBEDDED, PAGE_RENDER, MANUAL_UPLOAD, OTHER |
+| Source_Catalog_ID | ID | No | FK → Catalogs |
+| Source_Document_ID | ID | No | FK → Documents if extracted from a document |
+| Source_Page | INTEGER | No | 1-based |
+| Quality_Status | ENUM | Yes | UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, CORRUPT, NEEDS_REVIEW |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, QUARANTINED |
+| Duplicate_Of_Image_ID | ID | No | Self-FK to canonical asset; no deletion |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+
+Unique SHA256 for active original assets should be enforced by application-level duplicate checks. Exact match can reuse an existing asset. PHash is only a candidate signal and must never automatically merge/delete.
+
+### `Image_Links`
+Associates one image asset with a product or variant. The same Image_ID may have multiple links.
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Image_Link_ID | ID | Yes | PK |
+| Image_ID | ID | Yes | FK → Image_Assets |
+| Target_Type | ENUM | Yes | PRODUCT, VARIANT |
+| Target_ID | ID | Yes | FK resolved by Target_Type |
+| Is_Primary | BOOLEAN | Yes | UI/list primary only; not an approval |
+| Catalog_Approved | BOOLEAN | Yes | Independent approval |
+| DataSheet_Approved | BOOLEAN | Yes | Independent approval |
+| Catalog_Order | INTEGER | Yes | Default 0 |
+| DataSheet_Order | INTEGER | Yes | Default 0 |
+| Catalog_Crop_JSON | JSON_TEXT(1000) | No | Normalized crop coordinates/settings |
+| DataSheet_Crop_JSON | JSON_TEXT(1000) | No | Independent crop |
+| Link_Status | ENUM | Yes | CANDIDATE, ACTIVE, REJECTED, ARCHIVED |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Updated_At | DATETIME_UTC | Yes | System generated |
+| Updated_By | ACTOR_ID | Yes | Actor |
+
+Unique: (Image_ID, Target_Type, Target_ID). At most one active primary image per target is enforced by application validation. Primary does not imply Catalog_Approved or DataSheet_Approved. Crop settings must not alter the preserved original.
+
+### `Image_Review_Pairs`
+One row per reviewed candidate pair (canonical order Image_A_ID < Image_B_ID).
+
+| Column | Type | Required | Key / rule |
+|---|---|---:|---|
+| Review_Pair_ID | ID | Yes | PK |
+| Image_A_ID | ID | Yes | FK → Image_Assets |
+| Image_B_ID | ID | Yes | FK → Image_Assets; different from A |
+| Algorithm | TEXT(80) | Yes | Algorithm identifier/version |
+| Distance | DECIMAL(12,6) | Yes | Algorithm-specific distance |
+| Decision | ENUM | Yes | PENDING, SAME_ASSET, DISTINCT, RELATED |
+| Reviewed_At | DATETIME_UTC | No | Set after human decision |
+| Reviewed_By | ACTOR_ID | No | Actor |
+| Notes | TEXT(1000) | No | Review note |
+
+Unique: (Image_A_ID, Image_B_ID, Algorithm). Distance thresholds only create review candidates; they do not make decisions.
+
+## 3. Image resolution and PDF quality rules
+- Effective image selection for a target: approved variant images first, then approved product images; no unapproved fallback by default.
+- Catalog and datasheet selections are resolved independently.
+- If no approved image exists, Preflight warns and offers export-without-image or explicit approval.
+- PDF worker reads High_Quality_File_ID only; Preview_File_ID is forbidden in PDF generation.
+- Compute effective DPI after crop and at actual rendered dimensions in the template. Calculate horizontal and vertical DPI; use the lower value for threshold decisions.
+- Digital target default: 150 DPI. Print-oriented target default: 300 DPI. These are configurable targets, not guarantees.
+- Never upscale and claim a higher native resolution.
+- After PDF generation, inspect embedded image dimensions where technically possible and compare to expected output.
+- Duplicate resolution sets Duplicate_Of and redirects active links to the canonical asset through audited operations; retain original asset record and file.
