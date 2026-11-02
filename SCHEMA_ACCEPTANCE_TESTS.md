@@ -341,3 +341,9 @@ A schema candidate passes this suite only when:
 **Given:** the configured rendering pipeline is Chromium-only and the selected profile requires CMYK or PDF/X.
 **When:** preflight runs.
 **Expected:** preflight blocks PRINT_READY_PDF; the system does not infer conformance from a high DPI setting or a PDF file extension. A validated prepress conversion/verification pipeline and pinned ICC/printer specifications are required.
+
+
+### SAT-048 — Source occurrence key algorithm version is reproducible
+**Given:** Catalog C is processed twice with the same source SHA256, key algorithm version K1, and extraction profile.
+**When:** the same product/model/specification occurrences are staged again.
+**Expected:** identical source occurrence keys are produced and duplicate promotion is prevented. If a new algorithm K2 changes segmentation/keys, candidates are routed to comparison/review and do not create duplicate canonical/source records automatically.
