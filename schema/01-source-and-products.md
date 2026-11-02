@@ -30,7 +30,7 @@ One row per supplier source catalog file/revision registered by the company.
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | System/user actor |
 
-Unique rule: SHA256 identifies exact file duplicates. A repeated checksum should prompt reuse/linking to the existing catalog record, not silently create another source identity. Different revisions remain separate records.
+Unique rule: SHA256 identifies exact file bytes. A repeated checksum prompts the operator to reuse the existing registered source file or explicitly register a separate source context referencing the same immutable binary; it must never silently overwrite a Catalog. Different revisions remain separate records.
 
 ## 2. Extraction runs and page provenance
 
@@ -265,29 +265,47 @@ Unique: (Variant_ID, Attribute_ID). Definition must permit VARIANT scope. No ove
 ## 8. Central specification change ledger
 
 ### `Specification_Changes`
-Append-only event ledger. Effective values are computed by a deterministic reducer; never edit source Specifications.
+Append-only event ledger. Effective specifications are derived by the reducer; source Specifications are never edited.
 
-Required fields: Specification_Change_ID (PK), Logical_Specification_Key, Sequence_No, Operation (ADD/UPDATE/DELETE), Target_Specification_ID (required for source-backed UPDATE/DELETE; blank for ADD), Product_ID, optional Variant_ID, Attribute_Key, Value_JSON, Unit, Change_Status (DRAFT/APPROVED/REJECTED), Reason, Created_At/By, Approved_At/By.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Specification_Change_ID | ID | Yes | PK; immutable |
+| Logical_Specification_Key | TEXT(180) | Yes | `SRC:<Specification_ID>` or `ADD:<first Specification_Change_ID>` |
+| Sequence_No | INTEGER | Conditional | Assigned only on approval under lock; strictly increasing per logical key |
+| Operation | ENUM | Yes | ADD, UPDATE, DELETE |
+| Target_Specification_ID | ID | Conditional | FK → Specifications for source-backed keys; blank for company-created ADD keys |
+| Product_ID | ID | Yes | FK → Products |
+| Variant_ID | ID | No | FK → Variants; must belong to Product_ID |
+| Attribute_Key | TEXT(160) | Yes | Stable company attribute key |
+| Value_JSON | JSON_TEXT(2000) | Conditional | Complete typed value for ADD/UPDATE; absent for DELETE |
+| Unit_Code | TEXT(40) | No | Canonical unit |
+| Change_Status | ENUM | Yes | DRAFT, APPROVED, REJECTED |
+| Reason | TEXT(1000) | Yes | Business rationale |
+| Created_At | DATETIME_UTC | Yes | |
+| Created_By | ACTOR_ID | Yes | |
+| Approved_At | DATETIME_UTC | Conditional | Required for APPROVED |
+| Approved_By | ACTOR_ID | Conditional | Required for APPROVED |
+| Approval_Payload_SHA256 | HEX64 | Conditional | Hash of exact reviewed event payload |
 
-Logical key rules:
-- Source assertion: `SRC:<Specification_ID>`.
-- Company-created assertion: `ADD:<Specification_Change_ID of the first ADD>`; later events reuse this key.
-- Sequence_No is assigned at approval under a script lock, strictly increasing per logical key. Gaps are allowed; duplicate values are integrity failures.
-- Only APPROVED events participate. Sort solely by Sequence_No; never by sheet row, timestamp, or last edit.
-- ADD is valid only from ABSENT and requires a complete value.
+Logical key and reducer rules:
+- A source assertion starts ACTIVE at sequence 0 under `SRC:<Specification_ID>`.
+- A company-created assertion starts ABSENT. Its first ADD event establishes `ADD:<Specification_Change_ID>`; later UPDATE/DELETE events reuse that key.
+- Only APPROVED events participate. Sequence_No is assigned during approval under a script lock after re-reading the latest effective state.
+- Sequence_No must be unique and strictly increasing per Logical_Specification_Key. Gaps are allowed; duplicate or missing approved sequence values quarantine the key.
+- ADD is valid only from ABSENT and requires a complete typed value.
 - UPDATE is valid only from ACTIVE and replaces the complete effective value.
-- DELETE is valid only from ACTIVE and suppresses output without deleting source data.
-- UPDATE/ADD after DELETE is invalid. Reinstatement requires a new ADD/logical key with an explicit reason.
-- A malformed or invalid transition quarantines that logical key from output; do not skip the bad event.
-- Blank value is not a clearing operation. Use DELETE.
+- DELETE is valid only from ACTIVE and suppresses output without deleting source evidence.
+- UPDATE or ADD after DELETE is invalid. Reinstatement requires a new ADD logical key and explicit rationale.
+- Blank/null is not a clearing operation. Use DELETE or a typed explicit-empty value only where the attribute definition permits it.
+- The reducer sorts by Sequence_No only; never use sheet row order, timestamps, or last-edit time.
+- Any invalid transition quarantines the entire logical key from output; never skip the bad event and continue.
+- A failed lock or Sheets write fails closed. No sequence is allocated from cached state.
 
-Reducer examples:
+Examples:
 - Source 10 bar → UPDATE 12 bar → UPDATE 14 bar = effective 14 bar.
 - Source 10 bar → DELETE = suppressed.
-- ADD Noise 72 dB → UPDATE 70 dB → DELETE = suppressed.
-- Source values remain immutable in all cases.
-
-Approval must re-read the latest sequence and validate the transition while holding the lock. A lock/Sheets failure fails closed; never allocate from cached state.
+- ADD noise 72 dB → UPDATE 70 dB → DELETE = suppressed.
+- Raw supplier text remains unchanged in every case.
 
 ## 10. Domain integrity checks
 1. Every Variant.Product_ID exists.
