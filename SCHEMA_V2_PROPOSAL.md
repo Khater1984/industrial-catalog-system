@@ -334,3 +334,50 @@ The domain documents should be consolidated to reflect these rules:
 ## 7. Implementation gate
 
 This is a design proposal only. It does not create Sheets, Drive folders, app code, worker code, or migrate legacy records. Implementation begins only after the user approves the consolidated schema, acceptance suite, operational limits, and security/recovery plan.
+
+
+## 8. V2.1 consolidation amendments — source occurrence, asset and transaction integrity
+
+The following refinements are normative additions to the correction set and must be reflected in the final consolidated table inventory.
+
+### 8.1 Stable source occurrence keys
+
+- Each Product_Source_Record has a Source_Record_Key unique within Catalog_ID. It identifies one product occurrence, not the canonical product.
+- Each Variant_Source_Record has a Source_Record_Key unique within its parent Product_Source_Record_ID.
+- Each Specification has a Source_Assertion_Key unique within its exact source record.
+- Reprocessing the same source revision must resolve to the same occurrence keys and must not create duplicate assertions. If extraction segmentation changes, the new proposal is reviewed as a new source occurrence; the prior evidence is retained.
+- Product/variant source records are created only after an approved MATCH_EXISTING or CREATE_NEW decision. REJECT_SOURCE and DEFER remain in staging.
+
+### 8.2 Immutable page identity and per-run checkpoints
+
+Catalog_Pages is a stable index of physical PDF pages and contains no mutable processing status or generated page artifacts. Run_Units stores per-run page checkpoints, input fingerprints, output manifests, and reuse lineage. This prevents a retry or a newer extraction engine from overwriting prior page evidence.
+
+### 8.3 Image original vs rendition
+
+Image_Assets stores the immutable original-file identity and source provenance. Image_Renditions stores every immutable derived preview/high-quality/catalog-ready rendition with its own file checksum, dimensions, source hash, and pipeline version. Image_Links may pin only a rendition belonging to the same Image_ID and an allowed rendition type. Issued manifests pin exact rendition IDs and hashes.
+
+### 8.4 Shared design asset registry
+
+Design_Assets is the immutable binary registry for logos, fonts, graphics, icons, backgrounds, textures, and watermark assets. Brand_Assets is a role association between Brands and Design_Assets. Paper_Versions and Watermark_Presets reference Design_Assets rather than untyped Drive IDs. Product photography remains in the separate Image_Assets domain.
+
+### 8.5 Review-set integrity and promotion ledgers
+
+- Review_Staging_Links is the only authoritative relation between a review task and typed staging rows. The old singular staging-to-review field and redundant Target_Staging_ID/Related_Staging_IDs fields are removed.
+- A review task snapshots the ordered linked Staging_ID + Staging_Record_Hash set in an immutable manifest. Approval stores the manifest SHA256 and Reviewed_Payload_Hash.
+- Promotion_Operations stores a deterministic promotion key and intended-output manifest. Promotion_Mappings is the authoritative staging-to-production map.
+- A partial multi-sheet write enters IN_DOUBT and is reconciled by deterministic IDs and payload hashes; blind replay is forbidden.
+
+### 8.6 Issue transaction and multi-product membership
+
+- Issue_Operations is the recoverable transaction envelope for a PDF issue request.
+- Issued_Documents contains only final, validated issue records.
+- Issued_Document_Items provides queryable product/variant membership for datasheets, product catalogs, and master catalogs.
+- Every final issue pins Paper_Version_ID, brand/template versions, exact design/image renditions, source/effective data snapshot, font and renderer fingerprints, preflight report, and final PDF SHA256 in an immutable dependency manifest.
+
+### 8.7 Canonical naming
+
+Product_Company.Product_Name_EN and Variant_Company.Model_Name_EN are company-approved canonical display labels. They are not supplier source strings; those remain in Product_Source_Records and Variant_Source_Records. Arabic translations are separate company-managed fields.
+
+### 8.8 Updated table inventory delta
+
+Add to the initial inventory: Run_Units, Image_Renditions, Design_Assets, Issued_Document_Items, Issue_Operations, Review_Staging_Links, Promotion_Operations, Promotion_Mappings, and System_Config. The complete inventory in DATABASE_SCHEMA.md is the current authoritative list pending final approval.
