@@ -2,7 +2,7 @@
 
 **Status:** Proposed acceptance suite; not executable tests and not implementation authorization.
 **Purpose:** Convert the first-pass schema review into concrete expected behavior before the schema is frozen.
-**Dependency:** Tests involving multiple source catalogs depend on resolving SR-001 in SCHEMA_REVIEW.md.
+**Dependency:** The V2 canonical/source separation is now documented in the domain schema; these scenarios remain design-level until the consolidated schema is approved and executable tests are implemented.
 
 ## Test conventions
 - Each scenario uses synthetic data only.
