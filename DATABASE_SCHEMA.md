@@ -1,6 +1,6 @@
 # Database Schema — Detailed Review Package
 
-**Status:** Detailed schema proposal for user review; not approved for implementation.
+**Status:** V2 corrected schema proposal for user review; not approved for implementation.
 **Storage target:** Google Sheets for structured records; Google Drive for binary files and large immutable JSON artifacts.
 **Scope:** Initial single-primary-user industrial equipment catalog system.
 **Important:** This package does not create live Sheets, modify Drive content, migrate legacy records, or authorize application code.
@@ -14,7 +14,7 @@ The schema is split by domain so each part can be reviewed and revised independe
 | [01 — Source & Products](schema/01-source-and-products.md) | Catalog registry, source product/model identities, immutable specifications, company product data, families, typed attributes, specification change ledger |
 | [02 — Documents & Images](schema/02-documents-and-images.md) | Shared document versions and links, central image assets, approvals, duplicate review, effective image quality |
 | [03 — Design & Issued Output](schema/03-design-and-issued-output.md) | Brand identities/versions, papers, templates, watermarks, status defaults, contacts, export profiles, issued PDFs and snapshots |
-| [04 — Workflow & Audit](schema/04-workflow-and-audit.md) | Run logs, page tracking, typed staging sheets, review queue, audit trail, idempotent promotion |
+| [04 — Workflow & Audit](schema/04-workflow-and-audit.md) | Run lineage, typed staging, many-to-many review links, hash-bound approvals, audit and recovery |\n| [Schema V2 Change Proposal](SCHEMA_V2_PROPOSAL.md) | Normative correction proposal for canonical identities, deterministic specification reducer, immutable design dependencies, retry lineage, integrity and recovery |
 
 The files are a coordinated proposal and must be reviewed together. A table listed in an earlier inventory is not automatically an approved production schema.
 
@@ -79,7 +79,7 @@ The files are a coordinated proposal and must be reviewed together. A table list
 - `Brands`
 - `Brand_Versions`
 - `Brand_Assets`
-- `Papers`
+- `Papers`\n- `Paper_Versions`
 - `Templates`
 - `Template_Versions`
 - `Template_Identity_Links`
@@ -100,7 +100,7 @@ The files are a coordinated proposal and must be reviewed together. A table list
 - `Review_Queue`
 - `Audit_Log`
 
-The detailed domain documents define exact proposed columns, logical types, required/conditional status, primary keys, foreign keys, uniqueness, enums, and validation behavior.
+The detailed domain documents and SCHEMA_V2_PROPOSAL.md define proposed columns, logical types, keys, validation behavior, reducer semantics, and recovery contracts. Where older wording conflicts with the V2 proposal, the V2 proposal is the intended correction pending consolidation and approval.
 
 ## 4. Non-negotiable data rules
 
