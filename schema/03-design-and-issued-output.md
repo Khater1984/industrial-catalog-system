@@ -18,7 +18,7 @@ One immutable registry for binary assets used by brands, templates, papers, and 
 | Column | Type | Required | Rule |
 |---|---|---:|---|
 | Design_Asset_ID | ID | Yes | PK |
-| Asset_Type | ENUM | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, TEXTURE, WATERMARK, OTHER |
+| Asset_Type | ENUM | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, TEXTURE, WATERMARK, ICC_PROFILE, OTHER |
 | Asset_Name | TEXT(180) | Yes | Label |
 | Drive_File_ID | DRIVE_FILE_ID | Yes | Immutable binary |
 | MIME_Type | TEXT(100) | Yes | Validated |
@@ -222,7 +222,7 @@ Use vector icons, not emoji. Contact profile is selected and snapshotted per iss
 | Printer_Specification_Notes | TEXT(1500) | No | Required for PRINT_READY_PDF |
 | Printer_Spec_File_ID | DRIVE_FILE_ID | No | Immutable printer requirement document; required for PRINT_READY_PDF |
 | Printer_Spec_SHA256 | HEX64 | No | Required when Printer_Spec_File_ID is set |
-| Color_Profile_Design_Asset_ID | ID | No | FK → Design_Assets; required for CMYK_REQUIRED or PRINTER_DEFINED output |
+| Color_Profile_Design_Asset_ID | ID | No | FK → Design_Assets with Asset_Type=ICC_PROFILE; required for CMYK_REQUIRED or PRINTER_DEFINED output |
 | Trim_Box_JSON | JSON_TEXT(500) | No | Required for PRINT_READY_PDF when printer defines trim box |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Created_At | DATETIME_UTC | Yes | System generated |
