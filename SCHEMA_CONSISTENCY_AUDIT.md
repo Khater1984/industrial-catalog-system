@@ -14,7 +14,7 @@
 | Duplicate field names within a table | 0 | No duplicate parsed column names found. |
 | Local Markdown links | 31 / 31 | All checked relative links resolve to files in the repository. |
 | Malformed literal line-break escapes in reviewed docs | 0 | Previously malformed table line breaks were repaired. |
-| Acceptance scenarios | 40 | SAT-001 through SAT-044 are documented design-level tests, not executed software tests. |
+| Acceptance scenarios | 44 | SAT-001 through SAT-044 are documented design-level tests, not executed software tests. |
 | Enum registry | 78 fields | ENUM_REGISTRY.md indexes all 78 typed enum fields.
 
 ## 2. Confirmed structural coverage
