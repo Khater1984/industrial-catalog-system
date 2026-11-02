@@ -105,6 +105,8 @@ One row per product appearance in one registered Catalog revision. Multiple sour
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
+Unique: (Catalog_ID, Source_Record_Key). The same canonical Product may have many source records, including multiple occurrences in one Catalog when the Source_Record_Key differs.
+
 ### `Variant_Source_Records`
 One row per model appearance within a Product_Source_Record.
 
@@ -127,7 +129,7 @@ One row per model appearance within a Product_Source_Record.
 | Created_At | DATETIME_UTC | Yes | Immutable |
 | Created_By | ACTOR_ID | Yes | Actor |
 
-Variant.Product_ID must equal the Product_ID reached through Product_Source_Record_ID. Model-number collisions remain valid source evidence but cannot auto-merge identities.
+Unique: (Product_Source_Record_ID, Source_Record_Key). Variant.Product_ID must equal the Product_ID reached through Product_Source_Record_ID. Model-number collisions remain valid source evidence but cannot auto-merge identities.
 
 ### `Identity_Match_Decisions`
 Append-only human decision ledger. Rejected/deferred source candidates remain in staging and do not create production source records.
@@ -178,7 +180,7 @@ One row per extracted supplier specification assertion. Source values and source
 | Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 
-Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
+Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
 
 Catalogs remain one immutable registered source file/revision per Catalog_ID. A changed PDF/revision creates a new Catalog_ID and new Catalog_Pages; old source records and page evidence remain intact. A Catalog has many Product_Source_Records; each product source record may have many Variant_Source_Records.
 
