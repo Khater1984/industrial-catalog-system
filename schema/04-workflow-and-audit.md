@@ -111,19 +111,70 @@ The following columns appear in each staging sheet:
 | Updated_At | DATETIME_UTC | Yes | System generated |
 
 ### `Staging_Products`
-Additional fields: Proposed_Product_Name_EN TEXT(300), Proposed_Product_Reference TEXT(120), Candidate_Product_ID ID nullable (suggestion only), Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4), Source_Record_Key TEXT(160) required for deterministic source occurrence identity.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Proposed_Product_Name_EN | TEXT(300) | Yes | Exact extracted supplier name |
+| Proposed_Product_Reference | TEXT(120) | No | Exact supplier reference |
+| Candidate_Product_ID | ID | No | Suggested canonical candidate only |
+| Identity_Match_Method | TEXT(80) | No | Method/version used to suggest candidate |
+| Match_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic occurrence key within Catalog_ID |
 
 ### `Staging_Variants`
-Additional fields: Parent_Staging_Product_ID ID required (FK → Staging_Products), Proposed_Model_Number TEXT(160), Proposed_Model_Name TEXT(250), Candidate_Variant_ID ID nullable (suggestion only), Identity_Match_Method TEXT(80), Match_Confidence DECIMAL(5,4), Source_Record_Key TEXT(160) required within the parent product source occurrence.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Proposed_Model_Number | TEXT(160) | Yes | Exact supplier model number |
+| Proposed_Model_Name | TEXT(250) | No | Exact supplier model name |
+| Candidate_Variant_ID | ID | No | Suggested canonical candidate only |
+| Identity_Match_Method | TEXT(80) | No | Method/version used to suggest candidate |
+| Match_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
 
 ### `Staging_Specifications`
-Additional fields: Parent_Staging_Product_ID ID required, Parent_Staging_Variant_ID ID nullable, Source_Assertion_Key TEXT(160) required, Scope ENUM (PRODUCT, VARIANT), Attribute_Key_Raw TEXT(160), Value_Raw TEXT(2000), Unit_Raw TEXT(80), Normalized_Key TEXT(160), Normalized_Value_JSON JSON_TEXT(1000), Normalized_Unit TEXT(80), Parse_Status ENUM (UNPARSED, PARSED, AMBIGUOUS, INVALID). Scope=VARIANT requires Parent_Staging_Variant_ID; Scope=PRODUCT forbids it.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Parent_Staging_Variant_ID | ID | No | FK → Staging_Variants; required iff Scope=VARIANT |
+| Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator |
+| Scope | ENUM | Yes | PRODUCT, VARIANT |
+| Attribute_Key_Raw | TEXT(160) | Yes | Exact source label |
+| Value_Raw | TEXT(2000) | Yes | Exact source value |
+| Unit_Raw | TEXT(80) | No | Exact source unit |
+| Normalized_Key | TEXT(160) | No | Search/mapping only |
+| Normalized_Value_JSON | JSON_TEXT(1000) | No | Parsed typed value; raw value retained |
+| Normalized_Unit | TEXT(80) | No | Normalized unit |
+| Parse_Status | ENUM | Yes | UNPARSED, PARSED, AMBIGUOUS, INVALID |
+
+Scope=VARIANT requires Parent_Staging_Variant_ID and the variant must belong to Parent_Staging_Product_ID. Scope=PRODUCT forbids Parent_Staging_Variant_ID.
 
 ### `Staging_Images`
-Additional fields: Proposed_Image_File_ID DRIVE_FILE_ID required, Original_File_Name TEXT(255), MIME_Type TEXT(100), Width_PX INTEGER, Height_PX INTEGER, SHA256 HEX64, PHash TEXT(64), Candidate_Product_ID ID nullable, Candidate_Variant_ID ID nullable, Image_Role TEXT(80), Quality_Status ENUM (UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, NEEDS_REVIEW).
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Proposed_Image_File_ID | DRIVE_FILE_ID | Yes | Staged original upload/extracted image |
+| Original_File_Name | TEXT(255) | Yes | Source filename |
+| MIME_Type | TEXT(100) | Yes | Validated |
+| Width_PX | INTEGER | No | > 0 when decoded |
+| Height_PX | INTEGER | No | > 0 when decoded |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| SHA256 | HEX64 | Yes | Exact file hash |
+| PHash | TEXT(64) | No | Candidate similarity only |
+| Candidate_Product_ID | ID | No | Suggestion only |
+| Candidate_Variant_ID | ID | No | Suggestion only |
+| Image_Role | TEXT(80) | No | Proposed role |
+| Quality_Status | ENUM | Yes | UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, NEEDS_REVIEW |
 
 ### `Staging_Documents`
-Additional fields: Proposed_Document_File_ID DRIVE_FILE_ID required, Title TEXT(250), Document_Type ENUM, Language_Code TEXT(10), SHA256 HEX64, Candidate_Product_ID ID nullable, Candidate_Variant_ID ID nullable.
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Proposed_Document_File_ID | DRIVE_FILE_ID | Yes | Immutable staged source file |
+| Title | TEXT(250) | Yes | Proposed display title |
+| Document_Type | ENUM | Yes | USER_MANUAL, BROCHURE, CERTIFICATE, WARRANTY, OTHER |
+| Language_Code | TEXT(10) | No | BCP-47 |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| SHA256 | HEX64 | Yes | Exact file hash |
+| Candidate_Product_ID | ID | No | Suggestion only |
+| Candidate_Variant_ID | ID | No | Suggestion only |
 
 Do not create a separate staging sheet for every catalog or product. Staging sheets are shared across runs.
 
