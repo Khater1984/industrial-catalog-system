@@ -97,6 +97,7 @@ The files are a coordinated proposal and must be reviewed together. A table list
 - `Export_Profiles`
 - `Issued_Documents`
 - `Issued_Document_Items`
+- `Issue_Operations`
 
 ### E. Workflow, review, configuration, and audit
 - `Run_Log`
@@ -125,7 +126,9 @@ The detailed domain documents and SCHEMA_V2_PROPOSAL.md define proposed columns,
 - Legacy records enter isolated staging/import review and are promoted only after explicit approval. No direct legacy-to-production import.
 
 ### Specifications
-- `Products` and `Variants` are canonical internal identities, never supplier appearances.\n- `Product_Source_Records` and `Variant_Source_Records` preserve every approved supplier/catalog appearance. Rejected/deferred source candidates remain in staging.\n- `Specifications` is immutable source evidence tied to exactly one source record.
+- `Products` and `Variants` are canonical internal identities, never supplier appearances.
+- `Product_Source_Records` and `Variant_Source_Records` preserve every approved supplier/catalog appearance. Rejected/deferred source candidates remain in staging.
+- `Specifications` is immutable source evidence tied to exactly one source record.
 - `Specification_Changes` stores UPDATE / ADD / DELETE operations.
 - Only approved operations affect Effective Specifications.
 - DELETE suppresses output; it never deletes source data.
