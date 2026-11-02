@@ -330,3 +330,14 @@ A schema candidate passes this suite only when:
 **Given:** a brochure is extracted from page 12 of Catalog C and promoted as Document D, Version V1.
 **When:** the source catalog is superseded by a later revision or the document is manually linked to another product.
 **Expected:** V1 retains its original Catalog_ID, Catalog_Page_ID, source record IDs, extraction run/staging IDs, exact source quote, and SHA256. New document versions have separate provenance; no version silently inherits or overwrites another version's source evidence.
+
+
+### SAT-046 — Print-ready profile requires printer evidence
+**Given:** an Export_Profile is configured as PRINT_READY_PDF but has no immutable printer specification file/hash or required trim/bleed/color-profile details.
+**When:** the profile is published or selected for issue.
+**Expected:** profile publication/issue is blocked; the output may be labeled PRINT_ORIENTED_PDF only if its lower requirements are satisfied. No print-ready claim is shown.
+
+### SAT-047 — Renderer cannot claim unsupported CMYK/PDF-X conformance
+**Given:** the configured rendering pipeline is Chromium-only and the selected profile requires CMYK or PDF/X.
+**When:** preflight runs.
+**Expected:** preflight blocks PRINT_READY_PDF; the system does not infer conformance from a high DPI setting or a PDF file extension. A validated prepress conversion/verification pipeline and pinned ICC/printer specifications are required.
