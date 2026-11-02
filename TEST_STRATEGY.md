@@ -79,7 +79,8 @@ Never use real confidential supplier catalogs in the public repository. Private 
 - SAT-001–SAT-015: first-pass source, product, document, image, and issue scenarios.
 - SAT-016–SAT-028: V2 identity, reducer, retry, review, and integrity scenarios.
 - SAT-029–SAT-040: run checkpoint, image rendition, multi-item issue, and transaction recovery scenarios.
-- SAT-041–SAT-045: canonical merge scope, typed promotion mappings, PDF reproduction, duplicate event callbacks, and document source provenance.: canonical merge scope, typed promotion mappings, PDF reproduction, and duplicate event callbacks.
+- SAT-041–SAT-045: canonical merge scope, typed promotion mappings, PDF reproduction, duplicate event callbacks, and document source provenance.
+- SAT-046–SAT-047: print-ready profile evidence and renderer/color-management conformance.: canonical merge scope, typed promotion mappings, PDF reproduction, and duplicate event callbacks.
 
 Every test result records test ID, build/version, environment, fixture hash, expected result, actual result, pass/fail, defect link, and reviewer.
 
