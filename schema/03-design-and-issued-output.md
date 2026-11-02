@@ -76,7 +76,6 @@ All render-affecting paper settings belong to immutable `Paper_Versions`, not th
 |---|---|---:|---|
 | Paper_Version_ID | ID | Yes | PK |
 | Paper_ID | ID | Yes | FK → Papers; logical identity for navigation |
-| Paper_Version_ID | ID | Yes | FK → Paper_Versions; exact immutable settings used |
 | Version_Number | INTEGER | Yes | Monotonic per Paper_ID |
 | Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
 | Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON configuration |
@@ -223,12 +222,15 @@ One immutable issue record per generated PDF output.
 | Product_ID | ID | No | FK → Products; null for multi-product outputs |
 | Variant_ID | ID | No | FK → Variants; if set must belong to Product_ID |
 | Scope_Snapshot_JSON_File_ID | DRIVE_FILE_ID | Yes | Immutable snapshot of selected product/variant scope |
+| Issue_Manifest_File_ID | DRIVE_FILE_ID | Yes | Immutable manifest of every render dependency and checksum |
+| Issue_Manifest_SHA256 | HEX64 | Yes | Exact dependency manifest fingerprint |
 | Brand_ID | ID | Yes | FK → Brands |
 | Brand_Version_ID | ID | Yes | FK → Brand_Versions; must belong to Brand_ID |
 | Template_ID | ID | Yes | FK → Templates |
 | Template_Version_ID | ID | Yes | FK → Template_Versions; must belong to Template_ID |
-| Paper_ID | ID | Yes | FK → Papers |
-| Watermark_ID | ID | No | FK → Watermark_Presets |
+| Paper_ID | ID | Yes | FK → Papers; must match Paper_Version_ID |
+| Paper_Version_ID | ID | Yes | FK → Paper_Versions; exact immutable settings used |
+| Watermark_ID | ID | No | FK → Watermark_Presets; resolved config and asset hashes pinned in snapshot |
 | Document_Status | ENUM | Yes | ORIGINAL, PRELIMINARY, CONFIDENTIAL, REVISED, FINAL |
 | Contact_Profile_ID | ID | No | FK → Contact_Profiles |
 | Export_Profile_ID | ID | Yes | FK → Export_Profiles |
@@ -266,13 +268,13 @@ Output terminology:
 - Print-ready PDF: only after the actual printer's specifications (color space, PDF/X, bleed, trim, fonts, resolution, etc.) have been met and validated.
 
 
-## 9. V2 immutable dependency and paper versioning contract
+## 10. V2 immutable dependency and paper versioning contract
 
-### 9.1 Immutable assets
+### 10.1 Immutable assets
 
 Brand_Assets and every font/logo/graphic/watermark/background asset are immutable binary records. Drive_File_ID, SHA256, MIME type, byte size, and role cannot be changed after creation or once referenced by a published version. Replacement creates a new asset record. Published Brand_Versions and Template_Versions must pin exact asset IDs and SHA256 values in their immutable configuration/manifest; mutable aliases such as "current logo" are forbidden. Verify every pinned checksum before rendering.
 
-### 9.2 Explicit Paper_Versions
+### 10.2 Explicit Paper_Versions
 
 Use Papers as a logical identity only (Paper_ID, Paper_Name, Lifecycle_Status, Created_At, Created_By). Move all render-affecting settings into immutable Paper_Versions records:
 
@@ -293,6 +295,24 @@ Use Papers as a logical identity only (Paper_ID, Paper_Name, Lifecycle_Status, C
 
 Unique (Paper_ID, Version_Number). Dimensions, orientation, background, texture, scaling, opacity, and positioning changes require a new Paper_Version_ID. Published versions cannot be edited.
 
-### 9.3 Issued output dependency manifest
+### 10.3 Issued output dependency manifest
 
 Issued_Documents must pin Paper_Version_ID (not only Paper_ID) and retain SHA256 values for the paper config, brand/template configs, all referenced fonts/images/logos/watermarks, issue data snapshot, preflight report, renderer/worker version manifest, and final PDF. A Drive file ID is a locator, not proof of content integrity. Historical reproduction reads the exact pinned artifacts only; it must not resolve mutable "current" settings.
+
+### `Issued_Document_Items`
+
+One row per product/variant item included in a multi-item issue. This provides queryable membership while the immutable issue snapshot remains the complete rendering source.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Issued_Document_Item_ID | ID | Yes | PK |
+| Issued_Document_ID | ID | Yes | FK → Issued_Documents |
+| Item_Order | INTEGER | Yes | 1-based stable display order |
+| Product_ID | ID | Yes | FK → Products |
+| Variant_ID | ID | No | FK → Variants; if set must belong to Product_ID |
+| Item_Snapshot_Key | TEXT(160) | Yes | Key into immutable issue scope snapshot |
+| Created_At | DATETIME_UTC | Yes | Issue transaction timestamp |
+
+Unique (Issued_Document_ID, Item_Order) and (Issued_Document_ID, Item_Snapshot_Key). For single-product/variant output, one row is still created. A master catalog uses many rows. Membership rows are immutable after issue.
+
+**Issue transaction rule:** write the issue header, item rows, immutable snapshot, dependency manifest, and PDF metadata as one logical operation. If Sheets writes are partially successful, mark the issue operation IN_DOUBT and reconcile by deterministic IDs/hashes before exposing the issue as ISSUED. A partially written issue is not downloadable as final output.
