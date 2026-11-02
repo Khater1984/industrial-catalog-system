@@ -172,7 +172,7 @@ One row per Product_ID; company-owned fields only.
 | Product_ID | ID | Yes | PK and FK → Products |
 | Product_Name_AR | TEXT(300) | No | Company translation; editable |
 | Company_Description | TEXT(4000) | No | Company-authored |
-| Brand_Label | TEXT(160) | No | Display label; use controlled entity only if brand registry is later approved |
+| Manufacturer_or_Product_Brand_Label | TEXT(160) | No | Product/manufacturer brand label; unrelated to document-design Brands |
 | Product_Family_ID | ID | No | FK → Product_Families |
 | Company_Notes | TEXT(4000) | No | Internal note |
 | Updated_At | DATETIME_UTC | Yes | System generated |
@@ -287,7 +287,7 @@ Approval must re-read the latest sequence and validate the transition while hold
 
 ## 9. Domain integrity checks
 1. Every Variant.Product_ID exists.
-2. Every source-derived record references a Catalog_ID and retains page/section provenance when available.
+2. Every source assertion references the exact Product_Source_Record_ID or Variant_Source_Record_ID and retains Catalog/Page/Section/Quote provenance when available.
 3. Every Variant_Company row references an existing Variant.
 4. Product_Company.Product_Family_ID, when set, references an active family or an explicitly allowed archived family.
 5. Product/variant attributes conform to Attribute_Definitions scope and type.
