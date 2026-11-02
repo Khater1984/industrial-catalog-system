@@ -64,7 +64,8 @@ The worker submits structured results and manifests to the Apps Script boundary.
 - Use opaque prefixed UUID/ULID identifiers generated server-side.
 - IDs are immutable, never recycled, and never derived from sheet row numbers or display names.
 - A staging ID is globally unique across typed staging sheets.
-- Source occurrence keys are deterministic within a catalog/source record; canonical IDs are independent.
+- Source occurrence keys are deterministic within a catalog/source record; canonical IDs are independent. Product keys use catalog file SHA + physical page + stable region locator + exact source product label/reference + occurrence ordinal. Variant keys add parent product-source key + exact source model label/number. Specification keys add parent source-record key + scope + exact raw label/value/unit + region locator + occurrence ordinal. The key algorithm version and extractor build are retained in run/staging metadata.
+- Reprocessing with the same source bytes and same key algorithm must reproduce the same occurrence keys. A new parser/key algorithm that changes segmentation creates review candidates; it must not silently create duplicate promoted source records.
 - Idempotency keys are unique per request/attempt. Logical_Job_ID groups retry attempts.
 - Every multi-sheet operation has a deterministic operation key and immutable intended-output manifest.
 
