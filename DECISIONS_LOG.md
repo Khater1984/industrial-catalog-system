@@ -24,7 +24,7 @@ This file records decisions and their status. A proposal is not an approved deci
 - ADR-016: Apps Script-to-worker authentication and job protocol.
 - ADR-017: OCR/extraction stack and optional AI provider after benchmark.
 - ADR-018: Document version pinning precedence in all edge cases.
-- ADR-019: Exact table columns, constraints, and validation rules.
+- ADR-019: Final acceptance of the consolidated V2.1 schema and 40-scenario acceptance suite (detailed candidate is documented; explicit approval remains pending).
 - ADR-020: PDF renderer, font embedding strategy, and external print workflow.
 - ADR-021: Backup, restore, retention, and disaster recovery.
 
@@ -65,3 +65,8 @@ No live resources or application code were created by these proposals. The ADRs 
 | ADR-034 | Add canonical Product_Name_EN and Model_Name_EN company labels | Proposed | Separate internal display labels from exact supplier wording. |
 
 These proposals are documented in the domain schema and technical design files. They remain Proposed until the consolidated schema, API/security contracts, acceptance suite, and operational gates are explicitly approved.
+
+
+| ADR-035 | Exclude canonical Product/Variant merge and reparent workflows from the initial release | Proposed | Avoid exposing MERGED states without a fully tested child-mapping, rollback, and historical-reference protocol. |
+| ADR-036 | Separate immutable Catalog_Pages from per-run Run_Units checkpoints and worker leases | Proposed | Preserve page identity and extraction artifacts across retries and parser versions. |
+| ADR-037 | Separate issue-request idempotency key from content input fingerprint | Proposed | Allow an intentional new issue of identical content while making retries of one request idempotent. |
