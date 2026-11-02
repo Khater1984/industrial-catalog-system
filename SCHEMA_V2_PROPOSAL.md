@@ -394,3 +394,8 @@ Add to the initial inventory: Run_Units, Image_Renditions, Design_Assets, Issued
 ### 8.9 Canonical merge scope
 
 Canonical Product/Variant merge and reparent workflows are deliberately excluded from the initial release. The schema therefore uses only ACTIVE and ARCHIVED lifecycle states and does not expose MERGED pointers without a complete merge ledger. Suspected duplicates are review candidates; they may be archived after review, but the system must not silently move source records, variants, attributes, documents, images, or historical issue membership between canonical IDs. A future merge capability requires a separate ADR, impact manifest, child-variant mapping rules, rollback plan, and migration tests.
+
+
+### 8.10 Document-version provenance
+
+Each Document_Versions row preserves the provenance of that exact binary revision. CATALOG_EMBEDDED versions require catalog, page, extraction run, and staging-document references. MANUAL_UPLOAD versions record the authenticated uploader and do not invent catalog provenance. EXTERNAL_LINK versions retain the source URL and retrieval/verification notes while storing and hashing the downloaded bytes. Product/variant source-record links, when present, must resolve to the same catalog/page context. A later document version never overwrites the provenance of an earlier version.
