@@ -215,7 +215,7 @@ The user approved continuing the correction work. The proposed resolutions have 
 3. Define measured catalog-volume limits, backup cadence, RPO/RTO, worker hosting, and authentication protocol.
 4. Obtain explicit approval of the consolidated schema and acceptance suite.
 
-No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 28 acceptance scenarios are design-level tests, not yet executable tests.
+No Sheets, Drive folders, application code, worker code, or legacy migration were created. The 40 acceptance scenarios are design-level tests, not yet executable tests.
 
 ## V2.1 engineering pass — 2026-11-03
 
@@ -236,7 +236,7 @@ A second pass extended the corrections beyond the original SR findings. The foll
 
 ### Remaining release blockers
 
-1. **Cross-document schema audit:** verify all 51 table headings, column names, FKs, ownership rules, enums, and inventory references. Some tables are defined in the domain documents while shared tables (for example Run_Log) are referenced across domains.
+1. **Cross-document schema audit:** verify all 52 unique table definitions, column names, FKs, ownership rules, enums, and inventory references. Some tables are defined in the domain documents while shared tables (for example Run_Log) are referenced across domains.
 2. **Operational sizing:** no representative private catalog benchmark has been run. Sheets row limits, quotas, latency, concurrency, and migration thresholds remain unmeasured.
 3. **Worker integration:** hosting, job queue/lease behavior, Drive access, and signed callback protocol remain open.
 4. **PDF toolchain:** renderer, OCR stack, font licensing/embedding, and printer-specific requirements remain open.
@@ -245,4 +245,4 @@ A second pass extended the corrections beyond the original SR findings. The foll
 
 ### Current assessment
 
-The major schema design gaps identified in SR-001–SR-014 have documented resolutions. This does **not** mean the schema is approved or operationally proven. The next gate is a mechanical cross-document audit and final review of API, worker, security, and operations contracts. No production Sheets, Drive changes, application code, worker deployment, or legacy migration has been performed.
+The major schema design gaps identified in SR-001–SR-014 have documented resolutions. This does **not** mean the schema is approved or operationally proven. The next gate is a mechanical cross-document audit of all 52 unique tables and final review of API, worker, security, and operations contracts. No production Sheets, Drive changes, application code, worker deployment, or legacy migration has been performed.
