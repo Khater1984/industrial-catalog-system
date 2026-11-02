@@ -240,7 +240,7 @@ A second pass extended the corrections beyond the original SR findings. The foll
 
 See [SCHEMA_CONSISTENCY_AUDIT.md](SCHEMA_CONSISTENCY_AUDIT.md) for the completed static documentation audit (52 unique tables, 87 FK target references, no duplicate fields, and 29 local links).
 
-1. **Cross-document schema audit:** verify all 52 unique table definitions, column names, FKs, ownership rules, enums, and inventory references. Some tables are defined in the domain documents while shared tables (for example Run_Log) are referenced across domains.
+1. **Cross-document schema audit:** static structure is complete (52/52 tables, 87/87 FK target names, no duplicate fields, inventory parity, 29/29 local links). Remaining work is semantic validation of ownership constraints, enum/state transitions, and approval/recovery behavior against executable tests.
 2. **Operational sizing:** no representative private catalog benchmark has been run. Sheets row limits, quotas, latency, concurrency, and migration thresholds remain unmeasured.
 3. **Worker integration:** hosting, job queue/lease behavior, Drive access, and signed callback protocol remain open.
 4. **PDF toolchain:** renderer, OCR stack, font licensing/embedding, and printer-specific requirements remain open.
@@ -249,4 +249,4 @@ See [SCHEMA_CONSISTENCY_AUDIT.md](SCHEMA_CONSISTENCY_AUDIT.md) for the completed
 
 ### Current assessment
 
-The major schema design gaps identified in SR-001–SR-014 have documented resolutions. This does **not** mean the schema is approved or operationally proven. The next gate is a mechanical cross-document audit of all 52 unique tables and final review of API, worker, security, and operations contracts. No production Sheets, Drive changes, application code, worker deployment, or legacy migration has been performed.
+The major schema design gaps identified in SR-001–SR-014 have documented resolutions. This does **not** mean the schema is approved or operationally proven. The next gate is final semantic review of the schema plus API, worker, security, and operations contracts, followed by private benchmark design and explicit schema approval. No production Sheets, Drive changes, application code, worker deployment, or legacy migration has been performed.
