@@ -1,6 +1,6 @@
 # Database Schema — Detailed Review Package
 
-**Status:** V2 corrected schema proposal for user review; not approved for implementation.
+**Status:** V2.1 consolidated schema candidate for review; not approved for implementation. See [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md).
 **Storage target:** Google Sheets for structured records; Google Drive for binary files and large immutable JSON artifacts.
 **Scope:** Initial single-primary-user industrial equipment catalog system.
 **Important:** This package does not create live Sheets, modify Drive content, migrate legacy records, or authorize application code.
