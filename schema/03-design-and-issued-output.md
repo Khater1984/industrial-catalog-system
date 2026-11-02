@@ -348,6 +348,7 @@ One row per logical PDF issue request. Only completed operations create final Is
 | Issue_Key | TEXT(180) | Yes | Unique idempotency key for one explicit user issue request; retries reuse it |
 | Input_Fingerprint_SHA256 | HEX64 | Yes | Hash of exact scope, resolved data, design versions, and output options; separate from request idempotency |
 | Run_ID | ID | Yes | FK → Run_Log |
+| Source_Issued_Document_ID | ID | No | FK → Issued_Documents; required for PDF_REPRODUCTION operations only |
 | Operation_Status | ENUM | Yes | PREPARED, PREFLIGHT, RENDERING, VALIDATING, IN_DOUBT, COMPLETED, FAILED, CANCELLED |
 | Intended_Issued_Document_ID | ID | Yes | Stable ID reserved for final issue |
 | Scope_Manifest_File_ID | DRIVE_FILE_ID | Yes | Immutable ordered product/variant scope |
