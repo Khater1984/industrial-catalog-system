@@ -56,10 +56,11 @@ Durable state belongs in Run_Log, Run_Units, Run_Events, Drive manifests, and op
 4. Build HTML/CSS using a versioned template renderer.
 5. Load exact fonts and approved image renditions.
 6. Render pages with explicit dimensions, margins, bleed/safe-area rules, and output profile.
-7. Run preflight: missing assets, font fallback, clipping, overflow, image DPI after crop, invalid links, and metadata.
-8. Inspect PDF structure and embedded image properties where supported.
-9. Compute final SHA256 and submit immutable result manifest.
-10. Never overwrite an issued PDF; reproduction is a separate job/output.
+7. Run preflight: missing assets, font fallback, clipping, overflow, image DPI after crop, invalid links, metadata, trim/bleed/safe areas, and printer profile requirements.
+8. For PRINT_READY_PDF only, execute the approved color-management/prepress conversion and PDF conformance validator against the pinned printer specification and ICC asset. If the pipeline cannot prove conformance, reject the PRINT_READY_PDF class with a blocking error; do not silently downgrade the label.
+9. Inspect PDF structure and embedded image properties where supported.
+10. Compute final SHA256 and submit immutable result manifest.
+11. Never overwrite an issued PDF; reproduction is a separate job/output.
 
 ## 4. Reproducibility levels
 
