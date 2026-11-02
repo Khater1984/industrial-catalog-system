@@ -74,7 +74,7 @@ One row per canonical model/configuration, with exactly one parent Product.
 |---|---|---:|---|
 | Variant_ID | ID | Yes | PK |
 | Product_ID | ID | Yes | FK → Products; immutable ownership |
-| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED, MERGED |
+| Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Canonical_Notes | TEXT(2000) | No | Internal notes |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Created_By | ACTOR_ID | Yes | Actor |
