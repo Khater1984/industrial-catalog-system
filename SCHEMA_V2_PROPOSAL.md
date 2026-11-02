@@ -145,7 +145,7 @@ Exactly one source-record FK is populated according to Scope. Unique (Product_So
 
 ### 1.8 Catalog revisions and pages
 
-Keep `Catalogs` as one immutable registered file/revision per exact source PDF. Distinct revisions are distinct Catalog_ID values even when title and supplier match. `Catalog_Pages` remains unique on (Catalog_ID, Page_Number); page artifacts and page labels are immutable evidence. A corrected/replaced PDF creates a new Catalog record and new pages; it never mutates the old file or page evidence. A catalog may have many Product_Source_Records; each product source record may have many Variant_Source_Records.
+Keep `Catalogs` as one immutable registered file/revision per exact source PDF. Distinct revisions are distinct Catalog_ID values even when title and supplier match. `Catalog_Pages` remains a stable page index unique on (Catalog_ID, Page_Number); it stores page identity/labels only. Rendered page images, extracted text, OCR outputs, and processing status are immutable per-run artifacts tracked in Run_Units. A corrected/replaced PDF creates a new Catalog record and new pages; it never mutates the old file or page evidence. A catalog may have many Product_Source_Records; each product source record may have many Variant_Source_Records.
 
 ## 2. Deterministic specification operation ledger (SR-002)
 
