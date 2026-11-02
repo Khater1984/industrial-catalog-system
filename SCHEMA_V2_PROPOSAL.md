@@ -124,7 +124,7 @@ Replace the old Catalog_ID-only provenance with exact source-record ownership.
 | Attribute_Value_Source | TEXT(2000) | Yes | Exact source value |
 | Unit_Source | TEXT(80) | No | Exact source unit |
 | Normalized_Key | TEXT(160) | No | Search/mapping only |
-| Normalized_Value | DECIMAL_OR_TEXT | No | Optional parsed value; raw source retained |
+| Normalized_Value_JSON | JSON_TEXT(1000) | No | Typed parsed value; raw source retained |
 | Normalized_Unit | TEXT(80) | No | Optional |
 | Source_Page_Number | INTEGER | No | 1-based |
 | Source_Section | TEXT(200) | No | |
