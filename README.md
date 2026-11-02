@@ -31,6 +31,7 @@ These are approved technology directions, not evidence that runtime resources ha
 4. [Schema V2 Proposal](SCHEMA_V2_PROPOSAL.md) — corrective design decisions and integrity contracts.
 5. [Schema Review](SCHEMA_REVIEW.md) — engineering findings and disposition.
 6. [Schema Acceptance Tests](SCHEMA_ACCEPTANCE_TESTS.md) — design-level scenarios and expected outcomes.
+7. [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md) — static table/FK/link audit and remaining gates.
 7. [Technical Design](TECHNICAL_DESIGN.md) — system contracts, state machines, and data flows.
 8. [API Contracts](API_CONTRACTS.md) — application/worker interface proposals.
 9. [Worker Specification](WORKER_SPEC.md) — extraction and PDF-generation requirements.
