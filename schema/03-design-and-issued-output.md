@@ -352,4 +352,6 @@ One row per logical PDF issue request. Only completed operations create final Is
 | Error_Code | TEXT(80) | No | |
 | Recovery_Notes | TEXT(1500) | No | |
 
+For PDF_REPRODUCTION, Source_Issued_Document_ID must reference an already completed original issue, never the Intended_Issued_Document_ID reserved by this operation. The final Issued_Documents row references the completed Issue_Operation_ID; this is a historical-source link, not a same-operation circular dependency.
+
 An issue operation may be retried only with the same Issue_Key and identical Input_Fingerprint_SHA256, scope, and dependency hashes. A new explicit user issue request receives a new Issue_Key even if its inputs are identical; changed render inputs always require a new Issue_Key. A final issue is exposed only after PDF validation, dependency hash verification, and all final issue/item rows reconcile. A failed/partial issue is never exposed as a completed PDF.
