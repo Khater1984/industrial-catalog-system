@@ -1,6 +1,6 @@
 # Project Rules — Industrial Catalog System
 
-**Status:** Active engineering baseline; implementation remains gated by final schema and operational approval.
+**Status:** Active engineering baseline; Schema V2.1 approved on 2026-11-03 for the first isolated DEV implementation slice. Operational gates remain in force.
 **Project:** Industrial Equipment Catalog System
 **Repository:** `Khater1984/industrial-catalog-system`
 
@@ -96,4 +96,4 @@ Any change to an approved architectural decision must:
 5. Receive explicit user approval before implementation.
 
 ## 13. Current stage
-The project is in deep architecture/schema consolidation and technical design. README, domain schemas, V2.1 correction proposal, API contracts, worker specification, UI/UX specification, test strategy, security/operations plan, and implementation blueprint are design artifacts only. No application code, live Sheets, production Drive changes, worker deployment, or legacy-data migration is authorized until the consolidated schema, acceptance suite, integration/security protocol, and operational gates are explicitly approved.
+Schema V2.1 and the current table inventory were explicitly approved on 2026-11-03 for a bounded DEV implementation slice. Initial Apps Script source scaffolding is now in the repository; it is not deployed or runtime-tested. Live DEV resource provisioning, worker authentication/hosting, Drive access design, capacity benchmarks, backup/restore policy, production Drive changes, and legacy-data migration remain gated by their separate decisions and tests.
