@@ -150,7 +150,7 @@ Append-only human decision ledger. Rejected/deferred source candidates remain in
 | Rationale | TEXT(1000) | Yes | Human explanation |
 | Decided_At | DATETIME_UTC | Yes | |
 | Decided_By | ACTOR_ID | Yes | |
-| Supersedes_Decision_ID | ID | No | FK → prior decision; append-only correction |
+| Supersedes_Decision_ID | ID | No | FK → Identity_Match_Decisions; append-only correction |
 
 A VARIANT decision must reference an approved parent PRODUCT decision; the candidate/result Variant must belong to that resolved Product_ID. MATCH_EXISTING must resolve to an active canonical entity. CREATE_NEW creates one new canonical entity and then the source record. REJECT_SOURCE and DEFER create no production entity/source record. A superseding decision does not silently rewrite historical decisions or issued snapshots; post-promotion correction requires a separate audited reconciliation. The decision is bound to the exact reviewed staging hash. Correct a decision by appending a superseding decision, never editing history.
 
