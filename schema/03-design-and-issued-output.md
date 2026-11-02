@@ -10,7 +10,27 @@
 - A document issued in the past must not change when a brand, template, product, paper, or export profile changes.
 - Avoid a mutable `Is_Current` flag where a single pointer can be authoritative.
 
-## 2. Brand identity
+## 2. Shared immutable design asset registry
+
+### `Design_Assets`
+One immutable registry for binary assets used by brands, templates, papers, and watermarks. It is separate from product photography in Image_Assets.
+
+| Column | Type | Required | Rule |
+|---|---|---:|---|
+| Design_Asset_ID | ID | Yes | PK |
+| Asset_Type | ENUM | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, TEXTURE, WATERMARK, OTHER |
+| Asset_Name | TEXT(180) | Yes | Label |
+| Drive_File_ID | DRIVE_FILE_ID | Yes | Immutable binary |
+| MIME_Type | TEXT(100) | Yes | Validated |
+| File_Size_Bytes | INTEGER | Yes | >= 0 |
+| SHA256 | HEX64 | Yes | Exact bytes |
+| License_Notes | TEXT(1000) | No | License and embedding rights |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor |
+
+Unique exact-content key: (SHA256, MIME_Type). Do not replace bytes behind a Design_Asset_ID; create a new ID.
+
+## 3. Brand identity
 
 ### `Brands`
 | Column | Type | Required | Key / rule |
@@ -45,16 +65,13 @@ Unique: (Brand_ID, Version_Number). A published config file is immutable. Brand_
 |---|---|---:|---|
 | Brand_Asset_ID | ID | Yes | PK |
 | Brand_ID | ID | Yes | FK → Brands |
-| Asset_Type | ENUM | Yes | LOGO, FONT, GRAPHIC, ICON, BACKGROUND, OTHER |
-| Asset_Name | TEXT(180) | Yes | Company label |
-| Drive_File_ID | DRIVE_FILE_ID | Yes | Binary asset |
-| MIME_Type | TEXT(100) | Yes | Validated |
-| SHA256 | HEX64 | Yes | Exact file fingerprint |
-| License_Notes | TEXT(1000) | No | Font/asset licensing notes |
+| Design_Asset_ID | ID | Yes | FK → Design_Assets |
+| Usage_Role | ENUM | Yes | PRIMARY_LOGO, SECONDARY_LOGO, FONT, GRAPHIC, ICON, BACKGROUND, OTHER |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
-| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_At | DATETIME_UTC | Yes | Immutable |
+| Created_By | ACTOR_ID | Yes | Actor |
 
-Brand assets may be referenced by one or more brand versions. The version's immutable config records the exact Brand_Asset_ID and file checksum used.
+Unique (Brand_ID, Design_Asset_ID, Usage_Role). Brand_Versions config pins exact Brand_Asset_ID, Design_Asset_ID, and SHA256 values.
 
 ## 3. Paper and backgrounds
 
@@ -80,7 +97,7 @@ All render-affecting paper settings belong to immutable `Paper_Versions`, not th
 | Version_Status | ENUM | Yes | DRAFT, PUBLISHED, RETIRED |
 | Paper_Config_File_ID | DRIVE_FILE_ID | Yes | Immutable JSON configuration |
 | Config_SHA256 | HEX64 | Yes | Hash of exact config |
-| Texture_Asset_ID | ID | Conditional | Immutable asset; required for texture |
+| Texture_Asset_ID | ID | Conditional | FK → Design_Assets; immutable asset, required for texture |
 | Texture_SHA256 | HEX64 | Conditional | Must match asset checksum |
 | Published_At | DATETIME_UTC | No | Required when published/retired |
 | Published_By | ACTOR_ID | No | Required when published/retired |
@@ -141,7 +158,7 @@ Unique: (Template_ID, Brand_ID). At most one active default identity per templat
 | Watermark_Name | TEXT(120) | Yes | Preset label |
 | Watermark_Type | ENUM | Yes | TEXT, LOGO, IMAGE |
 | Text_Content | TEXT(250) | Conditional | Required for TEXT |
-| Asset_File_ID | DRIVE_FILE_ID | Conditional | Required for LOGO/IMAGE |
+| Design_Asset_ID | ID | Conditional | FK → Design_Assets; required for LOGO/IMAGE |
 | Position | ENUM | Yes | CENTER, TOP, BOTTOM, CUSTOM |
 | Opacity | DECIMAL(4,3) | Yes | 0..1 |
 | Rotation_Degrees | DECIMAL(6,2) | Yes | Default 0 |
@@ -272,7 +289,7 @@ Output terminology:
 
 ### 10.1 Immutable assets
 
-Brand_Assets and every font/logo/graphic/watermark/background asset are immutable binary records. Drive_File_ID, SHA256, MIME type, byte size, and role cannot be changed after creation or once referenced by a published version. Replacement creates a new asset record. Published Brand_Versions and Template_Versions must pin exact asset IDs and SHA256 values in their immutable configuration/manifest; mutable aliases such as "current logo" are forbidden. Verify every pinned checksum before rendering.
+Design_Assets are immutable binary records. Drive_File_ID, SHA256, MIME type, byte size, and type cannot be changed after creation. Brand_Assets are immutable role associations to Design_Assets. Replacement creates a new Design_Asset_ID and, where needed, a new Brand_Asset_ID. Published Brand_Versions and Template_Versions must pin exact asset IDs and SHA256 values in their immutable configuration/manifest; mutable aliases such as "current logo" are forbidden. Verify every pinned checksum before rendering.
 
 ### 10.2 Explicit Paper_Versions
 
