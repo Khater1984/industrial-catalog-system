@@ -180,7 +180,7 @@ One row per extracted supplier specification assertion. Source values and source
 | Extraction_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
 | Created_At | DATETIME_UTC | Yes | Immutable |
 
-Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
+Exactly one source-record FK is populated according to Scope. Unique (Product_Source_Record_ID, Source_Assertion_Key) for PRODUCT scope and (Variant_Source_Record_ID, Source_Assertion_Key) for VARIANT scope; Source_Assertion_Key is a deterministic within-source-record assertion locator. The Catalog_Page_ID must match the page/catalog of the selected source record. If identity matching is unresolved, the row stays in staging and is not promoted. Do not infer product-wide scope from a model-specific assertion.
 
 Catalogs remain one immutable registered source file/revision per Catalog_ID. A changed PDF/revision creates a new Catalog_ID and new Catalog_Pages; old source records and page evidence remain intact. A Catalog has many Product_Source_Records; each product source record may have many Variant_Source_Records.
 
