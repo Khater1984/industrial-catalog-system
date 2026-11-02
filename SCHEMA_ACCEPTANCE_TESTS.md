@@ -324,3 +324,9 @@ A schema candidate passes this suite only when:
 **Given:** a worker submits the same Run_Event twice with the same Event_Idempotency_Key after an API timeout.
 **When:** the API receives the duplicate callback.
 **Expected:** exactly one Run_Events row is retained; the second request returns the prior accepted result and does not increment progress twice or duplicate state transitions.
+
+
+### SAT-045 — Document version retains supplier source provenance
+**Given:** a brochure is extracted from page 12 of Catalog C and promoted as Document D, Version V1.
+**When:** the source catalog is superseded by a later revision or the document is manually linked to another product.
+**Expected:** V1 retains its original Catalog_ID, Catalog_Page_ID, source record IDs, extraction run/staging IDs, exact source quote, and SHA256. New document versions have separate provenance; no version silently inherits or overwrites another version's source evidence.
