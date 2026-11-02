@@ -95,14 +95,16 @@ Contains generated files, immutable issue metadata, and snapshots of the exact d
 ## 5. Key domain rules
 
 ### Product model
-- Product is the parent commercial item.
-- Variant is a specific model/configuration and belongs to exactly one Product.
+- Product is the parent canonical internal commercial identity, independent of any supplier catalog.
+- Variant is a canonical model/configuration and belongs to exactly one Product.
+- Product_Source_Records and Variant_Source_Records preserve each supplier/catalog/revision appearance; raw supplier wording and page provenance remain immutable.
+- Cross-catalog matching is a human-reviewed identity decision. Model numbers, names, and AI confidence never auto-merge entities.
 - Product Family is a classification grouping; it is not a substitute for Product.
 - Product Family may be hierarchical through Parent_Family_ID.
 
 ### Specifications
-- Source specifications are retained unchanged.
-- A central changes table records UPDATE, ADD, and DELETE operations.
+- Source specifications are immutable assertions tied to the exact Product_Source_Record or Variant_Source_Record.
+- A central append-only event ledger records UPDATE, ADD, and DELETE operations with per-logical-key monotonic Sequence_No.
 - Effective specifications are computed deterministically from source plus approved changes.
 - Conflicts, missing references, and invalid operations are rejected or routed for review.
 
@@ -123,7 +125,7 @@ Contains generated files, immutable issue metadata, and snapshots of the exact d
 - Version pinning, if used, must resolve deterministically; a direct variant link takes precedence over a product-level link for that variant.
 
 ### Image assets
-- Image_Assets stores one logical asset and references preserved original, high-quality, and preview files.
+- Image_Assets stores the preserved original; Image_Renditions stores immutable preview/high-quality renditions, each with its own checksum and pipeline version.
 - Image_Links associates an image with a product or variant and records independent catalog/datasheet approvals, order, primary status, and crop settings.
 - Exact duplicate detection may reuse an existing asset; perceptual similarity only creates a review candidate.
 - Original image files and historical issued PDFs are never silently removed.
@@ -133,7 +135,7 @@ Keep these concepts separate:
 - Application UI identity.
 - Document brand identity and its versions.
 - Document templates and their versions.
-- Paper/background definitions.
+- Paper identity plus immutable Paper_Versions.
 - Watermark presets.
 - Document status.
 - Export profiles.
@@ -167,7 +169,9 @@ An issued record must capture at minimum:
 - Product and variant identifiers and the resolved data snapshot.
 - Brand_ID and Brand_Version.
 - Template_ID and Template_Version.
-- Paper_ID/version where applicable.
+- Paper_ID and exact Paper_Version_ID.
+- Issued_Document_Items membership for every product/variant in multi-item issues.
+- Immutable dependency manifest and SHA256 for all files/configs used.
 - Watermark and document status configuration.
 - Export profile and relevant settings.
 - Worker, Chromium, Playwright, PDF renderer, font fingerprints, and image-processing versions.
@@ -206,7 +210,7 @@ Drive folder IDs should be stored in configuration, not hard-coded throughout th
 
 ## 10. Decisions still requiring approval
 This document captures the current direction, not a frozen implementation contract. Before creating live tables or coding, confirm:
-1. Final table inventory and exact columns/keys.
+1. Final table inventory and exact columns/keys (now enumerated in DATABASE_SCHEMA.md).
 2. Apps Script ↔ Worker authentication and job protocol.
 3. Worker hosting provider, runtime limits, and cost.
 4. Extraction method and AI/OCR provider after benchmark.
