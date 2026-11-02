@@ -1,23 +1,26 @@
 # Delivery Roadmap
 
-**Current phase:** 0 — Architecture and schema validation.
+**Current phase:** 0 — Architecture/schema consolidation and technical design.
 **Delivery style:** Small increments with acceptance checks; no big-bang implementation.
 
 ## Phase 0 — Architecture approval
 Deliverables:
-- Review and approve ARCHITECTURE.md.
-- Review exact table/column inventory in DATABASE_SCHEMA.md.
+- Consolidate all four domain schemas and V2 corrections into one consistent candidate.
+- Audit every table, field, enum, FK/ownership rule, state transition, and operation manifest.
+- Review TECHNICAL_DESIGN.md, API_CONTRACTS.md, WORKER_SPEC.md, UI_UX_SPEC.md, TEST_STRATEGY.md, and SECURITY_OPERATIONS.md.
 - Resolve open decisions and record them in DECISIONS_LOG.md.
-- Define representative supplier catalogs for testing.
+- Define synthetic fixtures and representative supplier catalogs for private benchmarking.
 
 Exit criteria:
-- User explicitly approves architecture and schema.
-- No unresolved contradictions in source immutability, inheritance, document versioning, image approvals, or issued-PDF immutability.
+- Cross-document consistency audit passes with no unresolved blocking contradictions.
+- Acceptance suite covers identity, provenance, deterministic specs, inheritance, review, retries, promotion recovery, assets, and issue recovery.
+- Security, worker integration, backup/restore, and scale gates are documented.
+- User explicitly approves the consolidated architecture and schema.
 
 ## Phase 1 — Repository and engineering foundation
 Deliverables:
 - README and repository conventions.
-- Frontend, Apps Script, and Python worker folder skeletons.
+- Frontend, Apps Script, and Python worker folder skeletons (after Phase 0 approval only).
 - Environment-variable and secret-management documentation.
 - Automated formatting/static checks where practical.
 - Development and deployment instructions.
@@ -123,4 +126,4 @@ Each phase has:
 - Explicit user acceptance before moving to the next major phase.
 
 ## Immediate next action
-Complete the architecture review and schema approval. Do not begin production implementation or create live Sheets tables before that approval.
+Complete the consolidated schema/API/worker/security consistency audit and acceptance suite. Only after explicit approval, create isolated DEV resources and a minimal vertical-slice prototype; do not create production Sheets or migrate legacy data at this stage.
