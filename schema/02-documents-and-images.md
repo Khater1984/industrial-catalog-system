@@ -128,7 +128,7 @@ Immutable derived files generated from an Image_Assets original. A new processin
 |---|---|---:|---|
 | Image_Rendition_ID | ID | Yes | PK |
 | Image_ID | ID | Yes | FK → Image_Assets |
-| Rendition_Type | ENUM | Yes | PREVIEW, HIGH_QUALITY, THUMBNAIL, NORMALIZED_ORIGINAL |
+| Rendition_Type | ENUM | Yes | PREVIEW, HIGH_QUALITY, CATALOG_READY, THUMBNAIL, NORMALIZED_ORIGINAL |
 | Drive_File_ID | DRIVE_FILE_ID | Yes | Immutable binary file |
 | SHA256 | HEX64 | Yes | Exact rendition checksum |
 | MIME_Type | TEXT(100) | Yes | Validated |
@@ -148,7 +148,7 @@ Associates one image asset with a product or variant. The same Image_ID may have
 |---|---|---:|---|
 | Image_Link_ID | ID | Yes | PK |
 | Image_ID | ID | Yes | FK → Image_Assets |
-| Catalog_Rendition_ID | ID | No | FK → Image_Renditions; same Image_ID, type PREVIEW or approved catalog rendition |
+| Catalog_Rendition_ID | ID | No | FK → Image_Renditions; same Image_ID, type PREVIEW or CATALOG_READY |
 | DataSheet_Rendition_ID | ID | No | FK → Image_Renditions; same Image_ID, type HIGH_QUALITY |
 | Target_Type | ENUM | Yes | PRODUCT, VARIANT |
 | Target_ID | ID | Yes | FK resolved by Target_Type |
@@ -165,7 +165,7 @@ Associates one image asset with a product or variant. The same Image_ID may have
 | Updated_At | DATETIME_UTC | Yes | System generated |
 | Updated_By | ACTOR_ID | Yes | Actor |
 
-Unique: (Image_ID, Target_Type, Target_ID). At most one active primary image per target is enforced by application validation. Primary does not imply Catalog_Approved or DataSheet_Approved. Crop settings must not alter the preserved original.
+Unique: (Image_ID, Target_Type, Target_ID). At most one active primary image per target is enforced by application validation. Any Catalog_Rendition_ID or DataSheet_Rendition_ID must point to a rendition of the same Image_ID and the allowed Rendition_Type; a link cannot pin a rendition from a different image. Primary does not imply Catalog_Approved or DataSheet_Approved. Crop settings must not alter the preserved original.
 
 ### `Image_Review_Pairs`
 One row per reviewed candidate pair (canonical order Image_A_ID < Image_B_ID).
