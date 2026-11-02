@@ -96,6 +96,7 @@
 | Field | Required | Allowed stored values |
 |---|---|---|
 | `Lifecycle_Status` | Yes | AVAILABLE, QUARANTINED, ARCHIVED |
+| `Source_Type` | Yes | CATALOG_EMBEDDED, MANUAL_UPLOAD, EXTERNAL_LINK, OTHER |
 
 ### `Document_Links`
 
@@ -332,4 +333,4 @@
 - **Document_Versions.Lifecycle_Status:** QUARANTINED versions cannot be selected for output.
 - **Image_Assets.Lifecycle_Status:** QUARANTINED assets cannot be used by new issues.
 
-**Registry entries:** 78 enum fields across 46 table/common-envelope groups.
+**Registry entries:** 79 enum fields across 46 table/common-envelope groups.
