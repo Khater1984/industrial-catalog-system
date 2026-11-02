@@ -325,7 +325,9 @@ One row per logical promotion attempt spanning one or more sheets. It provides a
 | Staging_Set_SHA256 | HEX64 | Yes | Manifest hash |
 | Intended_Output_Manifest_File_ID | DRIVE_FILE_ID | Yes | Intended IDs and row payload hashes |
 | Intended_Output_SHA256 | HEX64 | Yes | Manifest hash |
-| Started_At | DATETIME_UTC | Yes | |
+| Created_At | DATETIME_UTC | Yes | System generated |
+| Created_By | ACTOR_ID | Yes | Actor |
+| Started_At | DATETIME_UTC | No | Set when APPLYING begins |
 | Finished_At | DATETIME_UTC | No | |
 | Recovery_Notes | TEXT(1500) | No | Audited recovery rationale |
 
