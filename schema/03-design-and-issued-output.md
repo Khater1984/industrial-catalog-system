@@ -234,6 +234,7 @@ One immutable issue record per generated PDF output.
 | Column | Type | Required | Key / rule |
 |---|---|---:|---|
 | Issued_Document_ID | ID | Yes | PK |
+| Issue_Operation_ID | ID | Yes | FK → Issue_Operations; only COMPLETED operation may be finalized; unique |
 | Issue_Number | TEXT(80) | Yes | Unique human-readable issue number |
 | Document_Type | ENUM | Yes | TECHNICAL_DATASHEET, PRODUCT_CATALOG, MASTER_CATALOG |
 | Product_ID | ID | No | FK → Products; null for multi-product outputs |
