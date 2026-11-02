@@ -220,11 +220,15 @@ Use vector icons, not emoji. Contact profile is selected and snapshotted per iss
 | Embed_Fonts | BOOLEAN | Yes | Default true where license permits |
 | Compression_Config_JSON | JSON_TEXT(1500) | Yes | Images and output compression |
 | Printer_Specification_Notes | TEXT(1500) | No | Required for PRINT_READY_PDF |
+| Printer_Spec_File_ID | DRIVE_FILE_ID | No | Immutable printer requirement document; required for PRINT_READY_PDF |
+| Printer_Spec_SHA256 | HEX64 | No | Required when Printer_Spec_File_ID is set |
+| Color_Profile_Design_Asset_ID | ID | No | FK → Design_Assets; required for CMYK_REQUIRED or PRINTER_DEFINED output |
+| Trim_Box_JSON | JSON_TEXT(500) | No | Required for PRINT_READY_PDF when printer defines trim box |
 | Lifecycle_Status | ENUM | Yes | ACTIVE, ARCHIVED |
 | Created_At | DATETIME_UTC | Yes | System generated |
 | Updated_At | DATETIME_UTC | Yes | System generated |
 
-A PRINT_READY_PDF profile is not valid for use until printer-specific requirements are documented and validated. Chromium alone must not be claimed to generate CMYK or PDF/X.
+A PRINT_READY_PDF profile is not valid for use until Printer_Spec_File_ID and Printer_Spec_SHA256 are present, required trim/bleed rules are explicit, and color-profile/PDF-standard requirements are validated. CMYK_REQUIRED or PRINTER_DEFINED requires Color_Profile_Design_Asset_ID. The renderer pipeline must prove conformance; Chromium alone must not be claimed to generate CMYK or PDF/X. Store the exact profile snapshot and hashes in each issue manifest.
 
 ## 8. Issued documents
 
