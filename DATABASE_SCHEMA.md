@@ -3,7 +3,7 @@
 **Status:** V2.1 schema approved by the user on 2026-11-03 as the basis for the first isolated DEV implementation slice. Production use and full infrastructure rollout remain gated. See [Schema Consistency Audit](SCHEMA_CONSISTENCY_AUDIT.md).
 **Storage target:** Google Sheets for structured records; Google Drive for binary files and large immutable JSON artifacts.
 **Scope:** Initial single-primary-user industrial equipment catalog system.
-**Important:** This package does not create live Sheets, modify Drive content, migrate legacy records, or authorize application code.
+**Important:** This document defines the approved schema baseline; it does not itself provision live Sheets, modify Drive content, authorize production use, or approve legacy-data migration. The user approved only the bounded first DEV implementation slice on 2026-11-03.
 
 ## 1. How to review this package
 
