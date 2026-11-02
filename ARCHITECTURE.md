@@ -145,15 +145,15 @@ A brand identity can be reused by multiple document templates. A published versi
 ## 6. Processing lifecycle
 
 ### Catalog extraction
-1. Register the supplier catalog and preserve the original file.
-2. Create a processing run with a stable Run_ID.
-3. Process pages in resumable units.
-4. Capture extracted text, tables, images, page references, and confidence/provenance.
-5. Write proposed entities to staging tables, not production entities.
-6. Route ambiguous or conflicting records to Review_Queue.
-7. Promote only approved records, with audit entries.
-8. Mark the run complete only after validation and reconciliation.
-
+1. Register an immutable supplier catalog file/revision and verify its SHA256.
+2. Create a Logical_Job_ID, Run_Log attempt, and immutable input manifest.
+3. Create one Run_Unit checkpoint per Catalog_Page; process pages independently.
+4. Extract text/tables/images with page and region provenance; OCR is a fallback, not an assumption.
+5. Write all proposed records to typed staging, retaining exact raw source strings and separate normalized fields.
+6. Create review tasks and Review_Staging_Links for uncertain matches, conflicts, and human decisions.
+7. Bind review decisions to the exact staging-set manifest and SHA256.
+8. Promote only approved candidates through Promotion_Operations and Promotion_Mappings.
+9. Reconcile partial writes by deterministic IDs and hashes; complete the run only after validation.
 ### PDF issue
 1. Select product/variant scope, document type, template, identity, and export profile.
 2. Resolve effective specifications, inherited attributes, approved images, and applicable documents.
@@ -161,8 +161,8 @@ A brand identity can be reused by multiple document templates. A published versi
 4. Show warnings and require user decisions for exceptions.
 5. Generate PDF using the worker.
 6. Validate the generated PDF and extract/check embedded image dimensions where applicable.
-7. Store the PDF and an immutable issue snapshot.
-8. Record all version identifiers and rendering environment details.
+7. Store the PDF, immutable scope snapshot, dependency manifest, and SHA256 values.
+8. Reconcile Issue_Operations and Issued_Document_Items before exposing the final issue; record all pinned versions and rendering environment details.
 
 ## 7. Issued document immutability
 An issued record must capture at minimum:
