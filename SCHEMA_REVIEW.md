@@ -234,6 +234,9 @@ A second pass extended the corrections beyond the original SR findings. The foll
 | Promotion recovery | Promotion_Operations and Promotion_Mappings define multi-sheet reconciliation. | Documented; acceptance pending |
 | Issue recovery | Issue_Operations, Issued_Document_Items, Paper_Version_ID, and dependency manifest are required. | Documented; acceptance pending |
 | Document lifecycle | DRAFT → ACTIVE two-step first-version protocol now matches the schema enum. | Documented; acceptance pending |
+| Document-version provenance | Each physical document version retains its own source catalog/page/run/staging evidence or manual/external source type. | Documented; SAT-045 added |
+| Print-ready output | Printer-specific spec file/hash, ICC profile asset, trim/bleed rules, and conformance validation are required; DPI alone is insufficient. | Documented; SAT-046–SAT-047 added |
+| Canonical merge scope | MERGED states and reparenting are excluded from v1; duplicates are reviewed/archived without silent reassignment. | Documented; SAT-041 added |
 | Staging state | Approval lives in Review_Queue; staging no longer duplicates an APPROVED state; stale reviews are explicit. | Documented; acceptance pending |
 
 ### Remaining release blockers
