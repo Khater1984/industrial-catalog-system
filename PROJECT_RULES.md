@@ -96,4 +96,4 @@ Any change to an approved architectural decision must:
 5. Receive explicit user approval before implementation.
 
 ## 13. Current stage
-Documentation and architecture validation only. No application code, live database creation, production Drive changes, or legacy-data migration is authorized until the architecture and schema are approved.
+The project is in deep architecture/schema consolidation and technical design. README, domain schemas, V2.1 correction proposal, API contracts, worker specification, UI/UX specification, test strategy, security/operations plan, and implementation blueprint are design artifacts only. No application code, live Sheets, production Drive changes, worker deployment, or legacy-data migration is authorized until the consolidated schema, acceptance suite, integration/security protocol, and operational gates are explicitly approved.
