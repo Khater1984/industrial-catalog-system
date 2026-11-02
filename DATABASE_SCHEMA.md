@@ -1,147 +1,193 @@
-# Database Schema — Proposed Inventory
+# Database Schema — Detailed Review Package
 
-**Status:** Proposed logical inventory; exact columns and constraints require review.
-**Storage:** Google Sheets, with Drive file IDs for binary assets.
-**Primary-key rule:** Every entity uses a stable generated ID. Sheet row numbers are never identifiers.
+**Status:** Detailed schema proposal for user review; not approved for implementation.
+**Storage target:** Google Sheets for structured records; Google Drive for binary files and large immutable JSON artifacts.
+**Scope:** Initial single-primary-user industrial equipment catalog system.
+**Important:** This package does not create live Sheets, modify Drive content, migrate legacy records, or authorize application code.
 
-## 1. Naming and relationship conventions
-- IDs are opaque stable strings (for example, Product_ID, Variant_ID, Image_ID).
-- Foreign keys use the exact referenced ID.
-- Timestamps use a consistent UTC ISO-8601 representation unless a field explicitly represents a local business date.
-- Enumerated values are documented and validated centrally.
-- Do not duplicate a derived state as a second editable source of truth.
+## 1. How to review this package
 
-## 2. Supplier/source domain
+The schema is split by domain so each part can be reviewed and revised independently:
 
-| Table | Purpose | Key relationships |
-|---|---|---|
-| Catalogs | Supplier catalog registry and source-file provenance | One catalog can yield many extracted products and runs |
-| Products | Supplier-derived product identity and source name | Parent of Variants |
-| Variants | Supplier-derived model/configuration | Each Variant belongs to one Product |
-| Specifications | Immutable supplier specification records | Linked to Product and/or Variant according to approved source model |
-
-Source records should retain Catalog_ID, source page/section, extraction run, and provenance where available. Source values are not overwritten by company corrections.
-
-## 3. Company product domain
-
-| Table | Purpose |
+| Document | Scope |
 |---|---|
-| Product_Company | Company-owned product fields such as Arabic name and company annotations |
-| Variant_Company | Company-owned model fields, including Arabic model name where required |
-| Product_Families | Hierarchical product classification; Parent_Family_ID is optional |
-| Attribute_Definitions | Attribute name, data type, unit, allowed values, validation, and applicable scope |
-| Product_Attributes | Product-level default attribute values |
-| Variant_Attribute_Overrides | Variant-specific overrides, including Override_Mode = VALUE or INTENTIONALLY_EMPTY |
-| Specification_Changes | Central UPDATE / ADD / DELETE operations over source specifications |
+| [01 — Source & Products](schema/01-source-and-products.md) | Catalog registry, source product/model identities, immutable specifications, company product data, families, typed attributes, specification change ledger |
+| [02 — Documents & Images](schema/02-documents-and-images.md) | Shared document versions and links, central image assets, approvals, duplicate review, effective image quality |
+| [03 — Design & Issued Output](schema/03-design-and-issued-output.md) | Brand identities/versions, papers, templates, watermarks, status defaults, contacts, export profiles, issued PDFs and snapshots |
+| [04 — Workflow & Audit](schema/04-workflow-and-audit.md) | Run logs, page tracking, typed staging sheets, review queue, audit trail, idempotent promotion |
 
-### Specification_Changes rules
-- UPDATE references an existing source Specification_ID.
-- DELETE references an existing source Specification_ID and suppresses it only in effective company output.
-- ADD creates a company-owned specification with its own stable change/specification identity.
-- Validate target Product_ID / Variant_ID consistency.
-- Define deterministic ordering and conflict handling before implementation.
-- Effective Specifications are computed; they are not manually maintained as a second table unless a cache is later justified and safely invalidated.
+The files are a coordinated proposal and must be reviewed together. A table listed in an earlier inventory is not automatically an approved production schema.
 
-## 4. Document domain
+## 2. Shared type conventions
 
-| Table | Purpose |
+| Logical type | Meaning / validation |
 |---|---|
-| Documents | Logical document record, type/title/language, and Current_Version_ID |
-| Document_Versions | Immutable file versions, Drive_File_ID, checksum, version label, upload timestamp, notes |
-| Document_Links | Associations to PRODUCT or VARIANT targets; INCLUDE/EXCLUDE mode, optional pinned version, display order |
+| ID | Stable opaque generated identifier; recommended prefixed UUID/ULID string. Never a row number or display name. |
+| ACTOR_ID | Stable identifier for a human or service actor; no complex user/role subsystem implied. |
+| DRIVE_FILE_ID | Google Drive file ID, not a share URL. |
+| TEXT(n) | UTF-8 text with application-enforced maximum length n. |
+| INTEGER | Whole number; ranges specified per field. |
+| DECIMAL(p,s) | Decimal with defined precision/scale; avoid floating-point for measurements and thresholds. |
+| BOOLEAN | True/false. |
+| DATE | Calendar date without time zone. |
+| DATETIME_UTC | ISO-8601 UTC timestamp. |
+| URL / EMAIL | Validated string; normalize only for comparison, retain display form. |
+| HEX64 | Lowercase 64-character SHA-256 hexadecimal digest. |
+| ENUM | One of the exact values documented for the field. |
+| JSON_TEXT(n) | Validated JSON text, max n characters; large/immutable payloads belong in Drive instead. |
+| JSON_FILE_ID | Drive file ID for an immutable JSON artifact. |
 
-Constraints and rules:
-- Documents.Current_Version_ID is the sole authority for the current version.
-- A version must belong to the same Doc_ID as its parent Documents row.
-- Do not maintain an independent Is_Current flag.
-- No duplicate Doc_ID + Target_Type + Target_ID links.
-- Do not allow conflicting INCLUDE and EXCLUDE rows for the same document and target.
-- Product-level INCLUDE is inherited by variants; variant EXCLUDE removes that inherited association only.
-- Direct variant INCLUDE remains effective independently.
-- Display de-duplicates by Doc_ID.
-- Version resolution and pinning precedence must be finalized before implementation.
+### Common rules
+1. IDs are generated by the application/service, are immutable, and are never recycled.
+2. All timestamps are UTC ISO-8601. Business/published dates use DATE.
+3. Blank/NULL is distinct from empty text, zero, false, and intentionally empty values.
+4. Every FK is checked by the application, including ownership constraints such as Variant.Product_ID matching the referenced Product_ID.
+5. Every unique constraint is enforced in the application under a write lock and checked by periodic integrity scans; Sheets does not provide native relational constraints.
+6. ENUM values are validated centrally; unknown values are rejected rather than silently coerced.
+7. Source evidence, published versions, original assets, document versions, audit rows, and issued outputs are append-only or immutable according to their domain rules.
+8. Large manifests, snapshots, configuration files, and diagnostic payloads are stored in Drive with file IDs and checksums in Sheets.
+9. All operational writes must be idempotent where retries are possible.
+10. Soft archive/status changes are preferred to destructive deletion. A record with historical references must not be physically deleted.
 
-## 5. Image domain
+## 3. Proposed table inventory
 
-| Table | Purpose |
-|---|---|
-| Image_Assets | Central asset metadata and original/high-quality/preview Drive file IDs |
-| Image_Links | PRODUCT/VARIANT associations, primary status, independent catalog/datasheet approval, order and crop settings |
-| Image_Review_Pairs | Human review of perceptually similar image pairs and decisions |
+### A. Source catalog and product domain
+- `Catalogs`
+- `Catalog_Pages`
+- `Products` (supplier/source identity)
+- `Variants` (supplier/source model identity)
+- `Specifications` (immutable source assertions)
 
-Image_Assets proposed fields include dimensions, MIME type, byte size, alpha presence, color space, orientation, SHA-256, perceptual hash, source type, source catalog/page, quality status, lifecycle status, and Duplicate_Of.
+### B. Company-managed product domain
+- `Product_Company`
+- `Variant_Company`
+- `Product_Families`
+- `Attribute_Definitions`
+- `Product_Attributes`
+- `Variant_Attribute_Overrides`
+- `Specification_Changes`
 
-Rules:
-- SHA-256 identifies exact binary duplicates.
-- Perceptual hash identifies candidates for human review only.
-- Duplicate_Of must not trigger automatic deletion; approved resolution redirects active associations to a canonical asset while retaining the original record and audit history.
-- UI previews must never be used for final PDF output.
-- Catalog and datasheet approval are independent.
-- Primary image status does not imply either approval.
+### C. Documents and images
+- `Documents`
+- `Document_Versions`
+- `Document_Links`
+- `Image_Assets`
+- `Image_Links`
+- `Image_Review_Pairs`
 
-## 6. Design and export domain
+### D. Design and output
+- `Brands`
+- `Brand_Versions`
+- `Brand_Assets`
+- `Papers`
+- `Templates`
+- `Template_Versions`
+- `Template_Identity_Links`
+- `Watermark_Presets`
+- `Status_Defaults`
+- `Contact_Profiles`
+- `Export_Profiles`
+- `Issued_Documents`
 
-| Table | Purpose |
-|---|---|
-| Brands | Logical document identities |
-| Brand_Versions | Immutable draft/published identity versions |
-| Brand_Assets | Logos, fonts, graphics, and other brand files |
-| Papers | Page size, background, texture, and paper rendering settings |
-| Templates | Logical document templates |
-| Template_Versions | Immutable template versions |
-| Template_Identity_Links | Compatibility/association between templates and brand identities |
-| Watermark_Presets | Reusable text/logo/image watermark settings |
-| Status_Defaults | Optional suggested watermark by document status; suggestion is not forced coupling |
-| Contact_Profiles | Contact/social details and display settings |
-| Export_Profiles | Digital/print-oriented output settings, DPI thresholds, and validation rules |
+### E. Workflow, review, and audit
+- `Run_Log`
+- `Run_Events`
+- `Staging_Products`
+- `Staging_Variants`
+- `Staging_Specifications`
+- `Staging_Images`
+- `Staging_Documents`
+- `Review_Queue`
+- `Audit_Log`
 
-Keep application UI identity separate from document identity. Brand identity, template, product data, paper, watermark, status, and export profile are separate concepts.
+The detailed domain documents define exact proposed columns, logical types, required/conditional status, primary keys, foreign keys, uniqueness, enums, and validation behavior.
 
-## 7. Workflow, audit, and output domain
+## 4. Non-negotiable data rules
 
-| Table | Purpose |
-|---|---|
-| Staging_* | Temporary extracted proposals before approval |
-| Review_Queue | Ambiguous, low-confidence, or conflicting items requiring human review |
-| Run_Log | Processing run state, page progress, retries, errors, and completion |
-| Audit_Log | Who/what changed, when, target, before/after or change reference |
-| Issued_Documents | Immutable issued PDF metadata, checksums, and references to snapshots |
+### Source and company separation
+- Supplier catalog files and extracted source values remain preserved.
+- Supplier English product/model names and source specifications are never overwritten by company translations or corrections.
+- Company changes are stored in company-managed tables or the central specification operation ledger.
+- Legacy records enter isolated staging/import review and are promoted only after explicit approval. No direct legacy-to-production import.
 
-The exact Staging_* table split depends on extraction output design and will be finalized after a representative-catalog benchmark.
+### Specifications
+- `Specifications` is immutable source evidence.
+- `Specification_Changes` stores UPDATE / ADD / DELETE operations.
+- Only approved operations affect Effective Specifications.
+- DELETE suppresses output; it never deletes source data.
+- Effective Specifications are computed deterministically and are not a manually edited second source of truth.
 
-## 8. Snapshot storage
-Large snapshots are JSON files in Drive, not oversized Sheets cells. Issued_Documents stores the snapshot Drive file ID and checksum, along with the exact design/data/runtime version references.
+### Attribute inheritance
+- Product attributes are defaults.
+- Variant overrides use `Override_Mode = VALUE | INTENTIONALLY_EMPTY`.
+- No override row means inherit.
+- INTENTIONALLY_EMPTY deliberately suppresses inherited value.
+- Inherited / Customized / Empty are derived display states, not stored competing truth.
 
-## 9. Proposed Drive folders
-- Supplier_Catalogs/
-- Product_Images/Originals/Extracted_From_Catalogs/
-- Product_Images/Originals/Manual_Uploads/
-- Product_Images/High_Quality/
-- Product_Images/Previews/
-- Product_Images/Archived/
-- Product_Documents/
-- Brand_Assets/
-- Issued_PDFs/
-- Issued_Snapshots/
+### Documents
+- `Documents.Current_Version_ID` is the sole current-version authority; no `Is_Current` column.
+- `Document_Versions` are immutable.
+- `Document_Links` supports PRODUCT/VARIANT and INCLUDE/EXCLUDE.
+- Variant EXCLUDE cancels inherited product association only; a direct variant INCLUDE can coexist and remains effective.
+- Effective display de-duplicates by Doc_ID.
+- Direct variant pin/order overrides inherited product pin/order; otherwise use current document version.
 
-## 10. Excluded or superseded structures
-- No separate sheet per product or per specification change.
-- No separate product-image file duplication for every product/variant association.
-- No Product_Documents / Document_Product_Links parallel model; use Documents, Document_Versions, Document_Links.
-- No Is_Current flag competing with Documents.Current_Version_ID.
-- No legacy-table direct import as production data.
-- No complex user/role tables in the initial single-primary-user scope.
-- No Display_Settings catch-all if settings belong to a specific domain table.
+### Images
+- `Image_Assets` is the central asset library; `Image_Links` associates assets with products/variants.
+- Preserve original file. Preview is UI-only; PDF uses High_Quality rendition.
+- Catalog and datasheet approvals are independent. Primary does not imply approved.
+- SHA-256 detects exact duplicates. Perceptual hash only proposes visual-similarity review.
+- Duplicate resolution never deletes original assets; active links may be redirected to a canonical asset with audit history.
+- Effective DPI is measured after crop at actual template render size. No misleading upscaling.
 
-## 11. Required schema review before build
-For every table, approve:
-1. Exact column names and types.
-2. Primary key and foreign keys.
-3. Unique constraints and allowed nulls.
-4. Enumerations and validation.
-5. Delete/archive behavior.
-6. Index/search strategy within Sheets constraints.
-7. Audit requirements.
-8. Migration and rollback approach.
+### Design and issued output
+- Separate application UI identity, brand identity, template, product data, paper/background, watermark, document status, and export profile.
+- Published brand/template versions are immutable.
+- Issued PDF and its snapshot are immutable. Original retrieval returns the exact archived PDF; regeneration is a separate operation.
+- Record Worker, Chromium, Playwright, PDF renderer, font fingerprints, and image-processing versions.
+- Output classes are Digital PDF, Print-oriented PDF, and Print-ready PDF. Print-ready is allowed only after actual printer requirements are documented and validated; Chromium alone is not a CMYK/PDF-X guarantee.
 
-This inventory is not yet a script for creating live Google Sheets.
+### Workflow and audit
+- Extraction writes to typed staging tables, not production.
+- Ambiguous/conflicting results go to Review_Queue.
+- Promotion is approval-gated, idempotent, and audited.
+- Run_Log/Run_Events support page-level progress, retries, and resumability.
+- Audit_Log is append-only for material company-side changes.
+
+## 5. Google Sheets limitations and required controls
+
+Google Sheets is not a relational database. It does not natively guarantee foreign keys, unique constraints, transactions, or immutable append-only records. The application/Apps Script layer must implement:
+- Central ID generation and FK/ownership validation.
+- Uniqueness checks under a lock to reduce concurrent write races.
+- Controlled state transitions and append-only patterns.
+- Batch writes with idempotency keys and recovery reconciliation.
+- Periodic integrity scans and backup/restore tests.
+
+Before production, prove these controls on a disposable test spreadsheet with failure/retry and duplicate-write tests. If volume/concurrency later exceeds safe Sheets limits, reconsider the storage layer through a documented ADR rather than silently changing architecture.
+
+## 6. Decisions that remain open
+
+This package proposes detailed data structures but does not settle all infrastructure or operating policies. The following remain separate approval items:
+1. Worker hosting provider, runtime limits, and operating cost.
+2. Apps Script ↔ Worker authentication and job protocol.
+3. OCR/extraction stack and AI provider after representative benchmark.
+4. Catalog size, file-size, concurrency, retention, and quota limits.
+5. Detailed PDF renderer, font licensing/embedding, and printer workflow.
+6. Backup cadence, restore objectives, and disaster recovery.
+7. Any unresolved edge cases discovered during schema acceptance testing.
+
+## 7. Acceptance checklist before implementation
+
+- [ ] All four domain schema documents reviewed.
+- [ ] Every table and column accepted or amended.
+- [ ] All FK ownership and uniqueness rules accepted.
+- [ ] Document inheritance/exclusion/version resolution scenarios tested on paper.
+- [ ] Specification operation ordering and supersession scenarios tested.
+- [ ] Attribute inheritance and intentional-empty scenarios tested.
+- [ ] Image approval, duplicate, crop, and DPI scenarios tested.
+- [ ] Published design and issued PDF immutability accepted.
+- [ ] Staging, review, promotion, retry, and audit scenarios accepted.
+- [ ] Google Sheets integrity/locking limitations accepted with mitigation plan.
+- [ ] User explicitly approves the schema and architecture before live Sheets or application code are created.
+
+**Implementation gate:** No live Google Sheets creation, production Drive changes, code generation, or legacy migration is authorized by this proposal. The next step after review is to resolve comments and obtain explicit approval.
