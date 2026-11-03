@@ -61,6 +61,7 @@ def fixture():
               artifact_bytes, parent="run-folder")
 
     page = {
+        # Mirror runner.py: page summaries omit top-level run_id/catalog_id.
         "unit_key": artifact["unit_key"], "run_unit_id": artifact["run_unit_id"],
         "catalog_page_id": artifact["catalog_page_id"], "page_number": 1,
         "input_sha256": artifact["input_sha256"], "unit_status": "COMPLETED",
