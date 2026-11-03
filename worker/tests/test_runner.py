@@ -18,7 +18,7 @@ class FakeDrive:
     def download(self, file_id, destination):
         path = Path(destination)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if file_id == "job-file":
+        if file_id == "job-file-id-123456":
             path.write_text(json.dumps(self.job), encoding="utf-8")
         elif file_id == "source-pdf":
             path.write_bytes(self.pdf_bytes)
@@ -75,7 +75,7 @@ def test_drive_runner_processes_and_uploads_immutable_artifacts(tmp_path):
     }
     drive = FakeDrive(job, pdf_bytes)
     result = runner.run_from_drive(
-        job_file_id="job-file", drive=drive, output_root=tmp_path / "work",
+        job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
     )
 
     assert result["accepted"] is True
@@ -104,5 +104,5 @@ def test_runner_rejects_source_hash_mismatch(tmp_path):
     import pytest
     with pytest.raises(runner.RunnerError, match="SOURCE_HASH_MISMATCH"):
         runner.run_from_drive(
-            job_file_id="job-file", drive=drive, output_root=tmp_path / "work",
+            job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
         )
