@@ -270,8 +270,10 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
     if attempt > 1:
         if not isinstance(parent, str) or not parent.strip() or parent == run_id:
             raise WorkerError("INVALID_RUN_LINEAGE", "Retries require a new Run_ID and the prior Run_ID as Parent_Run_ID.")
+        parent = _safe_id(parent.strip(), "parent_run_id")
         if not isinstance(retry_reason, str) or not retry_reason.strip() or len(retry_reason.strip()) > 1000:
             raise WorkerError("INVALID_RUN_LINEAGE", "Retry_Reason is required for attempts after the first (maximum 1000 characters).")
+        retry_reason = retry_reason.strip()
     if not source.is_file():
         raise WorkerError("SOURCE_FILE_NOT_FOUND", "Source PDF does not exist.")
     with source.open("rb") as stream:
@@ -366,6 +368,18 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                 raise WorkerError("REUSE_SOURCE_INVALID", "Cross-run reuse requires a different Run_ID.")
             if source_manifest.get("logical_job_id") != logical_id:
                 raise WorkerError("REUSE_LOGICAL_JOB_MISMATCH", "Reuse is allowed only within the same Logical_Job_ID.")
+            # A retry may reuse only the immediately preceding attempt, never an
+            # arbitrary older run from the same logical job.
+            if attempt <= 1 or not parent:
+                raise WorkerError("REUSE_SOURCE_NOT_PARENT", "Cross-run reuse is valid only for a retry attempt.")
+            if source_manifest.get("run_id") != parent:
+                raise WorkerError("REUSE_SOURCE_NOT_PARENT", "Reuse source must equal Parent_Run_ID.")
+            if source_manifest.get("attempt_number") != attempt - 1:
+                raise WorkerError("REUSE_SOURCE_NOT_PARENT", "Reuse source must be the immediately preceding attempt.")
+            if source_manifest.get("run_type") != RUN_TYPE:
+                raise WorkerError("REUSE_SOURCE_INVALID", "Reuse source Run_Type does not match.")
+            if source_manifest.get("catalog_id") != catalog_id or source_manifest.get("source_sha256") != actual_sha:
+                raise WorkerError("REUSE_INPUT_MISMATCH", "Reuse source catalog or source PDF does not match.")
             if source_manifest.get("job_input_sha256") != job_input_sha:
                 raise WorkerError("REUSE_INPUT_MISMATCH", "Source run input fingerprint differs.")
             if source_manifest.get("run_status") != "COMPLETED":
