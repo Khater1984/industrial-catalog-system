@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Build and dependency-free validation tests for the Apps Script DEV slice",
   "scripts": {
-    "build": "node scripts/build.js",
+    "schema:generate": "node scripts/generate-schema.js",
+    "build": "npm run schema:generate && node scripts/build.js",
     "test": "node --test tests/*.test.js"
   },
   "engines": {
