@@ -87,6 +87,16 @@ test("registers through the real repository validators and is idempotent", () =>
   const app = createApplication();
   const payload = app.context.InputValidation.catalogPayload(input);
   const first = app.context.CatalogService.register(payload);
+  const savedCatalog = app.context.SheetsRepository.getBy("Catalogs", "SHA256", first.sha256);
+  assert.ok(savedCatalog, "registered catalog must be readable through the repository");
+  assert.equal(String(savedCatalog.Supplier_Name), "Example Supplier");
+  assert.equal(String(savedCatalog.Catalog_Title || ""), String(payload.catalogTitle || ""));
+  assert.equal(String(savedCatalog.Catalog_Revision || ""), String(payload.catalogRevision || ""));
+  assert.equal(String(savedCatalog.Language_Code || ""), String(payload.languageCode || ""));
+  assert.equal(String(savedCatalog.Source_File_ID), "abcdefghij_123456");
+  assert.equal(String(savedCatalog.Source_File_Name), "synthetic.pdf");
+  assert.equal(String(savedCatalog.MIME_Type), "application/pdf");
+  assert.equal(String(savedCatalog.File_Size_Bytes), "4");
   const second = app.context.CatalogService.register(payload);
   assert.equal(first.status, "QUEUED");
   assert.equal(second.idempotentReplay, true);
