@@ -29,6 +29,27 @@ var SheetsRepository = (function () {
     var first = value.trim().charAt(0);
     return "=+@-".indexOf(first) >= 0 ? "'" + value : value;
   }
+  function enumKey_(tableName, columnName) {
+    var directKey = tableName + "." + columnName;
+    if (Object.prototype.hasOwnProperty.call(ENUMS, directKey)) return directKey;
+    if (tableName.indexOf("Staging_") === 0) {
+      var commonKey = "Common staging envelope (all Staging_* sheets)." + columnName;
+      if (Object.prototype.hasOwnProperty.call(ENUMS, commonKey)) return commonKey;
+    }
+    return null;
+  }
+  function validateEnums_(tableName, record, headers) {
+    headers.forEach(function (column) {
+      var key = enumKey_(tableName, column);
+      if (!key) return;
+      var value = Object.prototype.hasOwnProperty.call(record, column) ? record[column] : "";
+      var blank = value === "" || value === null || value === undefined;
+      if (ENUM_REQUIRED[key] && blank) throw new Error("VALIDATION_REQUIRED: " + tableName + "." + column);
+      if (!blank && ENUMS[key].indexOf(String(value)) < 0) {
+        throw new Error("VALIDATION_INVALID_ENUM: " + tableName + "." + column);
+      }
+    });
+  }
   function append(name, record) {
     if (!TABLES[name]) throw new Error("UNKNOWN_TABLE: " + name);
     if (!record || Object.prototype.toString.call(record) !== "[object Object]") {
@@ -38,6 +59,7 @@ var SheetsRepository = (function () {
     Object.keys(record).forEach(function (key) {
       if (headers.indexOf(key) < 0) throw new Error("UNKNOWN_COLUMN: " + name + "." + key);
     });
+    validateEnums_(name, record, headers);
     var sheet = spreadsheet_().getSheetByName(name);
     if (!sheet) throw new Error("SCHEMA_NOT_INITIALIZED: " + name);
     var row = headers.map(function (key) {
