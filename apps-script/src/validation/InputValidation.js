@@ -1,6 +1,6 @@
 /**
  * Boundary validation for untrusted browser/API input.
- * Keep this module free of Apps Script services so it can be unit-tested separately.
+ * Pure JavaScript: no Apps Script services, so rules can be tested independently.
  */
 var InputValidation = (function () {
   function isPlainObject_(value) {
@@ -23,15 +23,21 @@ var InputValidation = (function () {
     if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
     var driveFileId = requiredString_(payload.driveFileId, "driveFileId", 200);
     if (!/^[A-Za-z0-9_-]{10,200}$/.test(driveFileId)) throw new Error("VALIDATION_INVALID_FORMAT: driveFileId");
+    var publishedDate = optionalString_(payload.publishedDate, "publishedDate", 10);
+    if (publishedDate && !/^\d{4}-\d{2}-\d{2}$/.test(publishedDate)) throw new Error("VALIDATION_INVALID_FORMAT: publishedDate");
+    var languageCode = optionalString_(payload.languageCode, "languageCode", 12);
+    if (languageCode && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(languageCode)) throw new Error("VALIDATION_INVALID_FORMAT: languageCode");
+    var sourceUrl = optionalString_(payload.sourceUrl, "sourceUrl", 2048);
+    if (sourceUrl && !/^https?:\/\//i.test(sourceUrl)) throw new Error("VALIDATION_INVALID_FORMAT: sourceUrl");
     return {
       driveFileId: driveFileId,
       supplierName: requiredString_(payload.supplierName, "supplierName", 160),
       catalogTitle: optionalString_(payload.catalogTitle, "catalogTitle", 240),
       catalogReference: optionalString_(payload.catalogReference, "catalogReference", 120),
       catalogRevision: optionalString_(payload.catalogRevision, "catalogRevision", 80),
-      languageCode: optionalString_(payload.languageCode, "languageCode", 12),
-      publishedDate: optionalString_(payload.publishedDate, "publishedDate", 10),
-      sourceUrl: optionalString_(payload.sourceUrl, "sourceUrl", 2048),
+      languageCode: languageCode,
+      publishedDate: publishedDate,
+      sourceUrl: sourceUrl,
       notes: optionalString_(payload.notes, "notes", 2000)
     };
   }
