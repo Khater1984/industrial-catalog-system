@@ -72,6 +72,7 @@ def fixture():
         "protocol_version": "1", "manifest_version": 2,
         "run_id": "run_001", "catalog_id": "cat_001",
         "source_sha256": "2" * 64, "run_status": "COMPLETED",
+        "page_count": 1, "completed_units": 1, "failed_units": 0,
         "pages": [page],
     }
     manifest["manifest_sha256"] = _hash_payload(manifest, "manifest_sha256")
@@ -257,6 +258,27 @@ def test_duplicate_manifest_run_unit_id_is_fail():
     duplicate = dict(manifest["pages"][0])
     duplicate["unit_key"] = "another-unit-key"
     manifest["pages"].append(duplicate)
+    reseal_manifest(manifest)
+    from catalog_worker.integrity import ManifestResult
+    result = verify_gate_3(
+        drive, run_id="run_001", units=[unit],
+        manifest_result=ManifestResult(manifest, "manifest-1", "explicit"),
+    )
+    assert result.status == "FAIL"
+
+
+def test_other_run_rows_cannot_be_reported_as_verified_for_requested_run():
+    drive, _, unit, loaded = fixture()
+    unit["Run_ID"] = "another_run"
+    result = verify_gate_3(
+        drive, run_id="run_001", units=[unit], manifest_result=loaded
+    )
+    assert result.status == "INCOMPLETE"
+
+
+def test_manifest_counter_mismatch_is_fail():
+    drive, manifest, unit, _ = fixture()
+    manifest["completed_units"] = 0
     reseal_manifest(manifest)
     from catalog_worker.integrity import ManifestResult
     result = verify_gate_3(
