@@ -304,7 +304,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             unit_id = "unit_" + sha256_bytes(f"{run_id}|{UNIT_TYPE}|{unit_key}".encode())[:32]
             artifact = root / "pages" / f"page-{number:05d}.json"
             identity = {"run_id": run_id, "logical_job_id": logical_id, "catalog_id": catalog_id,
-                        "run_unit_id": unit_id, "unit_type": UNIT_TYPE, "unit_key": unit_key}
+                        "catalog_page_id": catalog_page_id, "run_unit_id": unit_id,
+                        "unit_type": UNIT_TYPE, "unit_key": unit_key}
             saved = _verify_unit(artifact, identity, input_sha)
             if saved is None:
                 source_page = source_pages.get(number)
