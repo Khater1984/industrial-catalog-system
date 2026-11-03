@@ -170,6 +170,7 @@ var Ingest = (function () {
           Failed_Units: Math.max(1, Number(manifest.failed_units) || manifest.page_count || 1),
           Worker_Version: options.workerVersion || manifest.worker_version || "",
           Output_Manifest_File_ID: manifestFileId, Finished_At: now,
+          Worker_Lease_ID: "", Lease_Expires_At: "",
           Error_Code: manifest.error_code || "WORKER_FAILED",
           Error_Summary: manifest.error_message || "Worker failed before completing page extraction."
         });
@@ -184,7 +185,7 @@ var Ingest = (function () {
         Run_Status: "COMPLETED", Current_Step: "INGESTED",
         Total_Units: manifest.page_count, Completed_Units: manifest.completed_units,
         Failed_Units: manifest.failed_units, Worker_Version: options.workerVersion || manifest.worker_version || "",
-        Output_Manifest_File_ID: manifestFileId,
+        Output_Manifest_File_ID: manifestFileId, Worker_Lease_ID: "", Lease_Expires_At: "",
         Started_At: manifest.started_at ? new Date(manifest.started_at).toISOString() : now,
         Finished_At: manifest.finished_at ? new Date(manifest.finished_at).toISOString() : now,
         Error_Code: "", Error_Summary: ""
