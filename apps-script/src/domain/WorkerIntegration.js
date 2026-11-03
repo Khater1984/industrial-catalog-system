@@ -47,9 +47,10 @@ var WorkerIntegration = (function () {
       };
       var jobFile = immutableJobFile_(folder, job);
       var now = new Date().toISOString();
+      var startedAt = run.Started_At instanceof Date ? run.Started_At.toISOString() : (run.Started_At || now);
       SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
         Run_Status: "RUNNING", Current_Step: "WORKER_DISPATCH",
-        Input_Manifest_File_ID: jobFile.getId(), Started_At: run.Started_At || now,
+        Input_Manifest_File_ID: jobFile.getId(), Started_At: startedAt,
         Heartbeat_At: now, Error_Code: "", Error_Summary: ""
       });
 
@@ -139,12 +140,17 @@ function dispatchRegisteredCatalog_(registered) {
     return { accepted: false, reason: "RUN_NOT_DISPATCHABLE", status: registered && registered.status || "" };
   }
   try {
-    return WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
+    var result = WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
+    if (result.accepted) registered.status = "RUNNING";
+    else if (result.retryable) registered.status = "RETRY_PENDING";
+    return result;
   } catch (err) {
     var message = String(err && err.message ? err.message : "WORKER_DISPATCH_FAILED");
     var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
-    return { configured: true, accepted: false, retryable: true, run_id: registered.runId,
-      error_code: match ? match[1] : "WORKER_DISPATCH_FAILED" };
+    var code = match ? match[1] : "WORKER_DISPATCH_FAILED";
+    if (code === "WORKER_REJECTED") registered.status = "FAILED";
+    return { configured: true, accepted: false, retryable: code !== "WORKER_REJECTED", run_id: registered.runId,
+      error_code: code };
   }
 }
 
