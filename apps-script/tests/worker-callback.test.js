@@ -48,3 +48,64 @@ test("poller ignores terminal runs and runs without an input manifest", () => {
   assert.equal(result.processed.length, 0);
   assert.equal(result.errors.length, 0);
 });
+
+test("dispatch writes an immutable job manifest and accepts the deterministic Cloud Task", () => {
+  const properties = {
+    DEV_RUNS_FOLDER_ID: "runs-folder-id-123456",
+    DEV_WORKER_ENDPOINT: "https://worker.example/run",
+    DEV_WORKER_SHARED_TOKEN: "shared-worker-token"
+  };
+  const run = {
+    Run_ID: "run_1", Catalog_ID: "cat_1", Logical_Job_ID: "logical_1",
+    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: ""
+  };
+  const catalog = {
+    Catalog_ID: "cat_1", Source_File_ID: "source-file-id-123456",
+    SHA256: "a".repeat(64)
+  };
+  let jobContent = "";
+  let request = null;
+  const folder = {
+    getId: () => "run-folder-id-123456",
+    getFilesByName: () => ({ hasNext: () => false }),
+    createFile: (_name, content) => {
+      jobContent = content;
+      return { getId: () => "job-file-id-123456" };
+    }
+  };
+  const root = {
+    getFoldersByName: () => ({ hasNext: () => false }),
+    createFolder: () => folder
+  };
+  const context = {
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => properties[key] || "" }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    DriveApp: { getFolderById: () => root },
+    MimeType: { JSON: "application/json" },
+    Utilities: { sleep() {} },
+    SheetsRepository: {
+      getBy: (table) => table === "Run_Log" ? run : catalog,
+      updateBy: (_table, _key, _value, patch) => Object.assign(run, patch)
+    },
+    UrlFetchApp: {
+      fetch: (url, options) => {
+        request = { url, options };
+        return {
+          getResponseCode: () => 202,
+          getContentText: () => JSON.stringify({ accepted: true, run_id: "run_1", task: "task-1" })
+        };
+      }
+    }
+  };
+  vm.runInNewContext(source, context);
+  const result = context.WorkerIntegration.dispatchCatalogRun("cat_1", "run_1");
+  assert.equal(result.accepted, true);
+  assert.equal(run.Run_Status, "RUNNING");
+  assert.equal(request.url, "https://worker.example/run");
+  assert.equal(request.options.headers.Authorization, "Bearer shared-worker-token");
+  assert.equal(request.options.headers["Idempotency-Key"], "run_1");
+  const job = JSON.parse(jobContent);
+  assert.equal(job.run_id, "run_1");
+  assert.equal(job.source_pdf_file_id, "source-file-id-123456");
+  assert.equal(job.run_folder_id, "run-folder-id-123456");
+});
