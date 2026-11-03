@@ -39,6 +39,7 @@ pytest -q
   "source_pdf_path": "/absolute/path/catalog.pdf",
   "source_sha256": "<64-character SHA-256>",
   "attempt_number": 1,
+  "catalog_page_ids": ["<Catalog_Page_ID for page 1>", "<Catalog_Page_ID for page 2>"],
   "extraction_profile": "embedded-text-v1"
 }
 ```
@@ -49,7 +50,7 @@ Run:
 catalog-worker-v21 --job job.json --output ./worker-output
 ```
 
-Run the exact same job again against the same output directory to resume verified completed page units. A changed source, extraction profile, worker version, or pypdf toolchain changes the logical input fingerprint; create a new `Logical_Job_ID` and `Run_ID` for changed logical input. A retry is a new run attempt and must identify its parent run, increment `attempt_number`, and provide a non-empty `retry_reason` (up to 1000 characters). The retry receives a distinct deterministic idempotency key because Run_Log keys are unique per attempt.
+The application should provide one stable `Catalog_Page_ID` per PDF page in `catalog_page_ids`; these IDs become `Run_Units.Unit_Key` and are persisted on each page artifact. The field is optional only for isolated local tests. Run the exact same job again against the same output directory to resume verified completed page units. A changed source, extraction profile, worker version, or pypdf toolchain changes the logical input fingerprint; create a new `Logical_Job_ID` and `Run_ID` for changed logical input. A retry is a new run attempt and must identify its parent run, increment `attempt_number`, and provide a non-empty `retry_reason` (up to 1000 characters). The retry receives a distinct deterministic idempotency key because Run_Log keys are unique per attempt.
 
 ## Original 0.1 CLI
 
