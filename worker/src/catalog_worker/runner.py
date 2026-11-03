@@ -229,8 +229,17 @@ def run_from_drive(
         "idempotency_key": job.get("idempotency_key"),
     }
 
+    def publish_checkpoint(page: dict[str, Any], artifact_path: Path) -> None:
+        # Upload before the engine advances. If the Cloud Task is interrupted,
+        # the next attempt restores this immutable page and resumes from it.
+        drive.upload_file(
+            run_folder_id, artifact_path.name, artifact_path, "application/json"
+        )
+
     try:
-        result = process_resumable_catalog_job(local_job, run_dir)
+        result = process_resumable_catalog_job(
+            local_job, run_dir, artifact_callback=publish_checkpoint
+        )
         manifest = dict(result)
     except WorkerError as exc:
         manifest = _failure_manifest(
