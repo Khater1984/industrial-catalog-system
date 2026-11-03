@@ -201,6 +201,20 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
     if page_count < 1:
         raise WorkerError("PDF_HAS_NO_PAGES", "PDF contains no pages.")
 
+    # The application creates stable Catalog_Pages identities before dispatching
+    # a worker job. Use those IDs as Run_Units.Unit_Key whenever supplied.
+    raw_page_ids = job.get("catalog_page_ids")
+    if raw_page_ids is None:
+        catalog_page_ids = None  # local-only fallback; production job manifests should supply IDs
+    else:
+        if (not isinstance(raw_page_ids, list) or len(raw_page_ids) != page_count
+                or any(not isinstance(value, str) or not value.strip() or len(value.strip()) > 180
+                       for value in raw_page_ids)):
+            raise WorkerError("INVALID_CATALOG_PAGE_IDS", "catalog_page_ids must contain one non-empty ID per PDF page.")
+        catalog_page_ids = [value.strip() for value in raw_page_ids]
+        if len(set(catalog_page_ids)) != page_count:
+            raise WorkerError("INVALID_CATALOG_PAGE_IDS", "catalog_page_ids must be unique within the catalog.")
+
     profile = job.get("extraction_profile", "embedded-text-v1")
     if not isinstance(profile, str) or not profile.strip():
         raise WorkerError("INVALID_JOB_MANIFEST", "extraction_profile must be a non-empty string.")
@@ -209,6 +223,7 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
         "catalog_id": catalog_id, "source_sha256": actual_sha, "page_count": page_count,
         "run_type": RUN_TYPE, "unit_type": UNIT_TYPE, "profile": profile,
         "toolchain": toolchain, "worker_version": WORKER_VERSION,
+        "catalog_page_ids": catalog_page_ids,
     }
     job_input_sha = sha256_bytes(canonical_json_bytes(logical_input))
     # Run_Log.Idempotency_Key is unique per attempt, not per logical job.
@@ -277,13 +292,15 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             except Exception as exc:
                 raise WorkerError("PAGE_TEXT_EXTRACTION_FAILED", f"Text extraction failed on page {number}.") from exc
             text_sha = sha256_bytes(text.encode("utf-8"))
+            catalog_page_id = catalog_page_ids[number - 1] if catalog_page_ids else None
+            unit_key = catalog_page_id or f"page:{number:05d}"
             unit_input = {
-                "catalog_id": catalog_id, "source_sha256": actual_sha, "page_number": number,
+                "catalog_id": catalog_id, "catalog_page_id": catalog_page_id,
+                "source_sha256": actual_sha, "page_number": number,
                 "page_text_sha256": text_sha, "profile": profile, "toolchain": toolchain,
                 "worker_version": WORKER_VERSION,
             }
             input_sha = sha256_bytes(canonical_json_bytes(unit_input))
-            unit_key = f"page:{number:05d}"
             unit_id = "unit_" + sha256_bytes(f"{run_id}|{UNIT_TYPE}|{unit_key}".encode())[:32]
             artifact = root / "pages" / f"page-{number:05d}.json"
             identity = {"run_id": run_id, "logical_job_id": logical_id, "catalog_id": catalog_id,
@@ -314,7 +331,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                     saved = {
                         "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
                         "worker_version": WORKER_VERSION, **identity, "run_type": RUN_TYPE,
-                        "page_number": number, "unit_status": "REUSED", "input_sha256": input_sha,
+                        "page_number": number, "catalog_page_id": catalog_page_id,
+                        "unit_status": "REUSED", "input_sha256": input_sha,
                         "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
                         "extraction_method": old.get("extraction_method", "EMBEDDED_TEXT"),
                         "extraction_tool_version": toolchain, "text_char_count": old["text_char_count"],
@@ -326,7 +344,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                     saved = {
                         "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
                         "worker_version": WORKER_VERSION, **identity, "run_type": RUN_TYPE,
-                        "page_number": number, "unit_status": "COMPLETED", "input_sha256": input_sha,
+                        "page_number": number, "catalog_page_id": catalog_page_id,
+                        "unit_status": "COMPLETED", "input_sha256": input_sha,
                         "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
                         "extraction_method": "EMBEDDED_TEXT", "extraction_tool_version": toolchain,
                         "text_char_count": len(text), "extracted_text": text,
@@ -343,7 +362,7 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                 reused += 1
             pages.append({
                 "run_unit_id": unit_id, "unit_type": UNIT_TYPE, "unit_key": unit_key,
-                "page_number": number, "unit_status": saved["unit_status"], "input_sha256": input_sha,
+                "catalog_page_id": catalog_page_id, "page_number": number, "unit_status": saved["unit_status"], "input_sha256": input_sha,
                 "output_sha256": saved["output_sha256"], "artifact_path": str(artifact.relative_to(root)),
                 "text_char_count": saved["text_char_count"],
                 "reused_from_run_unit_id": saved.get("reused_from_run_unit_id"),
