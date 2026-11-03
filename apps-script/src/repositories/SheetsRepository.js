@@ -47,17 +47,31 @@ var SheetsRepository = (function () {
     sheet.getRange(rowNumber, 1, 1, headers.length).setValues([row]);
     return rowNumber;
   }
-  function findBy(name, column, value) {
+  function getBy(name, column, value) {
     var headers = TABLES[name];
     if (!headers || headers.indexOf(column) < 0) throw new Error("INVALID_LOOKUP");
     var sheet = spreadsheet_().getSheetByName(name);
     if (!sheet || sheet.getLastRow() < 2) return null;
     var col = headers.indexOf(column) + 1;
-    var values = sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues();
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
     for (var i = 0; i < values.length; i++) {
-      if (String(values[i][0]) === String(value)) return i + 2;
+      if (String(values[i][col - 1]) === String(value)) {
+        var record = {};
+        headers.forEach(function (header, index) { record[header] = values[i][index]; });
+        return record;
+      }
     }
     return null;
   }
-  return { initialize: initialize, append: append, findBy: findBy };
+  function findBy(name, column, value) {
+    var record = getBy(name, column, value);
+    if (!record) return null;
+    var headers = TABLES[name];
+    var sheet = spreadsheet_().getSheetByName(name);
+    var col = headers.indexOf(column) + 1;
+    var values = sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < values.length; i++) if (String(values[i][0]) === String(value)) return i + 2;
+    return null;
+  }
+  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy };
 })();
