@@ -52,3 +52,38 @@ test("rejects oversized supplier names", () => {
 test("rejects HTTP URLs without a host", () => {
   assert.throws(() => validate({ ...valid, sourceUrl: "https://" }), /VALIDATION_INVALID_FORMAT/);
 });
+
+const validateUpload = context.InputValidation.uploadMetadata;
+const validUpload = {
+  supplierName: "Example Supplier",
+  catalogTitle: "Equipment Range",
+  catalogRevision: "Rev 1",
+  fileName: "sample-catalog.pdf",
+  mimeType: "application/pdf",
+  base64: "JVBERi0xLjQ="
+};
+
+test("accepts and normalizes browser PDF upload metadata", () => {
+  const result = validateUpload(validUpload);
+  assert.equal(result.fileName, "sample-catalog.pdf");
+  assert.equal(result.supplierName, "Example Supplier");
+});
+
+test("rejects non-PDF filenames and MIME types", () => {
+  assert.throws(() => validateUpload({ ...validUpload, fileName: "catalog.exe" }), /INVALID_PDF_FILENAME/);
+  assert.throws(() => validateUpload({ ...validUpload, mimeType: "text/plain" }), /UNSUPPORTED_MIME_TYPE/);
+});
+
+test("rejects malformed base64 and unknown upload fields", () => {
+  assert.throws(() => validateUpload({ ...validUpload, base64: "not base64!" }), /INVALID_BASE64/);
+  assert.throws(() => validateUpload({ ...validUpload, driveId: "unexpected" }), /VALIDATION_UNKNOWN_FIELD/);
+});
+
+test("sanitizes unsafe PDF filenames", () => {
+  const result = validateUpload({ ...validUpload, fileName: "vendor:catalog.pdf" });
+  assert.equal(result.fileName, "vendor_catalog.pdf");
+});
+
+test("rejects upload payloads above the encoded-size limit", () => {
+  assert.throws(() => validateUpload({ ...validUpload, base64: "A".repeat(16777217) }), /VALIDATION_TOO_LONG/);
+});
