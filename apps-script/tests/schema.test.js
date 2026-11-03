@@ -13,6 +13,7 @@ test("contains the complete approved 52-table V2.1 registry", () => {
 
 test("contains the authoritative 79-field enum registry", () => {
   assert.equal(Object.keys(context.ENUMS).length, 79);
+  assert.equal(Object.keys(context.FIELD_RULES).length, 711);
   for (const [field, values] of Object.entries(context.ENUMS)) {
     assert.ok(field.includes("."), "enum key must identify its table and field");
     assert.ok(values.length > 0, "enum values must not be empty");
