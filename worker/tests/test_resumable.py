@@ -432,3 +432,26 @@ def test_parent_run_id_must_be_safe_identifier(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(bad, tmp_path / "out")
     assert error.value.code == "INVALID_JOB_MANIFEST"
+
+
+
+def test_artifact_callback_publishes_each_verified_page_checkpoint(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Checkpoint one", "Checkpoint two", "Checkpoint three"])
+    published = []
+
+    def publish(page, artifact_path):
+        assert artifact_path.is_file()
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        assert artifact["run_unit_id"] == page["run_unit_id"]
+        published.append((page["page_number"], artifact_path.name))
+
+    result = process_resumable_catalog_job(
+        job_for(source), tmp_path / "checkpoint-run", artifact_callback=publish
+    )
+    assert result["run_status"] == "COMPLETED"
+    assert published == [
+        (1, "page-00001.json"),
+        (2, "page-00002.json"),
+        (3, "page-00003.json"),
+    ]
