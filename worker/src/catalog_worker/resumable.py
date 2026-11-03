@@ -226,6 +226,10 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
         prior = None
         if manifest_path.exists():
             prior = _read_object(manifest_path, "RESULT_MANIFEST_INVALID")
+            if prior.get("manifest_sha256") != _hash_payload(prior, "manifest_sha256"):
+                raise WorkerError("RESULT_MANIFEST_CORRUPT", "Result manifest checksum is invalid.")
+            if prior.get("job_input_sha256") != job_input_sha:
+                raise WorkerError("JOB_INPUT_MISMATCH", "Changed input requires a new Logical_Job_ID and Run_ID.")
             expected_run_identity = {
                 "run_id": run_id, "logical_job_id": logical_id, "attempt_number": attempt,
                 "parent_run_id": parent, "retry_reason": retry_reason,
@@ -235,10 +239,6 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             for key, expected in expected_run_identity.items():
                 if prior.get(key) != expected:
                     raise WorkerError("RESULT_MANIFEST_CONFLICT", f"Existing result manifest conflicts on {key}.")
-            if prior.get("manifest_sha256") != _hash_payload(prior, "manifest_sha256"):
-                raise WorkerError("RESULT_MANIFEST_CORRUPT", "Result manifest checksum is invalid.")
-            if prior.get("job_input_sha256") != job_input_sha:
-                raise WorkerError("JOB_INPUT_MISMATCH", "Changed input requires a new Logical_Job_ID and Run_ID.")
         started_at = prior.get("started_at") if prior else _now()
         pages, reused, created = [], 0, 0
 
