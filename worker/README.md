@@ -6,6 +6,8 @@ The hosted adapter is implemented in `catalog_worker.service` and deployed with 
 
 Apps Script stays owner-only (`webapp.access=MYSELF`). It dispatches the task and uses an owner-executed five-minute trigger to discover result manifests in Drive and ingest them. This intentionally avoids making an execute-as-owner Apps Script deployment public merely to receive an external callback.
 
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete DEV provisioning, IAM, queue, deploy, and smoke-test steps.
+
 Required Cloud Run environment:
 - `WORKER_SHARED_TOKEN`: same high-entropy token as Apps Script `DEV_WORKER_SHARED_TOKEN`.
 - `GOOGLE_CLOUD_PROJECT`, `CLOUD_TASKS_LOCATION`, `CLOUD_TASKS_QUEUE`.
