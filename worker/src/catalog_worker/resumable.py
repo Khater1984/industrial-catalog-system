@@ -17,7 +17,7 @@ import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pypdf
 from pypdf import PdfReader
@@ -249,7 +249,11 @@ def _verify_completed_manifest(root: Path, manifest: dict[str, Any], run_id: str
             raise WorkerError("CHECKPOINT_OUTPUT_CORRUPT", "Completed artifact checksum does not match its manifest.")
 
 
-def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
+def process_resumable_catalog_job(
+    job: dict[str, Any],
+    output_dir: str | Path,
+    artifact_callback: Callable[[dict[str, Any], Path], None] | None = None,
+) -> dict[str, Any]:
     """Process a local job with stable unit IDs, immutable artifacts and verified resume."""
     if not isinstance(job, dict):
         raise WorkerError("INVALID_JOB_MANIFEST", "Job manifest must be an object.")
@@ -473,13 +477,18 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                     created += 1
             else:
                 reused += 1
-            pages.append({
+            page_result = {
                 "run_unit_id": unit_id, "unit_type": UNIT_TYPE, "unit_key": unit_key,
                 "catalog_page_id": catalog_page_id, "page_number": number, "unit_status": saved["unit_status"], "input_sha256": input_sha,
                 "output_sha256": saved["output_sha256"], "artifact_path": str(artifact.relative_to(root)),
                 "text_char_count": saved["text_char_count"],
                 "reused_from_run_unit_id": saved.get("reused_from_run_unit_id"),
-            })
+            }
+            # Publish each immutable checkpoint before moving to the next page.
+            # A Cloud Tasks retry can then restore completed page artifacts from Drive.
+            if artifact_callback is not None:
+                artifact_callback(dict(page_result), artifact)
+            pages.append(page_result)
             interim = {
                 "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
                 "worker_version": WORKER_VERSION, "run_type": RUN_TYPE, "run_id": run_id,
