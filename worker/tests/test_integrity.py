@@ -38,6 +38,10 @@ class FakeDrive:
         return path
 
 
+def reseal_manifest(manifest):
+    manifest["manifest_sha256"] = _hash_payload(manifest, "manifest_sha256")
+
+
 def fixture():
     drive = FakeDrive()
     drive.add("root", "DEV_RUNS", "application/vnd.google-apps.folder")
@@ -121,6 +125,7 @@ def test_missing_manifest_is_incomplete_not_pass():
 def test_missing_transport_hash_is_incomplete():
     drive, manifest, unit, _ = fixture()
     manifest["pages"][0]["artifact_file_sha256"] = None
+    reseal_manifest(manifest)
     from catalog_worker.integrity import ManifestResult
     result = verify_gate_3(
         drive, run_id="run_001", units=[unit],
@@ -132,6 +137,7 @@ def test_missing_transport_hash_is_incomplete():
 def test_malformed_transport_hash_is_fail():
     drive, manifest, unit, _ = fixture()
     manifest["pages"][0]["artifact_file_sha256"] = "not-a-sha"
+    reseal_manifest(manifest)
     from catalog_worker.integrity import ManifestResult
     result = verify_gate_3(
         drive, run_id="run_001", units=[unit],
@@ -143,6 +149,7 @@ def test_malformed_transport_hash_is_fail():
 def test_artifact_file_id_mismatch_is_fail():
     drive, manifest, unit, _ = fixture()
     manifest["pages"][0]["artifact_file_id"] = "different-file"
+    reseal_manifest(manifest)
     from catalog_worker.integrity import ManifestResult
     result = verify_gate_3(
         drive, run_id="run_001", units=[unit],
@@ -154,6 +161,7 @@ def test_artifact_file_id_mismatch_is_fail():
 def test_duplicate_manifest_unit_key_is_fail():
     drive, manifest, unit, _ = fixture()
     manifest["pages"].append(dict(manifest["pages"][0]))
+    reseal_manifest(manifest)
     from catalog_worker.integrity import ManifestResult
     result = verify_gate_3(
         drive, run_id="run_001", units=[unit],
