@@ -405,3 +405,30 @@ def test_unverifiable_lock_fails_closed(tmp_path):
         process_resumable_catalog_job(job_for(source), out)
     assert error.value.code == "RUN_LOCK_UNVERIFIABLE"
     assert lock.exists()
+
+
+def test_cross_run_reuse_must_use_immediate_parent_attempt(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Page one"])
+    source_dir = tmp_path / "attempt-1"
+    process_resumable_catalog_job(job_for(source), source_dir)
+    wrong_parent = job_for(
+        source, run_id="run_v21_003", attempt_number=3,
+        parent_run_id="run_v21_002", retry_reason="Retry attempt three",
+        reuse_from_run_dir=str(source_dir),
+    )
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(wrong_parent, tmp_path / "attempt-3")
+    assert error.value.code == "REUSE_SOURCE_NOT_PARENT"
+
+
+def test_parent_run_id_must_be_safe_identifier(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Lineage"])
+    bad = job_for(
+        source, run_id="run_v21_002", attempt_number=2,
+        parent_run_id="../outside", retry_reason="Invalid parent",
+    )
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(bad, tmp_path / "out")
+    assert error.value.code == "INVALID_JOB_MANIFEST"
