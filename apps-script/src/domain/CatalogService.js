@@ -16,7 +16,7 @@ var CatalogService = (function () {
       sha256: catalog.SHA256,
       fileName: catalog.Source_File_Name,
       status: run.Run_Status,
-      recovered: true
+      idempotentReplay: true
     };
   }
   function createRun_(catalogId, now) {
