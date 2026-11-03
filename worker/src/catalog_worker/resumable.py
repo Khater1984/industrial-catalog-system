@@ -9,7 +9,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import socket
 import tempfile
+import uuid
 import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -139,15 +142,52 @@ def _safe_id(value: str, field: str) -> str:
     return value
 
 
+def _lock_owner_is_alive(owner_path: Path) -> bool:
+    """Return True only when a same-host owner PID is demonstrably alive."""
+    try:
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        raise WorkerError("RUN_LOCK_UNVERIFIABLE", "Existing lock has no readable owner; inspect and remove it manually if stale.") from exc
+    pid = owner.get("pid")
+    host = owner.get("host")
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid < 1 or host != socket.gethostname():
+        raise WorkerError("RUN_LOCK_UNVERIFIABLE", "Existing lock owner cannot be verified on this host.")
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError as exc:
+        # Unknown OS errors fail closed rather than risking two writers.
+        raise WorkerError("RUN_LOCK_UNVERIFIABLE", "Could not verify existing lock owner.") from exc
+
+
 @contextmanager
 def _lock(root: Path):
     lock = root / ".worker.lock"
     try:
         lock.mkdir()
     except FileExistsError as exc:
-        raise WorkerError("RUN_LOCKED", "Output directory is already being processed.") from exc
+        owner_path = lock / "owner.json"
+        if _lock_owner_is_alive(owner_path):
+            raise WorkerError("RUN_LOCKED", "Output directory is already being processed.") from exc
+        # Rename is atomic on the same filesystem. Only one contender can claim
+        # the stale directory; another contender will fail to create the lock.
+        stale = root / (".worker.lock.stale." + uuid.uuid4().hex)
+        try:
+            os.rename(lock, stale)
+        except OSError as rename_error:
+            raise WorkerError("RUN_LOCK_RETRY", "Stale lock changed concurrently; retry the job.") from rename_error
+        shutil.rmtree(stale, ignore_errors=True)
+        try:
+            lock.mkdir()
+        except FileExistsError as retry_error:
+            raise WorkerError("RUN_LOCKED", "Another worker acquired the output directory.") from retry_error
     try:
-        (lock / "owner.json").write_bytes(canonical_json_bytes({"pid": os.getpid(), "at": _now()}))
+        owner = {"pid": os.getpid(), "host": socket.gethostname(), "at": _now()}
+        (lock / "owner.json").write_bytes(canonical_json_bytes(owner))
         yield
     finally:
         try:
