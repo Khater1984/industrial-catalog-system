@@ -16,6 +16,7 @@ checks = {
     "Ingest protocol version": 'manifest.protocol_version !== "1"' in ingest,
     "Ingest manifest version": "manifest.manifest_version !== 2" in ingest,
     "runner uses actual resumable entry point": "process_resumable_catalog_job(" in runner,
+    "runner streams page checkpoints to Drive": "artifact_callback=publish_checkpoint" in runner and "artifact_callback: Callable" in worker,
     "runner publishes artifact Drive IDs": 'row["artifact_file_id"] = artifact_id' in runner,
     "runner publishes raw artifact hashes": 'row["artifact_file_sha256"] = raw_sha' in runner,
     "service exposes dispatch endpoint": '@app.post("/run")' in service,
