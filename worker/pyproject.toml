@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "industrial-catalog-worker"
+version = "0.1.0"
+description = "Deterministic page-by-page PDF intake worker"
+requires-python = ">=3.11"
+dependencies = ["pypdf>=5.0,<7.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0,<9.0", "reportlab>=4.0,<5.0"]
+
+[project.scripts]
+catalog-worker = "catalog_worker.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
