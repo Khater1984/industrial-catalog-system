@@ -66,7 +66,7 @@ def test_cloud_task_deadline_is_set_on_task_not_http_request(monkeypatch):
 
         def create_task(self, request):
             captured.update(request)
-            return {"name": request["task"]["name"]}
+            return type("CreatedTask", (), {"name": request["task"]["name"]})()
 
     monkeypatch.setattr(service.tasks_v2, "CloudTasksClient", FakeTasksClient)
     task_name = service._enqueue("run_42", "drive-job-id-123456")
