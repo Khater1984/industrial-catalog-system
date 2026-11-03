@@ -11,7 +11,7 @@ function createSheet(name, failRunOnce) {
     getLastColumn: () => rows.length ? rows[0].length : 0,
     getRange: (row, column, rowCount, columnCount) => ({
       setValues: (values) => {
-        if (name === "Run_Log" && failRunOnce.value) {
+        if (name === "Run_Log" && row > 1 && failRunOnce.value) {
           failRunOnce.value = false;
           throw new Error("SIMULATED_SHEET_WRITE_FAILURE");
         }
