@@ -6,7 +6,6 @@ import json
 import os
 from flask import Flask, jsonify, request
 from google.cloud import tasks_v2
-from google.protobuf import timestamp_pb2
 
 from .runner import run_from_drive
 
@@ -27,7 +26,7 @@ def _authorized() -> bool:
     return bool(expected) and hmac.compare_digest(supplied, "Bearer " + expected)
 
 
-def _enqueue(run_id: str, job_file_id: str, callback_url: str) -> str:
+def _enqueue(run_id: str, job_file_id: str) -> str:
     project = _required_env("GOOGLE_CLOUD_PROJECT")
     location = _required_env("CLOUD_TASKS_LOCATION")
     queue = _required_env("CLOUD_TASKS_QUEUE")
@@ -73,7 +72,7 @@ def dispatch():
     if not all(isinstance(v, str) and v.strip() for v in (run_id, job_file_id)):
         return jsonify({"ok": False, "error": "INVALID_REQUEST"}), 400
     try:
-        task_name = _enqueue(run_id, job_file_id, callback_url)
+        task_name = _enqueue(run_id, job_file_id)
         return jsonify({"ok": True, "accepted": True, "run_id": run_id, "task": task_name}), 202
     except Exception:
         app.logger.exception("Could not enqueue catalog worker task")
