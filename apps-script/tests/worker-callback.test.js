@@ -82,7 +82,7 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     DriveApp: { getFolderById: () => root },
     MimeType: { JSON: "application/json" },
-    Utilities: { sleep() {} },
+    Utilities: { sleep() {}, getUuid: () => "lease-test-uuid" },
     SheetsRepository: {
       getBy: (table) => table === "Run_Log" ? run : catalog,
       updateBy: (_table, _key, _value, patch) => Object.assign(run, patch)
