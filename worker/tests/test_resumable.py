@@ -279,3 +279,45 @@ def test_catalog_page_ids_must_match_page_count_and_be_unique(tmp_path):
         with pytest.raises(WorkerError) as error:
             process_resumable_catalog_job(job_for(source, catalog_page_ids=ids), tmp_path / "out")
         assert error.value.code == "INVALID_CATALOG_PAGE_IDS"
+
+
+def test_cross_run_reuse_creates_new_unit_and_preserves_source_artifact(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Reusable page", "Second page"])
+    source_job = job_for(source, catalog_page_ids=["page-id-1", "page-id-2"])
+    source_dir = tmp_path / "source-run"
+    original = process_resumable_catalog_job(source_job, source_dir)
+    original_artifact = source_dir / "pages/page-00001.json"
+    original_bytes = original_artifact.read_bytes()
+
+    retry_job = job_for(
+        source, run_id="run_v21_002", attempt_number=2,
+        parent_run_id="run_v21_001", retry_reason="Reprocess after interrupted delivery",
+        catalog_page_ids=["page-id-1", "page-id-2"],
+        reuse_from_run_dir=str(source_dir),
+    )
+    reused = process_resumable_catalog_job(retry_job, tmp_path / "retry-run")
+    first_new_page = json.loads((tmp_path / "retry-run/pages/page-00001.json").read_text())
+
+    assert reused["run_id"] != original["run_id"]
+    assert reused["reused_units"] == 2
+    assert reused["newly_processed_units"] == 0
+    assert reused["pages"][0]["run_unit_id"] != original["pages"][0]["run_unit_id"]
+    assert first_new_page["unit_status"] == "REUSED"
+    assert first_new_page["reused_from_run_unit_id"] == original["pages"][0]["run_unit_id"]
+    assert original_artifact.read_bytes() == original_bytes
+
+
+def test_cross_run_reuse_rejects_different_logical_job(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Not reusable"])
+    source_dir = tmp_path / "source-run"
+    process_resumable_catalog_job(job_for(source), source_dir)
+    retry = job_for(
+        source, run_id="run_v21_002", logical_job_id="another-logical-job",
+        attempt_number=2, parent_run_id="run_v21_001", retry_reason="Test",
+        reuse_from_run_dir=str(source_dir),
+    )
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(retry, tmp_path / "retry-run")
+    assert error.value.code == "REUSE_LOGICAL_JOB_MISMATCH"
