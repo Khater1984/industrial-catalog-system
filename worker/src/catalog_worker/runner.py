@@ -98,7 +98,7 @@ def run_from_drive(
         result = process_resumable_catalog_job(local_job, run_dir)
         manifest = dict(result)
     except WorkerError as exc:
-        # Publish a terminal failure result and notify Apps Script. A failed
+        # Publish a terminal failure result for the owner-executed Drive poller. A failed
         # attempt is never silently retried as the same logical run.
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
