@@ -92,7 +92,7 @@ def test_drive_runner_processes_and_uploads_immutable_artifacts(tmp_path):
     ).hexdigest()
 
 
-def test_runner_rejects_source_hash_mismatch(tmp_path):
+def test_source_hash_mismatch_publishes_terminal_failure_manifest(tmp_path):
     pdf_bytes = make_pdf(tmp_path / "source.pdf")
     job = {
         "contract_version": "1", "run_id": "run_test_002",
@@ -101,8 +101,31 @@ def test_runner_rejects_source_hash_mismatch(tmp_path):
         "attempt_number": 1, "run_folder_id": "folder-run",
     }
     drive = FakeDrive(job, pdf_bytes)
-    import pytest
-    with pytest.raises(runner.RunnerError, match="SOURCE_HASH_MISMATCH"):
-        runner.run_from_drive(
-            job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
-        )
+    result = runner.run_from_drive(
+        job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
+    )
+    assert result["run_status"] == "FAILED"
+    manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
+    assert manifest["error_code"] == "SOURCE_HASH_MISMATCH"
+    assert manifest["failed_units"] == 1
+
+
+def test_repeated_delivery_reuses_the_same_immutable_result_manifest(tmp_path):
+    pdf_bytes = make_pdf(tmp_path / "source.pdf")
+    job = {
+        "contract_version": "1", "run_id": "run_test_003",
+        "logical_job_id": "job_test_003", "catalog_id": "cat_test_003",
+        "source_pdf_file_id": "source-pdf",
+        "source_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+        "attempt_number": 1, "run_folder_id": "folder-run",
+    }
+    drive = FakeDrive(job, pdf_bytes)
+    first = runner.run_from_drive(
+        job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
+    )
+    second = runner.run_from_drive(
+        job_file_id="job-file-id-123456", drive=drive, output_root=tmp_path / "work",
+    )
+    assert second["result_manifest_file_id"] == first["result_manifest_file_id"]
+    assert second["result_manifest_sha256"] == first["result_manifest_sha256"]
+    assert second["run_status"] == "COMPLETED"
