@@ -49,7 +49,15 @@ gcloud run deploy industrial-catalog-worker \
 
 The Cloud Run service is reachable without Google IAM authentication because Apps Script UrlFetchApp cannot mint an identity token for the request. The `/run` handler therefore enforces the high-entropy bearer token in application code. The internal `/tasks/run` handler separately requires a Google OIDC token from the configured task-invoker service account. Do not remove either check.
 
-After deployment, copy the service base URL and set it as `WORKER_PUBLIC_URL` on the Cloud Run service. If your deployment tooling does not allow setting the service URL as an environment variable in the same command, deploy once, retrieve the URL with `gcloud run services describe`, then update the service environment.
+After deployment, set the service URL as an environment variable (the service needs its own URL to enqueue task targets):
+
+```bash
+SERVICE_URL=$(gcloud run services describe industrial-catalog-worker --region YOUR_REGION --format='value(status.url)')
+gcloud run services update industrial-catalog-worker --region YOUR_REGION \
+  --update-env-vars WORKER_PUBLIC_URL="$SERVICE_URL"
+```
+
+Then grant the task-invoker identity the Cloud Run Invoker role on this service.
 
 ## 4. Apps Script properties
 
