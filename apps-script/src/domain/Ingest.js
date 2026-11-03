@@ -31,6 +31,10 @@ var Ingest = (function () {
     if (manifest.protocol_version !== "1" || manifest.manifest_version !== 2) throw new Error("MANIFEST_VERSION_UNSUPPORTED");
     if (requireString_(manifest, "run_id") !== run.Run_ID) throw new Error("MANIFEST_RUN_MISMATCH");
     if (requireString_(manifest, "catalog_id") !== run.Catalog_ID) throw new Error("MANIFEST_CATALOG_MISMATCH");
+    if (requireString_(manifest, "logical_job_id") !== run.Logical_Job_ID) throw new Error("MANIFEST_LOGICAL_JOB_MISMATCH");
+    if (manifest.attempt_number !== Number(run.Attempt_Number) || manifest.run_type !== "CATALOG_EXTRACTION") {
+      throw new Error("MANIFEST_RUN_LINEAGE_MISMATCH");
+    }
     var catalog = SheetsRepository.getBy("Catalogs", "Catalog_ID", run.Catalog_ID);
     if (!catalog || manifest.source_sha256 !== catalog.SHA256) throw new Error("MANIFEST_SOURCE_MISMATCH");
     if (expectedRawSha && expectedRawSha !== sha256Text_(canonicalJson_(manifest))) {
@@ -53,8 +57,12 @@ var Ingest = (function () {
     manifest.pages.forEach(function (page, index) {
       if (!page || page.page_number !== index + 1) throw new Error("MANIFEST_PAGE_ORDER_INVALID");
       var key = requireString_(page, "unit_key");
-      if (seen[key]) throw new Error("MANIFEST_DUPLICATE_UNIT_KEY");
-      seen[key] = true;
+      if (page.unit_type !== "CATALOG_PAGE" || key !== page.catalog_page_id ||
+          page.catalog_page_id !== "cp_" + manifest.catalog_id + "_" + String(index + 1).padStart(5, "0")) {
+        throw new Error("MANIFEST_PAGE_IDENTITY_INVALID");
+      }
+      if (seen[key] || seen[page.run_unit_id]) throw new Error("MANIFEST_DUPLICATE_UNIT_KEY");
+      seen[key] = true; seen[page.run_unit_id] = true;
       requireString_(page, "run_unit_id");
       requireString_(page, "catalog_page_id");
       requireString_(page, "input_sha256");
@@ -77,7 +85,11 @@ var Ingest = (function () {
     var artifact;
     try { artifact = JSON.parse(file.getBlob().getDataAsString("UTF-8")); }
     catch (err) { throw new Error("PAGE_ARTIFACT_JSON_INVALID"); }
-    if (artifact.run_id !== manifest.run_id || artifact.catalog_id !== manifest.catalog_id ||
+    var artifactCopy = {};
+    Object.keys(artifact).forEach(function (key) { if (key !== "output_sha256") artifactCopy[key] = artifact[key]; });
+    if (artifact.output_sha256 !== sha256Text_(canonicalJson_(artifactCopy))) throw new Error("PAGE_ARTIFACT_CHECKSUM_INVALID");
+    if (artifact.source_pdf_sha256 !== manifest.source_sha256 || artifact.page_number !== page.page_number ||
+        artifact.run_id !== manifest.run_id || artifact.catalog_id !== manifest.catalog_id ||
         artifact.run_unit_id !== page.run_unit_id || artifact.catalog_page_id !== page.catalog_page_id ||
         artifact.unit_key !== page.unit_key || artifact.input_sha256 !== page.input_sha256 ||
         artifact.output_sha256 !== page.output_sha256 || artifact.unit_status !== page.unit_status) {
