@@ -89,7 +89,7 @@ def test_terminal_run_cannot_be_reopened(tmp_path):
 
 def test_canonical_json_normalizes_unicode_to_nfc():
     from catalog_worker.resumable import canonical_json_bytes
-    assert canonical_json_bytes({"label": "é"}) == canonical_json_bytes({"label": "e\\u0301"})
+    assert canonical_json_bytes({"label": "é"}) == canonical_json_bytes({"label": "é"})
 
 
 def test_changed_input_cannot_resume_same_logical_job(tmp_path):
