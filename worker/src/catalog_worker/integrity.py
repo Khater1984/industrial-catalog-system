@@ -291,10 +291,16 @@ def verify_gate_3(
             "input_sha256": row.get("Input_SHA256"),
             "unit_status": row.get("Unit_Status"),
         }
+        # The worker's manifest page summary intentionally omits run_id and
+        # catalog_id; those are bound by the top-level manifest. The artifact
+        # itself must carry both values.
         mismatch = [
             name for name, expected in identity.items()
-            if artifact.get(name) != expected or page.get(name) != expected
+            if artifact.get(name) != expected
         ]
+        for name in ("run_unit_id", "catalog_page_id", "unit_key", "input_sha256", "unit_status"):
+            if page.get(name) != identity[name]:
+                mismatch.append("manifest_page." + name)
         if artifact.get("page_number") != page.get("page_number"):
             mismatch.append("page_number")
         if artifact.get("source_pdf_sha256") != manifest.get("source_sha256"):
