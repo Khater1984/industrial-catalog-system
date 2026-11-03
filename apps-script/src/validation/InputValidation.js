@@ -42,8 +42,12 @@ var InputValidation = (function () {
     var languageCode = optionalString_(payload.languageCode, "languageCode", 12);
     if (languageCode && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(languageCode)) throw new Error("VALIDATION_INVALID_FORMAT: languageCode");
     var sourceUrl = optionalString_(payload.sourceUrl, "sourceUrl", 2048);
-    if (sourceUrl && sourceUrl.toLowerCase().indexOf("https://") !== 0 && sourceUrl.toLowerCase().indexOf("http://") !== 0) {
-      throw new Error("VALIDATION_INVALID_FORMAT: sourceUrl");
+    if (sourceUrl) {
+      var lowerUrl = sourceUrl.toLowerCase();
+      var protocolLength = lowerUrl.indexOf("https://") === 0 ? 8 : (lowerUrl.indexOf("http://") === 0 ? 7 : 0);
+      var authority = protocolLength ? sourceUrl.substring(protocolLength).split("/")[0].split("?")[0].split("#")[0] : "";
+      var hasControlOrSpace = sourceUrl.split("").some(function (character) { return character.charCodeAt(0) <= 32; });
+      if (!protocolLength || !authority || hasControlOrSpace) throw new Error("VALIDATION_INVALID_FORMAT: sourceUrl");
     }
     return {
       driveFileId: driveFileId,
