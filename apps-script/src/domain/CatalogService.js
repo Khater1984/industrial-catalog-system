@@ -19,13 +19,13 @@ var CatalogService = (function () {
       idempotentReplay: true
     };
   }
-  function createRun_(catalogId, now) {
+  function createRun_(catalogId, sourceHash, now) {
     var runId = id_("run");
     var logicalJobId = id_("job");
     SheetsRepository.append("Run_Log", {
       Run_ID: runId, Run_Type: "CATALOG_EXTRACTION", Catalog_ID: catalogId,
       Logical_Job_ID: logicalJobId, Parent_Run_ID: "", Attempt_Number: 1,
-      Retry_Reason: "", Idempotency_Key: "source_" + catalogId, Run_Status: "QUEUED",
+      Retry_Reason: "", Idempotency_Key: "catalog_sha256_" + sourceHash, Run_Status: "QUEUED",
       Current_Step: "REGISTERED", Total_Units: "", Completed_Units: 0, Failed_Units: 0,
       Created_At: now, Created_By: APP.ACTOR_ID
     });
@@ -55,7 +55,7 @@ var CatalogService = (function () {
       if (existingCatalog) {
         var existingRun = SheetsRepository.getBy("Run_Log", "Catalog_ID", existingCatalog.Catalog_ID);
         // A crash after the Catalogs append but before Run_Log append is repaired on retry.
-        if (!existingRun) existingRun = createRun_(existingCatalog.Catalog_ID, new Date().toISOString());
+        if (!existingRun) existingRun = createRun_(existingCatalog.Catalog_ID, hash, new Date().toISOString());
         return resultFor_(existingCatalog, existingRun);
       }
 
@@ -71,7 +71,7 @@ var CatalogService = (function () {
         Lifecycle_Status: "ACTIVE", Created_At: now, Created_By: APP.ACTOR_ID
       });
       // If this second append fails, a retry finds the catalog by SHA256 and repairs Run_Log.
-      var run = createRun_(catalogId, now);
+      var run = createRun_(catalogId, hash, now);
       return {
         catalogId: catalogId, runId: run.Run_ID, sha256: hash,
         fileName: file.getName(), status: run.Run_Status, idempotentReplay: false
