@@ -88,6 +88,27 @@ def _read_object(path: Path, code: str) -> dict[str, Any]:
         raise WorkerError(code, f"Invalid JSON artifact: {path.name}") from exc
 
 
+def _create_immutable_json(path: Path, value: dict[str, Any]) -> bool:
+    """Atomically publish an immutable artifact without replacing an existing file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(canonical_json_bytes(value))
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+            return True
+        except FileExistsError:
+            return False
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
 def _required(data: dict[str, Any], key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -298,20 +319,13 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                         "text_char_count": len(text), "extracted_text": text,
                     }
                 saved["output_sha256"] = _hash_payload(saved, "output_sha256")
-                artifact.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    fd = os.open(artifact, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                except FileExistsError:
+                created_new = _create_immutable_json(artifact, saved)
+                if not created_new:
                     saved = _verify_unit(artifact, identity, input_sha)
                     if saved is None:
                         raise WorkerError("CHECKPOINT_RACE", "Could not verify concurrently-created artifact.")
-                else:
-                    with os.fdopen(fd, "wb") as stream:
-                        stream.write(canonical_json_bytes(saved))
-                        stream.flush()
-                        os.fsync(stream.fileno())
-                    if saved["unit_status"] == "COMPLETED":
-                        created += 1
+                elif saved["unit_status"] == "COMPLETED":
+                    created += 1
             else:
                 reused += 1
             pages.append({
