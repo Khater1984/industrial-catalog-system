@@ -103,7 +103,7 @@ def execute_task():
     body = request.get_json(silent=True) or {}
     try:
         result = run_from_drive(
-            job_file_id=body["job_file_id"],
+            job_file_id=body["job_file_id"], expected_run_id=body["run_id"],
         )
         return jsonify(result), 200
     except Exception:
