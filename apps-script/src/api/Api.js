@@ -83,18 +83,12 @@ function doGet(e) {
 /** Browser upload endpoint. The deployed web app is restricted to the primary owner. */
 function uploadCatalogFromBrowser(payload) {
   assertPrimaryUser_();
-  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("INVALID_UPLOAD_PAYLOAD");
-  var allowed = ["supplierName", "catalogTitle", "catalogRevision", "fileName", "mimeType", "base64"];
-  Object.keys(payload).forEach(function (key) {
-    if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
-  });
-  var name = String(payload.fileName || "").replace(/[\\\\/:*?"<>|\\x00-\\x1F]/g, "_").trim();
-  if (!name || name.length > 180 || !/\\.pdf$/i.test(name)) throw new Error("INVALID_PDF_FILENAME");
-  if (payload.mimeType && payload.mimeType !== "application/pdf") throw new Error("UNSUPPORTED_MIME_TYPE");
-  if (typeof payload.base64 !== "string" || !payload.base64 || payload.base64.length > 16777216 || !/^[A-Za-z0-9+/]+={0,2}$/.test(payload.base64)) {
-    throw new Error("INVALID_BASE64_OR_FILE_TOO_LARGE");
-  }
-  var bytes = Utilities.base64Decode(payload.base64);
+  var upload = InputValidation.uploadMetadata(payload);
+  var name = upload.fileName;
+  var bytesEncoded = upload.base64;
+  var bytesLength = bytesEncoded.length;
+  if (bytesLength > 16777216) throw new Error("INVALID_BASE64_OR_FILE_TOO_LARGE");
+  var bytes = Utilities.base64Decode(bytesEncoded);
   if (bytes.length < 8 || bytes.length > 12 * 1024 * 1024) throw new Error("FILE_SIZE_OUT_OF_RANGE");
   var signature = bytes.slice(0, 5).map(function (byte) { return String.fromCharCode(byte < 0 ? byte + 256 : byte); }).join("");
   if (signature !== "%PDF-") throw new Error("INVALID_PDF_SIGNATURE");
@@ -104,9 +98,9 @@ function uploadCatalogFromBrowser(payload) {
   var file = DriveApp.getFolderById(folderId).createFile(blob);
   var catalogPayload = InputValidation.catalogPayload({
     driveFileId: file.getId(),
-    supplierName: payload.supplierName,
-    catalogTitle: payload.catalogTitle || "",
-    catalogRevision: payload.catalogRevision || ""
+    supplierName: upload.supplierName,
+    catalogTitle: upload.catalogTitle,
+    catalogRevision: upload.catalogRevision
   });
   var registered = CatalogService.register(catalogPayload);
   return {
