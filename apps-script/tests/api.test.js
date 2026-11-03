@@ -21,6 +21,7 @@ function createApiContext(overrides = {}) {
       })
     },
     assertPrimaryUser_: () => { calls.auth += 1; return "actor_test"; },
+    dispatchRegisteredCatalog_: (registered) => ({ accepted: true, run_id: registered.runId }),
     jsonResponse_: (payload) => payload,
     CatalogService: {
       register: (payload) => {
@@ -74,6 +75,7 @@ test("catalog.register validates and forwards only normalized payload fields", (
   assert.equal(result.ok, true);
   assert.equal(result.request_id, "request-001");
   assert.equal(result.data.catalogId, "cat_test");
+  assert.equal(result.data.workerDispatch.accepted, true);
   assert.equal(calls.register.length, 1);
   assert.equal(calls.register[0].supplierName, "Example Supplier");
   assert.equal(Object.hasOwn(calls.register[0], "unexpected"), false);
