@@ -1,6 +1,5 @@
 """Static cross-language guard for the Worker <-> Apps Script V1/V2 contract."""
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 worker = (ROOT / "worker/src/catalog_worker/resumable.py").read_text()
@@ -22,9 +21,10 @@ checks = {
     "service exposes dispatch endpoint": '@app.post("/run")' in service,
     "service exposes durable task endpoint": '@app.post("/tasks/run")' in service,
     "Apps Script dispatch uses HTTPS": 'endpoint.indexOf("https://") !== 0' in integration,
-    "Apps Script callback uses body token": 'body.callback_token' in integration,
-    "API routes callback": 'body.action === "worker.callback"' in api,
-    "Ingest checks source fingerprint": 'manifest.source_sha256 !== catalog.SHA256' in ingest,
+    "Apps Script result polling reads Drive manifests": 'getFilesByName("result-manifest.json")' in integration,
+    "Apps Script poller invokes validated ingestion": "Ingest.ingestManifest" in integration,
+    "Apps Script remains owner-authenticated": "assertPrimaryUser_();" in api,
+    "Ingest checks source fingerprint": "manifest.source_sha256 !== catalog.SHA256" in ingest,
     "Ingest validates per-page artifact": "verifyArtifact_(page, manifest)" in ingest,
 }
 failed = [name for name, ok in checks.items() if not ok]
