@@ -95,5 +95,5 @@ var SheetsRepository = (function () {
     for (var i = 0; i < values.length; i++) if (String(values[i][0]) === String(value)) return i + 2;
     return null;
   }
-  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy };
+  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy, validateEnums: validateEnums_ };
 })();
