@@ -156,3 +156,46 @@ def test_deterministic_idempotency_key(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(dict(job, idempotency_key="random"), tmp_path / "c")
     assert error.value.code == "IDEMPOTENCY_KEY_MISMATCH"
+
+
+
+def test_cross_run_reuse_creates_new_unit_and_links_source(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Page one", "Page two"])
+    first_job = job_for(source)
+    source_dir = tmp_path / "first-run"
+    first = process_resumable_catalog_job(first_job, source_dir)
+
+    second_job = job_for(
+        source,
+        run_id="run_v21_002",
+        attempt_number=2,
+        parent_run_id="run_v21_001",
+        retry_reason="Worker retry after transient failure",
+        reuse_from_run_dir=str(source_dir),
+    )
+    second_dir = tmp_path / "second-run"
+    second = process_resumable_catalog_job(second_job, second_dir)
+
+    assert second["run_status"] == "COMPLETED"
+    assert second["reused_units"] == 2
+    assert second["newly_processed_units"] == 0
+    for old, new in zip(first["pages"], second["pages"]):
+        assert old["run_unit_id"] != new["run_unit_id"]
+        assert new["unit_status"] == "REUSED"
+        assert new["reused_from_run_unit_id"] == old["run_unit_id"]
+    # The prior run's immutable artifacts remain byte-for-byte untouched.
+    old_page = source_dir / "pages/page-00001.json"
+    assert json.loads(old_page.read_text())["run_id"] == "run_v21_001"
+
+
+def test_idempotency_key_is_unique_per_attempt(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Attempt key"])
+    first = process_resumable_catalog_job(job_for(source), tmp_path / "attempt-1")
+    second = process_resumable_catalog_job(
+        job_for(source, run_id="run_v21_002", attempt_number=2,
+                parent_run_id="run_v21_001", retry_reason="Retry"),
+        tmp_path / "attempt-2",
+    )
+    assert first["idempotency_key"] != second["idempotency_key"]
