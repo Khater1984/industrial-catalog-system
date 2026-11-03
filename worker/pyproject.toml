@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "industrial-catalog-worker"
-version = "0.1.0"
-description = "Deterministic page-by-page PDF intake worker"
+version = "0.2.1"
+description = "Resumable page-by-page PDF intake worker"
 requires-python = ">=3.11"
 dependencies = ["pypdf>=5.0,<7.0"]
 
@@ -14,6 +14,7 @@ test = ["pytest>=8.0,<9.0", "reportlab>=4.0,<5.0"]
 
 [project.scripts]
 catalog-worker = "catalog_worker.cli:main"
+catalog-worker-v21 = "catalog_worker.resumable_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
