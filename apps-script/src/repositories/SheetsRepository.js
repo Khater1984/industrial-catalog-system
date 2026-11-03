@@ -165,6 +165,23 @@ var SheetsRepository = (function () {
     }
     return null;
   }
+  function listRecent(name, limit) {
+    var headers = TABLES[name];
+    if (!headers) throw new Error("UNKNOWN_TABLE: " + name);
+    var sheet = spreadsheet_().getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var rowCount = sheet.getLastRow() - 1;
+    var startRow = Math.max(2, sheet.getLastRow() - Math.max(1, Number(limit) || 30) + 1);
+    var values = sheet.getRange(startRow, 1, sheet.getLastRow() - startRow + 1, headers.length).getValues();
+    return values.reverse().map(function (row) {
+      var record = {};
+      headers.forEach(function (header, index) {
+        var value = row[index];
+        record[header] = value instanceof Date && !isNaN(value.getTime()) ? value.toISOString() : value;
+      });
+      return record;
+    });
+  }
   function findBy(name, column, value) {
     var headers = TABLES[name];
     if (!headers || headers.indexOf(column) < 0) throw new Error("INVALID_LOOKUP");
@@ -175,5 +192,5 @@ var SheetsRepository = (function () {
     for (var i = 0; i < values.length; i++) if (String(values[i][0]) === String(value)) return i + 2;
     return null;
   }
-  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy, validateEnums: validateEnums_, validateRecord: validateRecord_ };
+  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
 })();
