@@ -38,9 +38,9 @@ def _enqueue(run_id: str, job_file_id: str) -> str:
     body = json.dumps({"run_id": run_id, "job_file_id": job_file_id}).encode()
     task = {
         "name": task_name,
+        "dispatch_deadline": {"seconds": 1800},
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "dispatch_deadline": {"seconds": 1800},
             "url": base_url + "/tasks/run",
             "headers": {"Content-Type": "application/json"},
             "body": body,
