@@ -36,8 +36,7 @@ def _enqueue(run_id: str, job_file_id: str, callback_url: str) -> str:
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project, location, queue)
     task_name = client.task_path(project, location, queue, "catalog-" + run_id.replace("_", "-"))
-    body = json.dumps({"run_id": run_id, "job_file_id": job_file_id,
-                       "callback_url": callback_url}).encode()
+    body = json.dumps({"run_id": run_id, "job_file_id": job_file_id}).encode()
     task = {
         "name": task_name,
         "http_request": {
@@ -71,11 +70,8 @@ def dispatch():
         return jsonify({"ok": False, "error": "CONTRACT_VERSION_MISMATCH"}), 400
     run_id = body.get("run_id")
     job_file_id = body.get("job_file_id")
-    callback_url = body.get("callback_url")
-    if not all(isinstance(v, str) and v.strip() for v in (run_id, job_file_id, callback_url)):
+    if not all(isinstance(v, str) and v.strip() for v in (run_id, job_file_id)):
         return jsonify({"ok": False, "error": "INVALID_REQUEST"}), 400
-    if not callback_url.startswith("https://"):
-        return jsonify({"ok": False, "error": "CALLBACK_HTTPS_REQUIRED"}), 400
     try:
         task_name = _enqueue(run_id, job_file_id, callback_url)
         return jsonify({"ok": True, "accepted": True, "run_id": run_id, "task": task_name}), 202
@@ -108,8 +104,7 @@ def execute_task():
     body = request.get_json(silent=True) or {}
     try:
         result = run_from_drive(
-            job_file_id=body["job_file_id"], callback_url=body["callback_url"],
-            callback_token=_required_env("CALLBACK_SHARED_TOKEN"),
+            job_file_id=body["job_file_id"],
         )
         return jsonify(result), 200
     except Exception:
