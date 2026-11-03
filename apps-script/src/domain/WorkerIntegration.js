@@ -110,7 +110,6 @@ var WorkerIntegration = (function () {
         var parents = jobFile.getParents();
         if (!parents.hasNext()) throw new Error("RUN_FOLDER_NOT_FOUND");
         var folder = parents.next(), files = folder.getFilesByName("result-manifest.json");
-        if (!files.hasNext()) return;
         if (!files.hasNext()) {
           var expiresAt = run.Lease_Expires_At ? new Date(run.Lease_Expires_At).getTime() : 0;
           if (expiresAt && expiresAt <= Date.now()) {
