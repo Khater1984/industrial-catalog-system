@@ -1,7 +1,7 @@
 # Python Worker Specification
 
-**Status:** Proposed worker requirements; no worker code or hosting has been created.  
-**Service model:** One stateless Python worker service with two job capabilities: catalog processing and PDF generation.
+**Status:** Requirements remain proposed. A local DEV-only V2.1 PDF embedded-text worker prototype now exists under `worker/src/catalog_worker/resumable.py` and passes GitHub Actions tests. It is not a deployed service and does not implement the complete pipeline below.  
+**Service model:** Target remains one stateless Python worker service with two job capabilities: catalog processing and PDF generation.
 
 ## 1. Responsibilities and boundaries
 
