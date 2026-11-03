@@ -19,6 +19,26 @@ var InputValidation = (function () {
     if (normalized.length > maxLength) throw new Error("VALIDATION_TOO_LONG: " + field);
     return normalized;
   }
+  function uploadMetadata_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("INVALID_UPLOAD_PAYLOAD");
+    var allowed = ["supplierName", "catalogTitle", "catalogRevision", "fileName", "mimeType", "base64"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var fileName = requiredString_(payload.fileName, "fileName", 180);
+    fileName = fileName.replace(/[\\/:*?"<>|]/g, "_");
+    if (!/\.pdf$/i.test(fileName)) throw new Error("INVALID_PDF_FILENAME");
+    if (payload.mimeType && payload.mimeType !== "application/pdf") throw new Error("UNSUPPORTED_MIME_TYPE");
+    var base64 = requiredString_(payload.base64, "base64", 16777216);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error("INVALID_BASE64");
+    return {
+      supplierName: requiredString_(payload.supplierName, "supplierName", 160),
+      catalogTitle: optionalString_(payload.catalogTitle, "catalogTitle", 240),
+      catalogRevision: optionalString_(payload.catalogRevision, "catalogRevision", 80),
+      fileName: fileName,
+      base64: base64
+    };
+  }
   function catalogPayload_(payload) {
     if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
     var allowed = ["driveFileId","supplierName","catalogTitle","catalogReference","catalogRevision","languageCode","publishedDate","sourceUrl","notes"];
@@ -61,5 +81,5 @@ var InputValidation = (function () {
       notes: optionalString_(payload.notes, "notes", 2000)
     };
   }
-  return { catalogPayload: catalogPayload_ };
+  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_ };
 })();
