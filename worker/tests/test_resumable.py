@@ -239,3 +239,23 @@ def test_corrupt_source_artifact_cannot_be_reused(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(retry, tmp_path / "retry-run")
     assert error.value.code == "REUSE_SOURCE_CORRUPT"
+
+
+
+def test_same_run_cannot_change_attempt_lineage(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Lineage"])
+    first = process_resumable_catalog_job(job_for(source), tmp_path / "parent")
+    retry_job = job_for(
+        source,
+        run_id="run_v21_002",
+        attempt_number=2,
+        parent_run_id="run_v21_001",
+        retry_reason="Original retry reason",
+    )
+    out = tmp_path / "retry"
+    process_resumable_catalog_job(retry_job, out)
+    changed = dict(retry_job, retry_reason="Changed retry reason")
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(changed, out)
+    assert error.value.code == "RESULT_MANIFEST_CONFLICT"
