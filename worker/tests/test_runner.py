@@ -74,19 +74,12 @@ def test_drive_runner_processes_uploads_and_notifies(monkeypatch, tmp_path):
         "extraction_profile": "embedded-text-v1",
     }
     drive = FakeDrive(job, pdf_bytes)
-    callbacks = []
-    monkeypatch.setattr(runner, "_post_callback", lambda url, token, payload: callbacks.append((url, token, payload)))
-
     result = runner.run_from_drive(
-        job_file_id="job-file", callback_url="https://script.google.com/macros/s/test/exec",
-        callback_token="callback-secret", drive=drive, output_root=tmp_path / "work",
+        job_file_id="job-file", drive=drive, output_root=tmp_path / "work",
     )
 
     assert result["accepted"] is True
     assert result["run_status"] == "COMPLETED"
-    assert len(callbacks) == 1
-    assert callbacks[0][0].startswith("https://")
-    assert callbacks[0][1] == "callback-secret"
     manifest_id = result["result_manifest_file_id"]
     manifest = json.loads(drive.files[manifest_id]["content"])
     assert manifest["manifest_version"] == 2
@@ -99,19 +92,17 @@ def test_drive_runner_processes_uploads_and_notifies(monkeypatch, tmp_path):
     ).hexdigest()
 
 
-def test_runner_rejects_non_https_callback_before_execution(monkeypatch, tmp_path):
+def test_runner_rejects_source_hash_mismatch(tmp_path):
     pdf_bytes = make_pdf(tmp_path / "source.pdf")
     job = {
         "contract_version": "1", "run_id": "run_test_002",
         "logical_job_id": "job_test_002", "catalog_id": "cat_test_002",
-        "source_pdf_file_id": "source-pdf",
-        "source_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+        "source_pdf_file_id": "source-pdf", "source_sha256": "0" * 64,
         "attempt_number": 1, "run_folder_id": "folder-run",
     }
     drive = FakeDrive(job, pdf_bytes)
     import pytest
-    with pytest.raises(runner.RunnerError, match="CALLBACK_HTTPS_REQUIRED"):
+    with pytest.raises(runner.RunnerError, match="SOURCE_HASH_MISMATCH"):
         runner.run_from_drive(
-            job_file_id="job-file", callback_url="http://insecure.example/callback",
-            callback_token="secret", drive=drive, output_root=tmp_path / "work",
+            job_file_id="job-file", drive=drive, output_root=tmp_path / "work",
         )
