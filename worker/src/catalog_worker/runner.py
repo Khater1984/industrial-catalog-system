@@ -29,7 +29,7 @@ def _required(data: dict[str, Any], key: str) -> str:
 
 
 def run_from_drive(
-    *, job_file_id: str,
+    *, job_file_id: str, expected_run_id: str | None = None,
     drive: DriveClient | None = None, output_root: str | Path | None = None,
 ) -> dict[str, Any]:
     drive = drive or DriveClient()
@@ -44,6 +44,8 @@ def run_from_drive(
         raise RunnerError("CONTRACT_VERSION_MISMATCH")
 
     run_id = _required(job, "run_id")
+    if expected_run_id and run_id != expected_run_id:
+        raise RunnerError("DISPATCH_RUN_ID_MISMATCH")
     catalog_id = _required(job, "catalog_id")
     logical_job_id = _required(job, "logical_job_id")
     source_file_id = _required(job, "source_pdf_file_id")
@@ -63,7 +65,7 @@ def run_from_drive(
     if page_count < 1:
         raise RunnerError("PDF_HAS_NO_PAGES")
 
-    # Deterministic Catalog_Page_IDs allow the first successful callback to
+    # Deterministic Catalog_Page_IDs allow the first successful ingest to
     # create the catalog page identities without a pre-existing page-count API.
     page_ids = [f"cp_{catalog_id}_{number:05d}" for number in range(1, page_count + 1)]
     local_job = {
