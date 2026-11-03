@@ -74,7 +74,7 @@ var CatalogService = (function () {
       var run = createRun_(catalogId, now);
       return {
         catalogId: catalogId, runId: run.Run_ID, sha256: hash,
-        fileName: file.getName(), status: run.Run_Status, recovered: false
+        fileName: file.getName(), status: run.Run_Status, idempotentReplay: false
       };
     } finally {
       lock.releaseLock();
