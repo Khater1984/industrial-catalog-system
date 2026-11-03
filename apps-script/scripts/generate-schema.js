@@ -66,6 +66,10 @@ function parseSchemaTables() {
     rules[tableName] = Object.fromEntries(merged.map((field) => [field.name, { type: field.type, required: field.required }]));
   }
 
+  // The source-key algorithm version is explicitly required for product/model/specification staging by the normative prose.
+  for (const tableName of ["Staging_Products", "Staging_Variants", "Staging_Specifications"]) {
+    rules[tableName].Source_Key_Algorithm_Version.required = "Yes";
+  }
   return { tables, rules };
 }
 
@@ -98,7 +102,7 @@ function parseEnums() {
 }
 
 function main() {
-  const { tables } = parseSchemaTables();
+  const { tables, rules } = parseSchemaTables();
   const { enums, required } = parseEnums();
   const tableNames = Object.keys(tables);
   const columnCount = Object.values(tables).reduce((sum, columns) => sum + columns.length, 0);
@@ -120,6 +124,13 @@ function main() {
     "",
     "var ENUM_REQUIRED = Object.freeze({",
     Object.entries(required).map(([key, isRequired]) => "  " + JSON.stringify(key) + ": " + isRequired).join(",\n"),
+    "});",
+    "",
+    "var FIELD_RULES = Object.freeze({",
+    Object.entries(rules).flatMap(([tableName, fields]) => Object.entries(fields).map(([fieldName, field]) => [
+      "  " + JSON.stringify(tableName + "." + fieldName) + ": { type: " + JSON.stringify(field.type) +
+      ", required: " + (field.required === "Yes") + ", conditional: " + (field.required === "Conditional") + " }"
+    ][0])).join(",\n"),
     "});",
     ""
   ].join("\n");
