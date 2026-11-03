@@ -54,7 +54,7 @@ test("initializes all 52 required tabs with exact headers", () => {
   assert.equal(result.tables.length, 52);
   assert.equal(Object.keys(h.sheets).length, 52);
   for (const [name, columns] of Object.entries(h.tables)) {
-    assert.deepEqual(h.sheets[name].readHeaders(), Array.from(columns), name);
+    assert.equal(JSON.stringify(h.sheets[name].readHeaders()), JSON.stringify(Array.from(columns)), name);
   }
   assert.equal(h.properties.APP_SCHEMA_VERSION, "2.1");
 });
@@ -62,6 +62,6 @@ test("initializes all 52 required tabs with exact headers", () => {
 test("refuses to rewrite an existing mismatched header", () => {
   const h = setup({ Catalogs: makeSheet("Catalogs", ["Catalog_ID", "Wrong_Column"]) });
   assert.throws(() => h.repository.initialize(), /SCHEMA_MISMATCH/);
-  assert.deepEqual(h.sheets.Catalogs.readHeaders(), ["Catalog_ID", "Wrong_Column"]);
+  assert.equal(JSON.stringify(h.sheets.Catalogs.readHeaders()), JSON.stringify(["Catalog_ID", "Wrong_Column"]));
   assert.equal(h.properties.APP_SCHEMA_VERSION, undefined);
 });
