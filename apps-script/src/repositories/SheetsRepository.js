@@ -71,7 +71,7 @@ var SheetsRepository = (function () {
       return;
     }
     if (type === "HEX64") {
-      if (typeof value !== "string" || value.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(value)) throw new Error(errorCode);
+      if (typeof value !== "string" || value.length !== 64 || !/^[0-9a-f]{64}$/.test(value)) throw new Error(errorCode);
       return;
     }
     if (type === "DATE") {
