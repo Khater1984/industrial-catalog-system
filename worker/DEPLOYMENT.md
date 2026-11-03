@@ -42,6 +42,7 @@ cd worker
 gcloud run deploy industrial-catalog-worker \
   --source . \
   --region YOUR_REGION \
+  --timeout=1800 \\
   --service-account WORKER_RUNTIME_SERVICE_ACCOUNT \
   --allow-unauthenticated \
   --set-env-vars GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,CLOUD_TASKS_LOCATION=YOUR_REGION,CLOUD_TASKS_QUEUE=catalog-worker-dev,TASK_INVOKER_SERVICE_ACCOUNT=TASK_INVOKER_SERVICE_ACCOUNT,WORKER_SHARED_TOKEN=YOUR_LONG_RANDOM_TOKEN
