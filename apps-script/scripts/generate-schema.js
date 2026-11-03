@@ -3,10 +3,10 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 const schemaFiles = [
-  "schema/01-source-and-products.md",
-  "schema/02-documents-and-images.md",
-  "schema/03-design-and-issued-output.md",
-  "schema/04-workflow-and-audit.md"
+  "../schema/01-source-and-products.md",
+  "../schema/02-documents-and-images.md",
+  "../schema/03-design-and-issued-output.md",
+  "../schema/04-workflow-and-audit.md"
 ];
 
 function parseTable(lines, startIndex) {
@@ -74,7 +74,7 @@ function parseSchemaTables() {
 }
 
 function parseEnums() {
-  const lines = fs.readFileSync(path.join(root, "ENUM_REGISTRY.md"), "utf8").split(/\r?\n/);
+  const lines = fs.readFileSync(path.join(root, "../ENUM_REGISTRY.md"), "utf8").split(/\r?\n/);
   const enums = {};
   const required = {};
   let group = null;
