@@ -229,10 +229,12 @@ def run_from_drive(
         "idempotency_key": job.get("idempotency_key"),
     }
 
+    published_artifacts: dict[str, tuple[str, str]] = {}
+
     def publish_checkpoint(page: dict[str, Any], artifact_path: Path) -> None:
         # Upload before the engine advances. If the Cloud Task is interrupted,
         # the next attempt restores this immutable page and resumes from it.
-        drive.upload_file(
+        published_artifacts[page["unit_key"]] = drive.upload_file(
             run_folder_id, artifact_path.name, artifact_path, "application/json"
         )
 
@@ -254,7 +256,7 @@ def run_from_drive(
         artifact_path = (run_dir / page["artifact_path"]).resolve()
         if run_dir not in artifact_path.parents or not artifact_path.is_file():
             raise RunnerError("ARTIFACT_PATH_INVALID")
-        artifact_id, raw_sha = drive.upload_file(
+        artifact_id, raw_sha = published_artifacts.get(page["unit_key"]) or drive.upload_file(
             run_folder_id, Path(page["artifact_path"]).name, artifact_path,
             "application/json",
         )
