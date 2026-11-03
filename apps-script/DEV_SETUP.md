@@ -39,9 +39,9 @@ The Worker is dispatched asynchronously through Cloud Tasks. It writes immutable
 
 ## Register a synthetic PDF
 - Open the owner-only web app and upload a non-confidential synthetic PDF (maximum 12 MiB) using the catalog intake form.
-- Confirm the file is stored in the DEV intake folder and the dashboard displays the new catalog with a QUEUED run.
+- Confirm the file is stored in the DEV intake folder. With worker dispatch configured, Run_Log should move to RUNNING after Cloud Tasks accepts the job; without worker configuration it remains QUEUED.
 - The API `POST` action `catalog.register` remains available for controlled integration tests using `driveFileId` and `supplierName`.
-- Verify Catalogs stores the exact file SHA256 and Run_Log contains one QUEUED attempt.
+- Verify Catalogs stores the exact file SHA256 and Run_Log contains one attempt (QUEUED when dispatch is not configured, RUNNING after dispatch acceptance).
 - Repeat the same request with identical file and metadata: it must return the original catalog/run IDs without adding duplicate rows.
 - Reuse the same PDF bytes with different supplier/catalog metadata: the API must return `DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW`; it must not silently reuse or overwrite the record.
 - Simulate a failed `Run_Log` append after the `Catalogs` row is written; retrying the same source must repair the missing run row without duplicating the catalog.
@@ -50,6 +50,6 @@ The Worker is dispatched asynchronously through Cloud Tasks. It writes immutable
 - Cloud Run service and Cloud Tasks queue must be deployed/configured separately; this repository does not provision cloud infrastructure.
 - Share the DEV intake and DEV runs folders with the Cloud Run runtime service account; shared-drive access must be granted explicitly.
 - The current Worker extracts embedded page text and stores page-level Run_Units plus Catalog_Pages. It does not perform OCR, table recognition, product/variant inference, staging, review, or promotion.
-- The five-minute poller is eventual rather than an immediate push callback. Run_Log remains recoverable if a poll fails.
+- The five-minute poller is eventual rather than an immediate push callback. Run_Log remains recoverable if a poll fails. Cloud Run must be configured with a finite Cloud Tasks retry policy and a dead-letter/review path for persistent infrastructure failures.
 - The effective-user identity check must be verified in the chosen Google account/Workspace before relying on it. If Apps Script does not expose the deploying account identity, stop and use a separately reviewed authentication design; do not weaken access to anonymous.
 - This slice has not been deployed or runtime-tested. The next gate is to provision the isolated DEV resources and execute the setup/registration tests.
