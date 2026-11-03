@@ -59,3 +59,28 @@ The original `catalog-worker` command remains available for compatibility. New V
 ## Production boundary
 
 The worker must not write directly to production Sheets. Production integration still requires authenticated server-issued manifests, Drive object access, durable worker leases, API-mediated result submission, server-side validation, and deployment/security decisions from `WORKER_SPEC.md`.
+
+
+## Optional embedded-image extraction (local DEV)
+
+Embedded PDF image extraction is available as a separate, opt-in utility. It is
+disabled unless either the command flag `--enable` is supplied or the
+`CATALOG_WORKER_EXTRACT_IMAGES=1` environment variable is set.
+
+```bash
+catalog-worker-images --pdf ./catalog.pdf --output ./worker-output --enable \
+  --catalog-id catalog_0001 --run-id run_0001
+```
+
+The utility writes content-addressed files under `images/page-NNNNN/` and a
+checksummed `image-manifest.json`. Each record includes the page identity,
+`Run_Units.Unit_Type=IMAGE`, `Image_Assets.Source_Type=CATALOG_EMBEDDED`,
+file size, MIME type, and SHA-256. Repeated extraction does not overwrite image
+bytes.
+
+**Integration boundary:** this is a local DEV extraction utility only. It does
+not create `Run_Units`, `Image_Assets`, or `Staging_Images` rows and does not
+upload images to Drive. A trusted Apps Script/API import step must validate the
+manifest and persist Drive file IDs before these artifacts are used by the
+catalog workflow. The existing `catalog-worker-v21` text worker remains
+unchanged and image extraction remains disabled by default.
