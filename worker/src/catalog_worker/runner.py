@@ -116,8 +116,27 @@ def run_from_drive(
         elif name == "result-manifest.json":
             drive.download(item["id"], run_dir / name)
 
-    result = process_resumable_catalog_job(local_job, run_dir)
-    manifest = dict(result)
+    try:
+        result = process_resumable_catalog_job(local_job, run_dir)
+        manifest = dict(result)
+    except WorkerError as exc:
+        # Publish a terminal failure result and notify Apps Script. A failed
+        # attempt is never silently retried as the same logical run.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        manifest = {
+            "manifest_version": MANIFEST_VERSION, "protocol_version": "1",
+            "worker_version": WORKER_VERSION, "run_type": "CATALOG_EXTRACTION",
+            "run_id": run_id, "logical_job_id": logical_job_id,
+            "attempt_number": local_job["attempt_number"],
+            "parent_run_id": local_job["parent_run_id"],
+            "retry_reason": local_job["retry_reason"], "catalog_id": catalog_id,
+            "source_sha256": source_sha, "job_input_sha256": "",
+            "page_count": page_count, "completed_units": 0,
+            "failed_units": page_count, "reused_units": 0, "newly_processed_units": 0,
+            "run_status": "FAILED", "started_at": now, "finished_at": now,
+            "pages": [], "error_code": exc.code, "error_message": exc.message,
+        }
     uploaded_pages = []
     for page in manifest.get("pages", []):
         artifact_path = (run_dir / page["artifact_path"]).resolve()
