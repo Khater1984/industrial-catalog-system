@@ -28,6 +28,10 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 9. Confirm `ALLOWED_USER_EMAIL` matches the deploying Google account. The app fails closed if Apps Script cannot expose the effective-user identity.
 10. Call `GET ?action=health` while signed in as the deploying account.
 
+## Automated validation tests
+- From this directory, run `npm test` with Node.js 20 or later.
+- The current suite covers catalog payload validation only; it is not an Apps Script integration test.
+
 ## Register a synthetic PDF
 - Place a non-confidential synthetic PDF in the DEV intake folder.
 - Call the authenticated `POST` action `catalog.register` with `driveFileId` and `supplierName`.
@@ -37,5 +41,5 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 ## Current limitations
 - No worker queue, lease acquisition endpoint, page counting, page creation, PDF parsing, OCR, staging, or callback is implemented yet.
 - No worker credentials or deployment exist.
-- The current web-app identity behavior must be verified in the chosen Google account/Workspace before relying on it. If Apps Script does not expose the expected active-user email, use a separately reviewed authentication design; do not weaken access to anonymous.
+- The effective-user identity check must be verified in the chosen Google account/Workspace before relying on it. If Apps Script does not expose the deploying account identity, stop and use a separately reviewed authentication design; do not weaken access to anonymous.
 - This slice has not been deployed or runtime-tested. The next gate is to provision the isolated DEV resources and execute the setup/registration tests.
