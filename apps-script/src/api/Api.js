@@ -48,7 +48,6 @@ var Api = (function () {
     var body = {};
     var requestId = Utilities.getUuid();
     try {
-      assertPrimaryUser_();
       var raw = e && e.postData && e.postData.contents ? e.postData.contents : "{}";
       if (raw.length > 20000) return failure_(requestId, "REQUEST_TOO_LARGE");
       body = JSON.parse(raw);
@@ -56,6 +55,13 @@ var Api = (function () {
         return failure_(requestId, "INVALID_REQUEST");
       }
       requestId = requestId_(body);
+      // Worker callbacks authenticate with a high-entropy shared secret in the JSON body.
+      // Apps Script Web App events do not expose arbitrary incoming HTTP headers reliably.
+      if (body.action === "worker.callback") {
+        var callbackResult = WorkerIntegration.handleCallback(body);
+        return success_(requestId, callbackResult);
+      }
+      assertPrimaryUser_();
       if (body.protocol_version && body.protocol_version !== "1") {
         return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
       }
@@ -103,13 +109,20 @@ function uploadCatalogFromBrowser(payload) {
     catalogRevision: upload.catalogRevision
   });
   var registered = CatalogService.register(catalogPayload);
+  var workerDispatch = null;
+  if (registered.status === "QUEUED" || registered.status === "RETRY_PENDING") {
+    workerDispatch = WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
+  } else {
+    workerDispatch = { accepted: false, reason: "RUN_NOT_DISPATCHABLE", status: registered.status };
+  }
   return {
     catalogId: registered.catalogId,
     runId: registered.runId,
     fileName: file.getName(),
     sha256: registered.sha256,
     status: registered.status,
-    idempotentReplay: registered.idempotentReplay
+    idempotentReplay: registered.idempotentReplay,
+    workerDispatch: workerDispatch
   };
 }
 
