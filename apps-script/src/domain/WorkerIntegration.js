@@ -122,9 +122,9 @@ var WorkerIntegration = (function () {
   function installPoller() {
     var triggers = ScriptApp.getProjectTriggers();
     var exists = triggers.some(function (trigger) {
-      return trigger.getHandlerFunction() === "processWorkerCallbacks";
+      return trigger.getHandlerFunction() === "processWorkerResults";
     });
-    if (!exists) ScriptApp.newTrigger("processWorkerCallbacks").timeBased().everyMinutes(5).create();
+    if (!exists) ScriptApp.newTrigger("processWorkerResults").timeBased().everyMinutes(5).create();
     return { installed: true, interval_minutes: 5, already_installed: exists };
   }
   return {
@@ -134,7 +134,21 @@ var WorkerIntegration = (function () {
   };
 })();
 
-function processWorkerCallbacks() {
+function dispatchRegisteredCatalog_(registered) {
+  if (!registered || ["QUEUED", "RETRY_PENDING"].indexOf(registered.status) < 0) {
+    return { accepted: false, reason: "RUN_NOT_DISPATCHABLE", status: registered && registered.status || "" };
+  }
+  try {
+    return WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
+  } catch (err) {
+    var message = String(err && err.message ? err.message : "WORKER_DISPATCH_FAILED");
+    var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
+    return { configured: true, accepted: false, retryable: true, run_id: registered.runId,
+      error_code: match ? match[1] : "WORKER_DISPATCH_FAILED" };
+  }
+}
+
+function processWorkerResults() {
   return WorkerIntegration.processCompletedRuns();
 }
 
