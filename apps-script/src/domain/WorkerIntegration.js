@@ -48,10 +48,12 @@ var WorkerIntegration = (function () {
       var jobFile = immutableJobFile_(folder, job);
       var now = new Date().toISOString();
       var startedAt = run.Started_At instanceof Date ? run.Started_At.toISOString() : (run.Started_At || now);
+      var leaseExpiresAt = new Date(Date.now() + 90 * 60 * 1000).toISOString();
       SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
         Run_Status: "RUNNING", Current_Step: "WORKER_DISPATCH",
         Input_Manifest_File_ID: jobFile.getId(), Started_At: startedAt,
-        Heartbeat_At: now, Error_Code: "", Error_Summary: ""
+        Heartbeat_At: now, Worker_Lease_ID: "lease_" + Utilities.getUuid().replace(/-/g, ""),
+        Lease_Expires_At: leaseExpiresAt, Error_Code: "", Error_Summary: ""
       });
 
       var payload = { contract_version: CONTRACT_VERSION, run_id: runId, job_file_id: jobFile.getId() };
@@ -76,8 +78,8 @@ var WorkerIntegration = (function () {
           if (code >= 400 && code < 500 && code !== 408 && code !== 429) {
             SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
               Run_Status: "FAILED", Current_Step: "DISPATCH_REJECTED",
-              Finished_At: new Date().toISOString(), Error_Code: "WORKER_REJECTED",
-              Error_Summary: "Worker rejected dispatch (" + code + ")."
+              Finished_At: new Date().toISOString(), Worker_Lease_ID: "", Lease_Expires_At: "",
+              Error_Code: "WORKER_REJECTED", Error_Summary: "Worker rejected dispatch (" + code + ")."
             });
             throw new Error("WORKER_REJECTED: " + code);
           }
@@ -109,6 +111,19 @@ var WorkerIntegration = (function () {
         if (!parents.hasNext()) throw new Error("RUN_FOLDER_NOT_FOUND");
         var folder = parents.next(), files = folder.getFilesByName("result-manifest.json");
         if (!files.hasNext()) return;
+        if (!files.hasNext()) {
+          var expiresAt = run.Lease_Expires_At ? new Date(run.Lease_Expires_At).getTime() : 0;
+          if (expiresAt && expiresAt <= Date.now()) {
+            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
+              Run_Status: "FAILED", Current_Step: "WORKER_LEASE_EXPIRED",
+              Finished_At: new Date().toISOString(), Worker_Lease_ID: "", Lease_Expires_At: "",
+              Error_Code: "WORKER_LEASE_EXPIRED",
+              Error_Summary: "No terminal result manifest arrived before the worker lease expired."
+            });
+            errors.push({ run_id: run.Run_ID, code: "WORKER_LEASE_EXPIRED" });
+          }
+          return;
+        }
         var resultFile = files.next();
         var result = Ingest.ingestManifest({
           runId: run.Run_ID, resultManifestFileId: resultFile.getId()
