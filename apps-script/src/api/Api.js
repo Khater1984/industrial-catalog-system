@@ -48,7 +48,6 @@ var Api = (function () {
     var body = {};
     var requestId = Utilities.getUuid();
     try {
-      assertPrimaryUser_();
       var raw = e && e.postData && e.postData.contents ? e.postData.contents : "{}";
       if (raw.length > 20000) return failure_(requestId, "REQUEST_TOO_LARGE");
       body = JSON.parse(raw);
@@ -56,12 +55,15 @@ var Api = (function () {
         return failure_(requestId, "INVALID_REQUEST");
       }
       requestId = requestId_(body);
+      assertPrimaryUser_();
       if (body.protocol_version && body.protocol_version !== "1") {
         return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
       }
       if (body.action === "catalog.register") {
         var payload = InputValidation.catalogPayload(body.payload || {});
-        return success_(requestId, CatalogService.register(payload));
+        var registered = CatalogService.register(payload);
+        registered.workerDispatch = dispatchRegisteredCatalog_(registered);
+        return success_(requestId, registered);
       }
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
@@ -103,13 +105,15 @@ function uploadCatalogFromBrowser(payload) {
     catalogRevision: upload.catalogRevision
   });
   var registered = CatalogService.register(catalogPayload);
+  var workerDispatch = dispatchRegisteredCatalog_(registered);
   return {
     catalogId: registered.catalogId,
     runId: registered.runId,
     fileName: file.getName(),
     sha256: registered.sha256,
     status: registered.status,
-    idempotentReplay: registered.idempotentReplay
+    idempotentReplay: registered.idempotentReplay,
+    workerDispatch: workerDispatch
   };
 }
 

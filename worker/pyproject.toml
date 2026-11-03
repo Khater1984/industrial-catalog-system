@@ -4,16 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "industrial-catalog-worker"
-version = "0.1.0"
-description = "Deterministic page-by-page PDF intake worker"
+version = "0.2.1"
+description = "Resumable page-by-page PDF intake worker"
 requires-python = ">=3.11"
-dependencies = ["pypdf>=5.0,<7.0"]
+dependencies = [
+  "pypdf>=5.0,<7.0",
+  "Flask>=3.0,<4.0",
+  "gunicorn>=22.0,<24.0",
+  "google-api-python-client>=2.140,<3.0",
+  "google-auth>=2.30,<3.0",
+  "google-cloud-tasks>=2.16,<3.0",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=8.0,<9.0", "reportlab>=4.0,<5.0"]
 
 [project.scripts]
 catalog-worker = "catalog_worker.cli:main"
+catalog-worker-v21 = "catalog_worker.resumable_cli:main"
+catalog-worker-images = "catalog_worker.images:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -8,6 +8,8 @@ const sources = [
   "src/security/Auth.js",
   "src/repositories/SheetsRepository.js",
   "src/domain/CatalogService.js",
+  "src/domain/Ingest.js",
+  "src/domain/WorkerIntegration.js",
   "src/api/Api.js"
 ];
 
