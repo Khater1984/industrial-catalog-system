@@ -9,6 +9,28 @@ var CatalogService = (function () {
       return v.length === 1 ? "0" + v : v;
     }).join("");
   }
+  function resultFor_(catalog, run) {
+    return {
+      catalogId: catalog.Catalog_ID,
+      runId: run.Run_ID,
+      sha256: catalog.SHA256,
+      fileName: catalog.Source_File_Name,
+      status: run.Run_Status,
+      recovered: true
+    };
+  }
+  function createRun_(catalogId, now) {
+    var runId = id_("run");
+    var logicalJobId = id_("job");
+    SheetsRepository.append("Run_Log", {
+      Run_ID: runId, Run_Type: "CATALOG_EXTRACTION", Catalog_ID: catalogId,
+      Logical_Job_ID: logicalJobId, Parent_Run_ID: "", Attempt_Number: 1,
+      Retry_Reason: "", Idempotency_Key: "source_" + catalogId, Run_Status: "QUEUED",
+      Current_Step: "REGISTERED", Total_Units: "", Completed_Units: 0, Failed_Units: 0,
+      Created_At: now, Created_By: APP.ACTOR_ID
+    });
+    return SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+  }
   function register(payload) {
     var required = ["driveFileId", "supplierName"];
     required.forEach(function (key) {
@@ -24,16 +46,21 @@ var CatalogService = (function () {
     if (!allowed) throw new Error("FILE_OUTSIDE_DEV_INTAKE_FOLDER");
     var mime = file.getMimeType();
     if (mime !== "application/pdf") throw new Error("UNSUPPORTED_MIME_TYPE");
-    var blob = file.getBlob(), bytes = blob.getBytes(), hash = sha256_(bytes);
-    var existing = SheetsRepository.findBy("Catalogs", "SHA256", hash);
-    if (existing) throw new Error("DUPLICATE_SOURCE_SHA256: existing row " + existing);
+    var hash = sha256_(file.getBlob().getBytes());
 
     var lock = LockService.getScriptLock();
     lock.waitLock(20000);
     try {
-      if (SheetsRepository.findBy("Catalogs", "SHA256", hash)) throw new Error("DUPLICATE_SOURCE_SHA256");
+      var existingCatalog = SheetsRepository.getBy("Catalogs", "SHA256", hash);
+      if (existingCatalog) {
+        var existingRun = SheetsRepository.getBy("Run_Log", "Catalog_ID", existingCatalog.Catalog_ID);
+        // A crash after the Catalogs append but before Run_Log append is repaired on retry.
+        if (!existingRun) existingRun = createRun_(existingCatalog.Catalog_ID, new Date().toISOString());
+        return resultFor_(existingCatalog, existingRun);
+      }
+
       var now = new Date().toISOString();
-      var catalogId = id_("cat"), logicalJobId = id_("job"), runId = id_("run");
+      var catalogId = id_("cat");
       SheetsRepository.append("Catalogs", {
         Catalog_ID: catalogId, Supplier_Name: String(payload.supplierName).trim(),
         Catalog_Title: payload.catalogTitle || "", Catalog_Reference: payload.catalogReference || "",
@@ -43,14 +70,12 @@ var CatalogService = (function () {
         Received_At: now, Source_URL: payload.sourceUrl || "", Notes: payload.notes || "",
         Lifecycle_Status: "ACTIVE", Created_At: now, Created_By: APP.ACTOR_ID
       });
-      SheetsRepository.append("Run_Log", {
-        Run_ID: runId, Run_Type: "CATALOG_EXTRACTION", Catalog_ID: catalogId,
-        Logical_Job_ID: logicalJobId, Parent_Run_ID: "", Attempt_Number: 1,
-        Retry_Reason: "", Idempotency_Key: id_("idem"), Run_Status: "QUEUED",
-        Current_Step: "REGISTERED", Total_Units: "", Completed_Units: 0, Failed_Units: 0,
-        Created_At: now, Created_By: APP.ACTOR_ID
-      });
-      return { catalogId: catalogId, runId: runId, sha256: hash, fileName: file.getName(), status: "QUEUED" };
+      // If this second append fails, a retry finds the catalog by SHA256 and repairs Run_Log.
+      var run = createRun_(catalogId, now);
+      return {
+        catalogId: catalogId, runId: run.Run_ID, sha256: hash,
+        fileName: file.getName(), status: run.Run_Status, recovered: false
+      };
     } finally {
       lock.releaseLock();
     }
