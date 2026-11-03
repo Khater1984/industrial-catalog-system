@@ -94,8 +94,13 @@ def test_retry_requires_new_run_and_parent(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(job_for(source, attempt_number=2), tmp_path / "bad")
     assert error.value.code == "INVALID_RUN_LINEAGE"
+    missing_reason = job_for(source, run_id="run_v21_002", attempt_number=2, parent_run_id="run_v21_001")
+    with pytest.raises(WorkerError) as missing:
+        process_resumable_catalog_job(missing_reason, tmp_path / "missing-reason")
+    assert missing.value.code == "INVALID_RUN_LINEAGE"
     result = process_resumable_catalog_job(
-        job_for(source, run_id="run_v21_002", attempt_number=2, parent_run_id="run_v21_001"),
+        job_for(source, run_id="run_v21_002", attempt_number=2,
+                parent_run_id="run_v21_001", retry_reason="Transient worker interruption"),
         tmp_path / "retry",
     )
     assert result["parent_run_id"] == "run_v21_001"
@@ -142,6 +147,12 @@ def test_deterministic_idempotency_key(tmp_path):
     a = process_resumable_catalog_job(job, tmp_path / "a")
     b = process_resumable_catalog_job(job, tmp_path / "b")
     assert a["idempotency_key"] == b["idempotency_key"]
+    retry = process_resumable_catalog_job(
+        job_for(source, run_id="run_v21_002", attempt_number=2,
+                parent_run_id="run_v21_001", retry_reason="Retry test"),
+        tmp_path / "retry",
+    )
+    assert retry["idempotency_key"] != a["idempotency_key"]
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(dict(job, idempotency_key="random"), tmp_path / "c")
     assert error.value.code == "IDEMPOTENCY_KEY_MISMATCH"
