@@ -99,7 +99,7 @@ var WorkerIntegration = (function () {
     }
   }
   function processCompletedRuns() {
-    var runs = SheetsRepository.listRecent("Run_Log", 250), processed = [], errors = [];
+    var runs = SheetsRepository.listAll("Run_Log"), processed = [], errors = [];
     runs.forEach(function (run) {
       if (["RUNNING", "RETRY_PENDING"].indexOf(run.Run_Status) < 0 || !run.Input_Manifest_File_ID) return;
       try {
