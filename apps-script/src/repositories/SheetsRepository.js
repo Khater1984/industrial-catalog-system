@@ -193,5 +193,36 @@ var SheetsRepository = (function () {
     for (var i = 0; i < values.length; i++) if (String(values[i][0]) === String(value)) return i + 2;
     return null;
   }
-  return { initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
+  function updateBy(name, keyColumn, keyValue, patch) {
+    if (!TABLES[name] || !patch || Object.prototype.toString.call(patch) !== "[object Object]") {
+      throw new Error("INVALID_UPDATE");
+    }
+    var headers = TABLES[name];
+    var rowNumber = findBy(name, keyColumn, keyValue);
+    if (!rowNumber) throw new Error("ROW_NOT_FOUND: " + name);
+    var sheet = spreadsheet_().getSheetByName(name);
+    var row = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+    Object.keys(patch).forEach(function (column) {
+      var index = headers.indexOf(column);
+      if (index < 0) throw new Error("UNKNOWN_COLUMN: " + name + "." + column);
+      if (column === keyColumn || column === "Created_At" || column === "Created_By") {
+        throw new Error("IMMUTABLE_COLUMN: " + name + "." + column);
+      }
+      var rule = FIELD_RULES[name + "." + column];
+      if (!rule) throw new Error("SCHEMA_FIELD_RULE_MISSING: " + name + "." + column);
+      var value = patch[column];
+      var blank = value === "" || value === null || value === undefined ||
+        (typeof value === "string" && !value.trim());
+      if (rule.required && blank) throw new Error("VALIDATION_REQUIRED: " + name + "." + column);
+      if (!blank) validateFieldValue_(name, column, value, rule.type);
+      var enumKey = enumKey_(name, column);
+      if (enumKey && !blank && ENUMS[enumKey].indexOf(String(value)) < 0) {
+        throw new Error("VALIDATION_INVALID_ENUM: " + name + "." + column);
+      }
+      row[index] = safeCell_(blank ? "" : value);
+    });
+    sheet.getRange(rowNumber, 1, 1, headers.length).setValues([row]);
+    return rowNumber;
+  }
+  return { updateBy: updateBy, initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
 })();
