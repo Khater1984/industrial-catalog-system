@@ -15,6 +15,7 @@ test = ["pytest>=8.0,<9.0", "reportlab>=4.0,<5.0"]
 [project.scripts]
 catalog-worker = "catalog_worker.cli:main"
 catalog-worker-v21 = "catalog_worker.resumable_cli:main"
+catalog-worker-images = "catalog_worker.images:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
