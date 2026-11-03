@@ -15,7 +15,7 @@ Enable the Drive API, Cloud Run API, Cloud Build API, Artifact Registry API, and
 
 The runtime service account needs permission to create/read files in the two DEV Drive folders. Share the intake and runs folders with its service-account email. A Shared Drive is preferred; service accounts may not have My Drive storage quota. The runtime service account also needs `roles/cloudtasks.enqueuer` on the project.
 
-The Cloud Tasks invoker service account needs `roles/run.invoker` on the Cloud Run service. Ensure the Cloud Tasks service agent is allowed to mint OIDC tokens for that service account (normally provided by the Cloud Tasks service-agent role and the service-account user grant).
+The Cloud Tasks invoker service account needs `roles/run.invoker` on the Cloud Run service. Cloud Tasks dispatch and Gunicorn are both capped at 30 minutes; Apps Script uses a 90-minute lease and marks a run FAILED if no result manifest arrives before lease expiry. Ensure the Cloud Tasks service agent is allowed to mint OIDC tokens for that service account (normally provided by the Cloud Tasks service-agent role and the service-account user grant).
 
 ## 2. Create the queue
 
