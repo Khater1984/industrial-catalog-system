@@ -26,7 +26,8 @@ var SheetsRepository = (function () {
   function safeCell_(value) {
     if (typeof value !== "string") return value === undefined || value === null ? "" : value;
     // Prevent untrusted supplier/browser text from being interpreted as a Sheets formula.
-    return /^[\\s]*[=+@\\-]/.test(value) ? "'" + value : value;
+    var first = value.trim().charAt(0);
+    return "=+@-".indexOf(first) >= 0 ? "'" + value : value;
   }
   function append(name, record) {
     if (!TABLES[name]) throw new Error("UNKNOWN_TABLE: " + name);
