@@ -32,7 +32,9 @@ var Ingest = (function () {
     if (requireString_(manifest, "run_id") !== run.Run_ID) throw new Error("MANIFEST_RUN_MISMATCH");
     if (requireString_(manifest, "catalog_id") !== run.Catalog_ID) throw new Error("MANIFEST_CATALOG_MISMATCH");
     if (requireString_(manifest, "logical_job_id") !== run.Logical_Job_ID) throw new Error("MANIFEST_LOGICAL_JOB_MISMATCH");
-    if (manifest.attempt_number !== Number(run.Attempt_Number) || manifest.run_type !== "CATALOG_EXTRACTION") {
+    if (manifest.attempt_number !== Number(run.Attempt_Number) || manifest.run_type !== "CATALOG_EXTRACTION" ||
+        String(manifest.parent_run_id || "") !== String(run.Parent_Run_ID || "") ||
+        String(manifest.retry_reason || "") !== String(run.Retry_Reason || "")) {
       throw new Error("MANIFEST_RUN_LINEAGE_MISMATCH");
     }
     var catalog = SheetsRepository.getBy("Catalogs", "Catalog_ID", run.Catalog_ID);
@@ -45,7 +47,14 @@ var Ingest = (function () {
     if (manifest.manifest_sha256 !== sha256Text_(canonicalJson_(copy))) throw new Error("MANIFEST_SHA256_INVALID");
     if (!Number.isInteger(manifest.page_count) || manifest.page_count < 0) throw new Error("MANIFEST_PAGE_COUNT_INVALID");
     if (!Array.isArray(manifest.pages)) throw new Error("MANIFEST_PAGES_INVALID");
+    ["completed_units", "failed_units", "reused_units", "newly_processed_units"].forEach(function (key) {
+      if (!Number.isInteger(manifest[key]) || manifest[key] < 0) throw new Error("MANIFEST_COUNTER_INVALID: " + key);
+    });
     if (manifest.run_status === "COMPLETED") {
+      if (manifest.reused_units > manifest.completed_units ||
+          manifest.newly_processed_units + manifest.reused_units !== manifest.completed_units) {
+        throw new Error("MANIFEST_COUNTERS_INCONSISTENT");
+      }
       if (manifest.page_count < 1 || manifest.pages.length !== manifest.page_count ||
           manifest.completed_units !== manifest.page_count || manifest.failed_units !== 0) {
         throw new Error("MANIFEST_UNIT_COUNTS_INVALID");
