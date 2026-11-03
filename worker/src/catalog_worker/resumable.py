@@ -10,6 +10,7 @@ import json
 import os
 import re
 import tempfile
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,8 +48,24 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _normalize_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, list):
+        return [_normalize_json(item) for item in value]
+    if isinstance(value, dict):
+        normalized = {}
+        for key, item in value.items():
+            normalized_key = unicodedata.normalize("NFC", str(key))
+            if normalized_key in normalized:
+                raise ValueError("Canonical JSON key collision after NFC normalization")
+            normalized[normalized_key] = _normalize_json(item)
+        return normalized
+    return value
+
+
 def canonical_json_bytes(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return json.dumps(_normalize_json(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
 def _now() -> str:
@@ -158,6 +175,40 @@ def _verify_unit(path: Path, identity: dict[str, Any], input_sha: str) -> dict[s
     return unit
 
 
+
+def _verify_completed_manifest(root: Path, manifest: dict[str, Any], run_id: str,
+                               logical_id: str, catalog_id: str, page_count: int) -> None:
+    pages = manifest.get("pages")
+    if not isinstance(pages, list) or len(pages) != page_count:
+        raise WorkerError("RESULT_MANIFEST_INVALID", "Completed manifest page list does not match page count.")
+    for index, row in enumerate(pages, 1):
+        if not isinstance(row, dict) or row.get("page_number") != index:
+            raise WorkerError("RESULT_MANIFEST_INVALID", "Completed manifest page order is invalid.")
+        relative = row.get("artifact_path")
+        if not isinstance(relative, str):
+            raise WorkerError("RESULT_MANIFEST_INVALID", "Completed manifest artifact path is missing.")
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise WorkerError("RESULT_MANIFEST_INVALID", "Completed manifest contains an unsafe artifact path.")
+        artifact = (root / relative_path).resolve()
+        if root not in artifact.parents:
+            raise WorkerError("RESULT_MANIFEST_INVALID", "Artifact path escapes the output directory.")
+        identity = {
+            "run_id": run_id, "logical_job_id": logical_id, "catalog_id": catalog_id,
+            "run_unit_id": row.get("run_unit_id"), "unit_type": UNIT_TYPE, "unit_key": row.get("unit_key"),
+        }
+        unit = _read_object(artifact, "CHECKPOINT_INVALID")
+        for key, expected in identity.items():
+            if unit.get(key) != expected:
+                raise WorkerError("CHECKPOINT_CONFLICT", f"Completed artifact identity mismatch: {key}")
+        if unit.get("unit_status") not in {"COMPLETED", "REUSED"}:
+            raise WorkerError("CHECKPOINT_NOT_COMPLETED", "Completed run references a non-completed unit.")
+        if unit.get("input_sha256") != row.get("input_sha256"):
+            raise WorkerError("CHECKPOINT_INPUT_MISMATCH", "Completed artifact input does not match its manifest.")
+        if unit.get("output_sha256") != row.get("output_sha256") or unit.get("output_sha256") != _hash_payload(unit, "output_sha256"):
+            raise WorkerError("CHECKPOINT_OUTPUT_CORRUPT", "Completed artifact checksum does not match its manifest.")
+
+
 def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
     """Process a local job with stable unit IDs, immutable artifacts and verified resume."""
     if not isinstance(job, dict):
@@ -254,6 +305,13 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             for key, expected in expected_run_identity.items():
                 if prior.get(key) != expected:
                     raise WorkerError("RESULT_MANIFEST_CONFLICT", f"Existing result manifest conflicts on {key}.")
+            if prior.get("run_status") in {"FAILED", "CANCELLED"}:
+                raise WorkerError("TERMINAL_RUN_CANNOT_RESUME", "A terminal run cannot be reopened; create a new Run_ID.")
+            if prior.get("run_status") == "COMPLETED":
+                _verify_completed_manifest(root, prior, run_id, logical_id, catalog_id, page_count)
+                return prior
+            if prior.get("run_status") != "RUNNING":
+                raise WorkerError("RESULT_MANIFEST_CONFLICT", "Only a RUNNING run can resume.")
         started_at = prior.get("started_at") if prior else _now()
         pages, reused, created = [], 0, 0
 
