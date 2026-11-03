@@ -34,8 +34,9 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 - The suite covers the 52-table/711-column schema registry, 79 enum fields, 711 field rules, required/type/enum validation, non-destructive sheet initialization, catalog payload validation, and mocked registration/retry recovery. It is not an Apps Script or Google Sheets integration test.
 
 ## Register a synthetic PDF
-- Place a non-confidential synthetic PDF in the DEV intake folder.
-- Call the authenticated `POST` action `catalog.register` with `driveFileId` and `supplierName`.
+- Open the owner-only web app and upload a non-confidential synthetic PDF (maximum 12 MiB) using the catalog intake form.
+- Confirm the file is stored in the DEV intake folder and the dashboard displays the new catalog with a QUEUED run.
+- The API `POST` action `catalog.register` remains available for controlled integration tests using `driveFileId` and `supplierName`.
 - Verify Catalogs stores the exact file SHA256 and Run_Log contains one QUEUED attempt.
 - Repeat the same request with identical file and metadata: it must return the original catalog/run IDs without adding duplicate rows.
 - Reuse the same PDF bytes with different supplier/catalog metadata: the API must return `DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW`; it must not silently reuse or overwrite the record.
