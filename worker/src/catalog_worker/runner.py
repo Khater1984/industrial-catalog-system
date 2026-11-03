@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,8 @@ def run_from_drive(
     *, job_file_id: str, expected_run_id: str | None = None,
     drive: DriveClient | None = None, output_root: str | Path | None = None,
 ) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", job_file_id or ""):
+        raise RunnerError("INVALID_JOB_FILE_ID")
     drive = drive or DriveClient()
     work_root = Path(output_root or tempfile.gettempdir()).resolve()
     job_path = work_root / f"job-{job_file_id}.json"
@@ -44,12 +47,20 @@ def run_from_drive(
         raise RunnerError("CONTRACT_VERSION_MISMATCH")
 
     run_id = _required(job, "run_id")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", run_id) or run_id in {".", ".."}:
+        raise RunnerError("INVALID_RUN_ID")
     if expected_run_id and run_id != expected_run_id:
         raise RunnerError("DISPATCH_RUN_ID_MISMATCH")
     catalog_id = _required(job, "catalog_id")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", catalog_id) or catalog_id in {".", ".."}:
+        raise RunnerError("INVALID_CATALOG_ID")
     logical_job_id = _required(job, "logical_job_id")
     source_file_id = _required(job, "source_pdf_file_id")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", source_file_id):
+        raise RunnerError("INVALID_SOURCE_FILE_ID")
     source_sha = _required(job, "source_sha256").lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", source_sha):
+        raise RunnerError("INVALID_SOURCE_SHA256")
 
     run_dir = work_root / "catalog-worker" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -85,6 +96,8 @@ def run_from_drive(
         if not parents:
             raise RunnerError("RUN_FOLDER_NOT_FOUND")
         run_folder_id = parents[0]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", run_folder_id):
+        raise RunnerError("INVALID_RUN_FOLDER_ID")
 
     # Restore immutable artifacts from Drive before resuming after a Cloud Run retry.
     pages_dir = run_dir / "pages"
