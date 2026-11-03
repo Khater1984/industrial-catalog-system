@@ -17,9 +17,9 @@ Set these values in the Apps Script project settings (never commit them):
 Do not add worker credentials yet. Worker/API signing design, hosting and callback direction remain pending explicit security decisions.
 
 ## Initialize
-1. Create a standalone Apps Script project.
-2. Add the source files from this directory, preserving their relative load order or bundle them with the documented build step.
-3. Add all files under `src/`, including `src/validation/InputValidation.js`; Apps Script loads project `.gs` files globally, but keep the repository paths in sync when copying/bundling.
+1. Install Node.js 20 or later and create a standalone Apps Script project.
+2. From `apps-script/`, run `npm test` and `npm run build`.
+3. Copy the generated `dist/Code.gs` into the Apps Script project as `Code.gs`, and copy `appsscript.json` as the project manifest. The repository `.js` files are source modules; they are bundled into a valid Apps Script `.gs` file by the build script.
 4. Set Script Properties above.
 5. Run `initializeDevSchema` manually from the editor.
 6. Confirm exactly four tabs exist: Catalogs, Catalog_Pages, Run_Log, Run_Units.
@@ -30,6 +30,7 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 
 ## Automated validation tests
 - From this directory, run `npm test` with Node.js 20 or later.
+- Run `npm run build` to create `dist/Code.gs` from the explicit source manifest.
 - The current suite covers catalog payload validation only; it is not an Apps Script integration test.
 
 ## Register a synthetic PDF
