@@ -19,6 +19,25 @@ var CatalogService = (function () {
       idempotentReplay: true
     };
   }
+  function sameRegistration_(catalog, payload, file, mime) {
+    var expected = {
+      Supplier_Name: String(payload.supplierName).trim(),
+      Catalog_Title: payload.catalogTitle || "",
+      Catalog_Reference: payload.catalogReference || "",
+      Catalog_Revision: payload.catalogRevision || "",
+      Language_Code: payload.languageCode || "",
+      Published_Date: payload.publishedDate || "",
+      Source_URL: payload.sourceUrl || "",
+      Notes: payload.notes || "",
+      Source_File_ID: file.getId(),
+      Source_File_Name: file.getName(),
+      MIME_Type: mime,
+      File_Size_Bytes: file.getSize()
+    };
+    return Object.keys(expected).every(function (key) {
+      return String(catalog[key] === undefined || catalog[key] === null ? "" : catalog[key]) === String(expected[key]);
+    });
+  }
   function createRun_(catalogId, sourceHash, now) {
     var runId = id_("run");
     var logicalJobId = id_("job");
@@ -53,6 +72,9 @@ var CatalogService = (function () {
     try {
       var existingCatalog = SheetsRepository.getBy("Catalogs", "SHA256", hash);
       if (existingCatalog) {
+        if (!sameRegistration_(existingCatalog, payload, file, mime)) {
+          throw new Error("DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW");
+        }
         var existingRun = SheetsRepository.getBy("Run_Log", "Catalog_ID", existingCatalog.Catalog_ID);
         // A crash after the Catalogs append but before Run_Log append is repaired on retry.
         if (!existingRun) existingRun = createRun_(existingCatalog.Catalog_ID, hash, new Date().toISOString());
