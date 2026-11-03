@@ -15,7 +15,7 @@ test("owner-executed poller ingests a Drive result manifest for active runs", ()
   const jobFile = { getParents: () => ({ hasNext: () => true, next: () => folder }) };
   const context = {
     SheetsRepository: {
-      listRecent: () => [{
+      listAll: () => [{
         Run_ID: "run-1", Run_Status: "RUNNING",
         Input_Manifest_File_ID: "job-file-id"
       }]
@@ -36,7 +36,7 @@ test("owner-executed poller ingests a Drive result manifest for active runs", ()
 
 test("poller ignores terminal runs and runs without an input manifest", () => {
   const context = {
-    SheetsRepository: { listRecent: () => [
+    SheetsRepository: { listAll: () => [
       { Run_ID: "done", Run_Status: "COMPLETED", Input_Manifest_File_ID: "job-1" },
       { Run_ID: "empty", Run_Status: "RUNNING", Input_Manifest_File_ID: "" }
     ] },
