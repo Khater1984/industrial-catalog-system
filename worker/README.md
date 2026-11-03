@@ -31,7 +31,7 @@ Implemented in V2.1:
 - Local output-directory lock against concurrent processing; stale same-host locks are reclaimed only when the recorded PID is demonstrably absent. Unknown/malformed/remote-owner locks fail closed for manual inspection.
 - Exact V2.1 enum values: `CATALOG_EXTRACTION`, `CATALOG_PAGE`, and registered Run/Unit statuses.
 
-Not implemented: OCR, page rendering, table recognition, image extraction, product/variant inference, staging import, review/promotion, Drive access, Sheets writes, Apps Script callbacks, durable distributed leases, cloud queueing, and production hosting. No claim of production readiness is made.
+Not implemented: OCR, page rendering, table recognition, image extraction, product/variant inference, staging import, review/promotion, and a deployed cloud environment. The hosted adapter and Drive transport are implemented and CI-tested, but still require provisioning, deployment, IAM/Drive sharing, and a live DEV end-to-end test. No claim of live production operation is made.
 
 ## Setup and tests
 
