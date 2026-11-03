@@ -103,7 +103,7 @@ The following columns appear in each staging sheet:
 | Extracted_Text | TEXT(4000) | No | Relevant text snippet |
 | Extraction_Method | ENUM | Yes | EMBEDDED_TEXT, TABLE_PARSER, OCR, IMAGE_EXTRACTION, MANUAL |
 | Extraction_Tool_Version | TEXT(120) | No | Exact parser/OCR build or service version |
-| Source_Key_Algorithm_Version | TEXT(80) | No | Required for product, variant, and specification staging |
+| Source_Key_Algorithm_Version | TEXT(80) | Conditional | Required for product, variant, and specification staging; blank for image/document staging unless a source-key algorithm is explicitly used |
 | Confidence | DECIMAL(5,4) | No | 0..1; not an approval |
 | Proposed_Status | ENUM | Yes | NEW, NEEDS_REVIEW, REJECTED, PROMOTED |
 | Staging_Record_Hash | HEX64 | Yes | Canonical hash of all decision-relevant staging fields |
