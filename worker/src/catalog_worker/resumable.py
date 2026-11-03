@@ -128,8 +128,10 @@ def _verify_unit(path: Path, identity: dict[str, Any], input_sha: str) -> dict[s
             raise WorkerError("CHECKPOINT_CONFLICT", f"Checkpoint identity mismatch: {key}")
     if unit.get("input_sha256") != input_sha:
         raise WorkerError("CHECKPOINT_INPUT_MISMATCH", "Existing page checkpoint has different input.")
-    if unit.get("unit_status") != "COMPLETED":
+    if unit.get("unit_status") not in {"COMPLETED", "REUSED"}:
         raise WorkerError("CHECKPOINT_NOT_COMPLETED", "Existing non-completed checkpoint cannot be overwritten.")
+    if unit.get("unit_status") == "REUSED" and not unit.get("reused_from_run_unit_id"):
+        raise WorkerError("CHECKPOINT_INVALID", "A REUSED unit must identify its source Run_Unit.")
     if unit.get("output_sha256") != _hash_payload(unit, "output_sha256"):
         raise WorkerError("CHECKPOINT_OUTPUT_CORRUPT", "Existing page artifact checksum is invalid.")
     return unit
@@ -189,9 +191,10 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
     }
     job_input_sha = sha256_bytes(canonical_json_bytes(logical_input))
     # Run_Log.Idempotency_Key is unique per attempt, not per logical job.
-    expected_key = sha256_bytes(f"{logical_id}|{run_id}|{attempt}|{job_input_sha}".encode())
+    # Unique per Run_Log attempt, as required by the schema.
+    expected_key = sha256_bytes(f"{logical_id}|{run_id}|{attempt}|{parent or ''}|{job_input_sha}".encode())
     if job.get("idempotency_key") not in (None, expected_key):
-        raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match logical input.")
+        raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match this run attempt.")
 
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -208,6 +211,27 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                 raise WorkerError("JOB_INPUT_MISMATCH", "Changed input requires a new Logical_Job_ID and Run_ID.")
         started_at = prior.get("started_at") if prior else _now()
         pages, reused, created = [], 0, 0
+
+        # Explicit reuse is limited to a completed source run of the same logical job/input.
+        reuse_source_dir = job.get("reuse_from_run_dir")
+        source_manifest = None
+        source_root = None
+        if reuse_source_dir:
+            source_root = Path(reuse_source_dir).expanduser().resolve()
+            source_manifest = _read_object(source_root / "result-manifest.json", "REUSE_SOURCE_INVALID")
+            if source_manifest.get("run_id") == run_id:
+                raise WorkerError("REUSE_SOURCE_INVALID", "Cross-run reuse requires a different Run_ID.")
+            if source_manifest.get("logical_job_id") != logical_id:
+                raise WorkerError("REUSE_LOGICAL_JOB_MISMATCH", "Reuse is allowed only within the same Logical_Job_ID.")
+            if source_manifest.get("job_input_sha256") != job_input_sha:
+                raise WorkerError("REUSE_INPUT_MISMATCH", "Source run input fingerprint differs.")
+            if source_manifest.get("run_status") != "COMPLETED":
+                raise WorkerError("REUSE_SOURCE_INCOMPLETE", "Only a completed run can be reused.")
+            if source_manifest.get("manifest_sha256") != _hash_payload(source_manifest, "manifest_sha256"):
+                raise WorkerError("REUSE_SOURCE_CORRUPT", "Source result manifest checksum is invalid.")
+            if len(source_manifest.get("pages", [])) != page_count:
+                raise WorkerError("REUSE_SOURCE_INCOMPLETE", "Source run does not contain every page unit.")
+        source_pages = {p.get("page_number"): p for p in source_manifest.get("pages", [])} if source_manifest else {}
 
         for number, page in enumerate(reader.pages, 1):
             try:
@@ -228,14 +252,44 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                         "run_unit_id": unit_id, "unit_type": UNIT_TYPE, "unit_key": unit_key}
             saved = _verify_unit(artifact, identity, input_sha)
             if saved is None:
-                saved = {
-                    "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
-                    "worker_version": WORKER_VERSION, **identity, "run_type": RUN_TYPE,
-                    "page_number": number, "unit_status": "COMPLETED", "input_sha256": input_sha,
-                    "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
-                    "extraction_method": "EMBEDDED_TEXT", "extraction_tool_version": toolchain,
-                    "text_char_count": len(text), "extracted_text": text,
-                }
+                source_page = source_pages.get(number)
+                if source_page is not None:
+                    relative = Path(source_page.get("artifact_path", ""))
+                    if relative.is_absolute() or ".." in relative.parts:
+                        raise WorkerError("REUSE_SOURCE_INVALID", "Source artifact path is unsafe.")
+                    source_artifact = (source_root / relative).resolve()
+                    if source_root not in source_artifact.parents:
+                        raise WorkerError("REUSE_SOURCE_INVALID", "Source artifact escapes its run directory.")
+                    old = _read_object(source_artifact, "REUSE_SOURCE_INVALID")
+                    if old.get("run_id") != source_manifest.get("run_id") or old.get("logical_job_id") != logical_id:
+                        raise WorkerError("REUSE_SOURCE_INVALID", "Source page artifact ownership mismatch.")
+                    if old.get("input_sha256") != input_sha or old.get("unit_status") not in {"COMPLETED", "REUSED"}:
+                        raise WorkerError("REUSE_INPUT_MISMATCH", "Source page unit is not reusable.")
+                    if old.get("output_sha256") != _hash_payload(old, "output_sha256"):
+                        raise WorkerError("REUSE_SOURCE_CORRUPT", "Source page artifact checksum is invalid.")
+                    if old.get("page_number") != number or old.get("unit_type") != UNIT_TYPE:
+                        raise WorkerError("REUSE_SOURCE_INVALID", "Source page artifact identity mismatch.")
+                    saved = {
+                        "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
+                        "worker_version": WORKER_VERSION, **identity, "run_type": RUN_TYPE,
+                        "page_number": number, "unit_status": "REUSED", "input_sha256": input_sha,
+                        "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
+                        "extraction_method": old.get("extraction_method", "EMBEDDED_TEXT"),
+                        "extraction_tool_version": toolchain, "text_char_count": old["text_char_count"],
+                        "extracted_text": old["extracted_text"],
+                        "reused_from_run_unit_id": old["run_unit_id"],
+                    }
+                    reused += 1
+                else:
+                    saved = {
+                        "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
+                        "worker_version": WORKER_VERSION, **identity, "run_type": RUN_TYPE,
+                        "page_number": number, "unit_status": "COMPLETED", "input_sha256": input_sha,
+                        "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
+                        "extraction_method": "EMBEDDED_TEXT", "extraction_tool_version": toolchain,
+                        "text_char_count": len(text), "extracted_text": text,
+                    }
+                    created += 1
                 saved["output_sha256"] = _hash_payload(saved, "output_sha256")
                 artifact.parent.mkdir(parents=True, exist_ok=True)
                 try:
@@ -244,20 +298,19 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                     saved = _verify_unit(artifact, identity, input_sha)
                     if saved is None:
                         raise WorkerError("CHECKPOINT_RACE", "Could not verify concurrently-created artifact.")
-                    reused += 1
                 else:
                     with os.fdopen(fd, "wb") as stream:
                         stream.write(canonical_json_bytes(saved))
                         stream.flush()
                         os.fsync(stream.fileno())
-                    created += 1
             else:
                 reused += 1
             pages.append({
                 "run_unit_id": unit_id, "unit_type": UNIT_TYPE, "unit_key": unit_key,
-                "page_number": number, "unit_status": "COMPLETED", "input_sha256": input_sha,
+                "page_number": number, "unit_status": saved["unit_status"], "input_sha256": input_sha,
                 "output_sha256": saved["output_sha256"], "artifact_path": str(artifact.relative_to(root)),
                 "text_char_count": saved["text_char_count"],
+                "reused_from_run_unit_id": saved.get("reused_from_run_unit_id"),
             })
             interim = {
                 "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
