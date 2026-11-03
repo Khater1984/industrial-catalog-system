@@ -49,7 +49,7 @@ Run:
 catalog-worker-v21 --job job.json --output ./worker-output
 ```
 
-Run the exact same job again against the same output directory to resume verified completed page units. A changed source, extraction profile, worker version, or pypdf toolchain changes the logical input fingerprint; create a new `Logical_Job_ID` and `Run_ID` for changed logical input. A retry is a new run attempt and must identify its parent run.
+Run the exact same job again against the same output directory to resume verified completed page units. A changed source, extraction profile, worker version, or pypdf toolchain changes the logical input fingerprint; create a new `Logical_Job_ID` and `Run_ID` for changed logical input. A retry is a new run attempt and must identify its parent run, increment `attempt_number`, and provide a non-empty `retry_reason` (up to 1000 characters). The retry receives a distinct deterministic idempotency key because Run_Log keys are unique per attempt.
 
 ## Original 0.1 CLI
 
