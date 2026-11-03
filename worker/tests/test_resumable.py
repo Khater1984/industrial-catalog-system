@@ -39,15 +39,55 @@ def test_extracts_pages_and_writes_manifest(tmp_path):
     assert "Pump HP-10" in page["extracted_text"]
 
 
-def test_same_run_resume_preserves_unit_ids_and_artifacts(tmp_path):
+def test_completed_run_replay_is_immutable_and_verifies_artifacts(tmp_path):
     source = tmp_path / "catalog.pdf"
     make_pdf(source, ["One", "Two"])
-    job = job_for(source)
-    first = process_resumable_catalog_job(job, tmp_path / "out")
-    second = process_resumable_catalog_job(job, tmp_path / "out")
-    assert [p["run_unit_id"] for p in first["pages"]] == [p["run_unit_id"] for p in second["pages"]]
-    assert second["newly_processed_units"] == 0
-    assert second["reused_units"] == 2
+    job, out = job_for(source), tmp_path / "out"
+    first = process_resumable_catalog_job(job, out)
+    manifest_path = out / "result-manifest.json"
+    before = manifest_path.read_bytes()
+    second = process_resumable_catalog_job(job, out)
+    assert second == first
+    assert manifest_path.read_bytes() == before
+
+
+def test_running_run_resumes_existing_page_units(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["One", "Two"])
+    job, out = job_for(source), tmp_path / "out"
+    first = process_resumable_catalog_job(job, out)
+    manifest_path = out / "result-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    from catalog_worker.resumable import _hash_payload
+    manifest["run_status"] = "RUNNING"
+    manifest["manifest_sha256"] = _hash_payload(manifest, "manifest_sha256")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    resumed = process_resumable_catalog_job(job, out)
+    assert resumed["run_status"] == "COMPLETED"
+    assert resumed["newly_processed_units"] == 0
+    assert resumed["reused_units"] == 2
+    assert [p["run_unit_id"] for p in first["pages"]] == [p["run_unit_id"] for p in resumed["pages"]]
+
+
+def test_terminal_run_cannot_be_reopened(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["One"])
+    job, out = job_for(source), tmp_path / "out"
+    process_resumable_catalog_job(job, out)
+    manifest_path = out / "result-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    from catalog_worker.resumable import _hash_payload
+    manifest["run_status"] = "FAILED"
+    manifest["manifest_sha256"] = _hash_payload(manifest, "manifest_sha256")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(job, out)
+    assert error.value.code == "TERMINAL_RUN_CANNOT_RESUME"
+
+
+def test_canonical_json_normalizes_unicode_to_nfc():
+    from catalog_worker.resumable import canonical_json_bytes
+    assert canonical_json_bytes({"label": "é"}) == canonical_json_bytes({"label": "e\\u0301"})
 
 
 def test_changed_input_cannot_resume_same_logical_job(tmp_path):
