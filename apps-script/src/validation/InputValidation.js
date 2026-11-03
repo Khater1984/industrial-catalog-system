@@ -29,17 +29,22 @@ var InputValidation = (function () {
     if (!/^[A-Za-z0-9_-]{10,200}$/.test(driveFileId)) throw new Error("VALIDATION_INVALID_FORMAT: driveFileId");
     var publishedDate = optionalString_(payload.publishedDate, "publishedDate", 10);
     if (publishedDate) {
-      var dateParts = publishedDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
-      if (!dateParts) throw new Error("VALIDATION_INVALID_FORMAT: publishedDate");
-      var date = new Date(Date.UTC(Number(dateParts[1]), Number(dateParts[2]) - 1, Number(dateParts[3])));
-      if (date.getUTCFullYear() !== Number(dateParts[1]) || date.getUTCMonth() !== Number(dateParts[2]) - 1 || date.getUTCDate() !== Number(dateParts[3])) {
+      var parts = publishedDate.split("-");
+      if (parts.length !== 3 || parts[0].length !== 4 || parts[1].length !== 2 || parts[2].length !== 2) {
+        throw new Error("VALIDATION_INVALID_FORMAT: publishedDate");
+      }
+      var year = Number(parts[0]), month = Number(parts[1]), day = Number(parts[2]);
+      var date = new Date(Date.UTC(year, month - 1, day));
+      if (!year || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
         throw new Error("VALIDATION_INVALID_FORMAT: publishedDate");
       }
     }
     var languageCode = optionalString_(payload.languageCode, "languageCode", 12);
     if (languageCode && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(languageCode)) throw new Error("VALIDATION_INVALID_FORMAT: languageCode");
     var sourceUrl = optionalString_(payload.sourceUrl, "sourceUrl", 2048);
-    if (sourceUrl && !/^https?:\\/\\//i.test(sourceUrl)) throw new Error("VALIDATION_INVALID_FORMAT: sourceUrl");
+    if (sourceUrl && sourceUrl.toLowerCase().indexOf("https://") !== 0 && sourceUrl.toLowerCase().indexOf("http://") !== 0) {
+      throw new Error("VALIDATION_INVALID_FORMAT: sourceUrl");
+    }
     return {
       driveFileId: driveFileId,
       supplierName: requiredString_(payload.supplierName, "supplierName", 160),
