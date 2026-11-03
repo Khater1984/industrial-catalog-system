@@ -5,8 +5,6 @@ import hashlib
 import json
 import os
 import tempfile
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -30,25 +28,8 @@ def _required(data: dict[str, Any], key: str) -> str:
     return value.strip()
 
 
-def _post_callback(url: str, token: str, payload: dict[str, Any]) -> None:
-    if not url.startswith("https://"):
-        raise RunnerError("CALLBACK_HTTPS_REQUIRED")
-    body = dict(payload)
-    body["callback_token"] = token
-    request = urllib.request.Request(
-        url, data=json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            if response.status < 200 or response.status >= 300:
-                raise RunnerError("CALLBACK_REJECTED")
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise RunnerError("CALLBACK_DELIVERY_FAILED") from exc
-
-
 def run_from_drive(
-    *, job_file_id: str, callback_url: str, callback_token: str,
+    *, job_file_id: str,
     drive: DriveClient | None = None, output_root: str | Path | None = None,
 ) -> dict[str, Any]:
     drive = drive or DriveClient()
@@ -67,9 +48,6 @@ def run_from_drive(
     logical_job_id = _required(job, "logical_job_id")
     source_file_id = _required(job, "source_pdf_file_id")
     source_sha = _required(job, "source_sha256").lower()
-    callback_url = callback_url or _required(job, "callback_url")
-    if not callback_token:
-        raise RunnerError("CALLBACK_TOKEN_MISSING")
 
     run_dir = work_root / "catalog-worker" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -158,12 +136,5 @@ def run_from_drive(
     manifest_id, manifest_raw_sha = drive.upload_bytes(
         run_folder_id, "result-manifest.json", manifest_bytes, "application/json",
     )
-    callback_payload = {
-        "action": "worker.callback", "contract_version": "1",
-        "manifest_version": MANIFEST_VERSION, "run_id": run_id,
-        "result_manifest_file_id": manifest_id, "result_manifest_sha256": manifest_raw_sha,
-        "worker_version": WORKER_VERSION, "run_status": manifest.get("run_status"),
-    }
-    _post_callback(callback_url, callback_token, callback_payload)
     return {"accepted": True, "run_id": run_id, "result_manifest_file_id": manifest_id,
-            "run_status": manifest.get("run_status")}
+            "result_manifest_sha256": manifest_raw_sha, "run_status": manifest.get("run_status")}
