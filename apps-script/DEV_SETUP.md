@@ -37,7 +37,8 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 - Place a non-confidential synthetic PDF in the DEV intake folder.
 - Call the authenticated `POST` action `catalog.register` with `driveFileId` and `supplierName`.
 - Verify Catalogs stores the exact file SHA256 and Run_Log contains one QUEUED attempt.
-- Repeat the same request: it must reject the duplicate SHA256 without adding rows.
+- Repeat the same request: it must return the original catalog/run IDs without adding duplicate rows.
+- Simulate a failed `Run_Log` append after the `Catalogs` row is written; retrying the same source must repair the missing run row without duplicating the catalog.
 
 ## Current limitations
 - No worker queue, lease acquisition endpoint, page counting, page creation, PDF parsing, OCR, staging, or callback is implemented yet.
