@@ -59,7 +59,7 @@ def make_pdf(path):
     return output.read_bytes()
 
 
-def test_drive_runner_processes_uploads_and_notifies(monkeypatch, tmp_path):
+def test_drive_runner_processes_and_uploads_immutable_artifacts(tmp_path):
     pdf_bytes = make_pdf(tmp_path / "source.pdf")
     source_sha = hashlib.sha256(pdf_bytes).hexdigest()
     job = {
