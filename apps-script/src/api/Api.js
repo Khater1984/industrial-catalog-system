@@ -55,12 +55,6 @@ var Api = (function () {
         return failure_(requestId, "INVALID_REQUEST");
       }
       requestId = requestId_(body);
-      // Worker callbacks authenticate with a high-entropy shared secret in the JSON body.
-      // Apps Script Web App events do not expose arbitrary incoming HTTP headers reliably.
-      if (body.action === "worker.callback") {
-        var callbackResult = WorkerIntegration.handleCallback(body);
-        return success_(requestId, callbackResult);
-      }
       assertPrimaryUser_();
       if (body.protocol_version && body.protocol_version !== "1") {
         return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
