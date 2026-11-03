@@ -213,7 +213,9 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
     job_input_sha = sha256_bytes(canonical_json_bytes(logical_input))
     # Run_Log.Idempotency_Key is unique per attempt, not per logical job.
     # Unique per Run_Log attempt, as required by the schema.
-    expected_key = sha256_bytes(f"{logical_id}|{run_id}|{attempt}|{parent or ''}|{job_input_sha}".encode())
+    expected_key = sha256_bytes(
+        f"{logical_id}|{run_id}|{attempt}|{parent or ''}|{retry_reason or ''}|{job_input_sha}".encode()
+    )
     if job.get("idempotency_key") not in (None, expected_key):
         raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match this run attempt.")
 
@@ -224,8 +226,15 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
         prior = None
         if manifest_path.exists():
             prior = _read_object(manifest_path, "RESULT_MANIFEST_INVALID")
-            if prior.get("run_id") != run_id or prior.get("logical_job_id") != logical_id:
-                raise WorkerError("RESULT_MANIFEST_CONFLICT", "Output directory belongs to another run.")
+            expected_run_identity = {
+                "run_id": run_id, "logical_job_id": logical_id, "attempt_number": attempt,
+                "parent_run_id": parent, "retry_reason": retry_reason,
+                "idempotency_key": expected_key, "catalog_id": catalog_id,
+                "source_sha256": actual_sha,
+            }
+            for key, expected in expected_run_identity.items():
+                if prior.get(key) != expected:
+                    raise WorkerError("RESULT_MANIFEST_CONFLICT", f"Existing result manifest conflicts on {key}.")
             if prior.get("manifest_sha256") != _hash_payload(prior, "manifest_sha256"):
                 raise WorkerError("RESULT_MANIFEST_CORRUPT", "Result manifest checksum is invalid.")
             if prior.get("job_input_sha256") != job_input_sha:
@@ -251,9 +260,13 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             if source_manifest.get("manifest_sha256") != _hash_payload(source_manifest, "manifest_sha256"):
                 raise WorkerError("REUSE_SOURCE_CORRUPT", "Source result manifest checksum is invalid.")
             source_page_rows = source_manifest.get("pages", [])
+            if not isinstance(source_page_rows, list) or any(not isinstance(p, dict) for p in source_page_rows):
+                raise WorkerError("REUSE_SOURCE_INVALID", "Source result manifest page list is malformed.")
             if len(source_page_rows) != page_count:
                 raise WorkerError("REUSE_SOURCE_INCOMPLETE", "Source run does not contain every page unit.")
             source_page_numbers = [p.get("page_number") for p in source_page_rows]
+            if any(isinstance(n, bool) or not isinstance(n, int) for n in source_page_numbers):
+                raise WorkerError("REUSE_SOURCE_INVALID", "Source manifest contains an invalid page number.")
             if sorted(source_page_numbers) != list(range(1, page_count + 1)):
                 raise WorkerError("REUSE_SOURCE_INVALID", "Source manifest has duplicate or missing page numbers.")
         source_pages = {p.get("page_number"): p for p in source_manifest.get("pages", [])} if source_manifest else {}
