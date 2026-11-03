@@ -22,7 +22,7 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 3. Copy the generated `dist/Code.gs` into the Apps Script project as `Code.gs`, and copy `appsscript.json` as the project manifest. The repository `.js` files are source modules; they are bundled into a valid Apps Script `.gs` file by the build script.
 4. Set Script Properties above.
 5. Run `initializeDevSchema` manually from the editor.
-6. Confirm the four required tabs exist: Catalogs, Catalog_Pages, Run_Log, Run_Units. An unrelated default tab is not automatically deleted.
+6. Confirm all 52 required tabs are created from the V2.1 registry. An unrelated default tab is not automatically deleted.
 7. Confirm the header row in every tab exactly matches `src/config/Schema.js`; extra or missing columns must fail initialization.
 8. Deploy only as a restricted owner-only DEV web app (`MYSELF`, execute as deploying user).
 9. Confirm `ALLOWED_USER_EMAIL` matches the deploying Google account. The app fails closed if Apps Script cannot expose the effective-user identity.
@@ -31,7 +31,7 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 ## Automated validation tests
 - From this directory, run `npm test` with Node.js 20 or later.
 - Run `npm run build` to create `dist/Code.gs` from the explicit source manifest.
-- The current suite covers catalog payload validation and mocked registration/retry recovery. It is not an Apps Script or Google Sheets integration test.
+- The suite covers the 52-table/711-column schema registry, 79 enum fields, catalog payload validation, enum validation, and mocked registration/retry recovery. It is not an Apps Script or Google Sheets integration test.
 
 ## Register a synthetic PDF
 - Place a non-confidential synthetic PDF in the DEV intake folder.
