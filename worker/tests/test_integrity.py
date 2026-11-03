@@ -208,3 +208,59 @@ def test_missing_artifact_file_is_fail():
         drive, run_id="run_001", units=[unit], manifest_result=loaded
     )
     assert result.status == "FAIL"
+
+
+def test_transport_hash_mismatch_is_fail():
+    drive, manifest, unit, _ = fixture()
+    manifest["pages"][0]["artifact_file_sha256"] = "0" * 64
+    reseal_manifest(manifest)
+    from catalog_worker.integrity import ManifestResult
+    result = verify_gate_3(
+        drive, run_id="run_001", units=[unit],
+        manifest_result=ManifestResult(manifest, "manifest-1", "explicit"),
+    )
+    assert result.status == "FAIL"
+
+
+def test_duplicate_manifest_file_is_ambiguous_not_first_match():
+    drive, _, _, _ = fixture()
+    drive.add("manifest-2", "result-manifest.json", "application/json",
+              drive.items["manifest-1"]["content"], parent="run-folder")
+    loaded = load_manifest(drive, run_id="run_001", drive_root_folder_id="root")
+    assert loaded.manifest is None
+    assert loaded.source == "ambiguous"
+
+
+def test_manifest_with_non_list_pages_is_rejected():
+    drive, manifest, _, _ = fixture()
+    manifest["pages"] = {}
+    reseal_manifest(manifest)
+    raw = canonical_json_bytes(manifest)
+    drive.items["manifest-1"]["content"] = raw
+    loaded = load_manifest(drive, run_id="run_001", drive_root_folder_id="root")
+    assert loaded.manifest is None
+    assert "pages" in loaded.note
+
+
+def test_corrupt_manifest_checksum_is_rejected():
+    drive, _, _, _ = fixture()
+    raw = json.loads(drive.items["manifest-1"]["content"].decode("utf-8"))
+    raw["catalog_id"] = "different-catalog"
+    drive.items["manifest-1"]["content"] = canonical_json_bytes(raw)
+    loaded = load_manifest(drive, run_id="run_001", drive_root_folder_id="root")
+    assert loaded.manifest is None
+    assert "manifest_sha256" in loaded.note
+
+
+def test_duplicate_manifest_run_unit_id_is_fail():
+    drive, manifest, unit, _ = fixture()
+    duplicate = dict(manifest["pages"][0])
+    duplicate["unit_key"] = "another-unit-key"
+    manifest["pages"].append(duplicate)
+    reseal_manifest(manifest)
+    from catalog_worker.integrity import ManifestResult
+    result = verify_gate_3(
+        drive, run_id="run_001", units=[unit],
+        manifest_result=ManifestResult(manifest, "manifest-1", "explicit"),
+    )
+    assert result.status == "FAIL"
