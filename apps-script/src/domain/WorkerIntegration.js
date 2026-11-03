@@ -1,17 +1,9 @@
-/** Cloud Run dispatch and authenticated worker callback bridge. */
+/** Cloud Run dispatch plus owner-executed Drive result polling. */
 var WorkerIntegration = (function () {
   var CONTRACT_VERSION = "1";
   function property_(name) {
     return (PropertiesService.getScriptProperties().getProperty(name) || "").trim();
   }
-  function constantTimeEqual_(left, right) {
-    left = String(left || ""); right = String(right || "");
-    if (!left || left.length !== right.length) return false;
-    var mismatch = 0;
-    for (var i = 0; i < left.length; i++) mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
-    return mismatch === 0;
-  }
-  function json_(value) { return JSON.stringify(value); }
   function getRunFolder_(runId) {
     var rootId = property_("DEV_RUNS_FOLDER_ID");
     if (!rootId) throw new Error("CONFIG_MISSING: DEV_RUNS_FOLDER_ID");
@@ -20,7 +12,7 @@ var WorkerIntegration = (function () {
     return root.createFolder(runId);
   }
   function immutableJobFile_(folder, body) {
-    var content = json_(body), files = folder.getFilesByName("job.json");
+    var content = JSON.stringify(body), files = folder.getFilesByName("job.json");
     if (files.hasNext()) {
       var existing = files.next();
       if (existing.getBlob().getDataAsString("UTF-8") !== content) throw new Error("JOB_MANIFEST_IMMUTABLE_CONFLICT");
@@ -34,10 +26,6 @@ var WorkerIntegration = (function () {
     if (endpoint.indexOf("https://") !== 0) throw new Error("WORKER_ENDPOINT_HTTPS_REQUIRED");
     var token = property_("DEV_WORKER_SHARED_TOKEN");
     if (!token) throw new Error("WORKER_TOKEN_NOT_CONFIGURED");
-    var callbackToken = property_("DEV_CALLBACK_SHARED_TOKEN");
-    if (!callbackToken) throw new Error("CALLBACK_TOKEN_NOT_CONFIGURED");
-    var callbackUrl = ScriptApp.getService().getUrl();
-    if (!callbackUrl || callbackUrl.indexOf("https://") !== 0) throw new Error("CALLBACK_URL_UNAVAILABLE");
 
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
@@ -65,10 +53,7 @@ var WorkerIntegration = (function () {
         Heartbeat_At: now, Error_Code: "", Error_Summary: ""
       });
 
-      var payload = {
-        contract_version: CONTRACT_VERSION, run_id: runId,
-        job_file_id: jobFile.getId(), callback_url: callbackUrl
-      };
+      var payload = { contract_version: CONTRACT_VERSION, run_id: runId, job_file_id: jobFile.getId() };
       var lastError = "";
       for (var attempt = 1; attempt <= 4; attempt++) {
         try {
@@ -79,11 +64,10 @@ var WorkerIntegration = (function () {
               "Idempotency-Key": runId,
               "Content-Type": "application/json"
             },
-            payload: json_(payload), muteHttpExceptions: true
+            payload: JSON.stringify(payload), muteHttpExceptions: true
           });
-          var code = response.getResponseCode(), text = response.getContentText();
-          var parsed = null;
-          try { parsed = JSON.parse(text); } catch (ignore) {}
+          var code = response.getResponseCode(), parsed = null;
+          try { parsed = JSON.parse(response.getContentText()); } catch (ignore) {}
           if (code >= 200 && code < 300 && parsed && parsed.accepted === true && parsed.run_id === runId) {
             return { configured: true, accepted: true, run_id: runId, task: parsed.task || "" };
           }
@@ -102,8 +86,8 @@ var WorkerIntegration = (function () {
         }
         if (attempt < 4) Utilities.sleep(1000 * Math.pow(2, attempt - 1));
       }
-      // A timeout can happen after Cloud Tasks accepted the deterministic task.
-      // Keep the run recoverable; retrying with the same Run_ID is idempotent.
+      // A response can be lost after Cloud Tasks accepted the deterministic task.
+      // Keep the same Run_ID; Cloud Tasks task naming makes redispatch idempotent.
       SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
         Run_Status: "RETRY_PENDING", Current_Step: "DISPATCH_UNCONFIRMED",
         Error_Code: "WORKER_DISPATCH_UNCONFIRMED",
@@ -114,19 +98,47 @@ var WorkerIntegration = (function () {
       lock.releaseLock();
     }
   }
-  function handleCallback(body) {
-    if (!body || body.action !== "worker.callback") throw new Error("CALLBACK_INVALID_ACTION");
-    if (!constantTimeEqual_(property_("DEV_CALLBACK_SHARED_TOKEN"), body.callback_token)) {
-      throw new Error("CALLBACK_UNAUTHORIZED");
-    }
-    if (body.contract_version !== CONTRACT_VERSION) throw new Error("CONTRACT_VERSION_MISMATCH");
-    if (!body.run_id || !body.result_manifest_file_id) throw new Error("CALLBACK_INVALID_PAYLOAD");
-    return Ingest.ingestManifest({
-      runId: body.run_id,
-      resultManifestFileId: body.result_manifest_file_id,
-      resultManifestSha256: body.result_manifest_sha256 || "",
-      workerVersion: body.worker_version || ""
+  function processCompletedRuns() {
+    var runs = SheetsRepository.listRecent("Run_Log", 250), processed = [], errors = [];
+    runs.forEach(function (run) {
+      if (["RUNNING", "RETRY_PENDING"].indexOf(run.Run_Status) < 0 || !run.Input_Manifest_File_ID) return;
+      try {
+        var jobFile = DriveApp.getFileById(run.Input_Manifest_File_ID);
+        var parents = jobFile.getParents();
+        if (!parents.hasNext()) throw new Error("RUN_FOLDER_NOT_FOUND");
+        var folder = parents.next(), files = folder.getFilesByName("result-manifest.json");
+        if (!files.hasNext()) return;
+        var resultFile = files.next();
+        var result = Ingest.ingestManifest({
+          runId: run.Run_ID, resultManifestFileId: resultFile.getId()
+        });
+        processed.push(result);
+      } catch (err) {
+        errors.push({ run_id: run.Run_ID, code: String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120) });
+      }
     });
+    return { processed: processed, errors: errors };
   }
-  return { dispatchCatalogRun: dispatchCatalogRun, handleCallback: handleCallback };
+  function installPoller() {
+    var triggers = ScriptApp.getProjectTriggers();
+    var exists = triggers.some(function (trigger) {
+      return trigger.getHandlerFunction() === "processWorkerCallbacks";
+    });
+    if (!exists) ScriptApp.newTrigger("processWorkerCallbacks").timeBased().everyMinutes(5).create();
+    return { installed: true, interval_minutes: 5, already_installed: exists };
+  }
+  return {
+    dispatchCatalogRun: dispatchCatalogRun,
+    processCompletedRuns: processCompletedRuns,
+    installPoller: installPoller
+  };
 })();
+
+function processWorkerCallbacks() {
+  return WorkerIntegration.processCompletedRuns();
+}
+
+function installWorkerPoller() {
+  assertPrimaryUser_();
+  return WorkerIntegration.installPoller();
+}
