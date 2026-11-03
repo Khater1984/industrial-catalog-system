@@ -73,11 +73,59 @@ var Api = (function () {
 
 function doGet(e) {
   var action = e && e.parameter ? e.parameter.action : "";
-  if (action !== "health") return jsonResponse_({
-    protocol_version: "1", request_id: Utilities.getUuid(), correlation_id: "",
-    ok: false, data: null, error: { code: "NOT_FOUND", message: "Route not found.", retryable: false }
+  if (action === "health") return Api.health(e);
+  assertPrimaryUser_();
+  return HtmlService.createHtmlOutputFromFile("Index")
+    .setTitle("Industrial Catalog Studio")
+    .addMetaTag("viewport", "width=device-width, initial-scale=1");
+}
+
+/** Browser upload endpoint. The deployed web app is restricted to the primary owner. */
+function uploadCatalogFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("INVALID_UPLOAD_PAYLOAD");
+  var allowed = ["supplierName", "catalogTitle", "catalogRevision", "fileName", "mimeType", "base64"];
+  Object.keys(payload).forEach(function (key) {
+    if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
   });
-  return Api.health(e);
+  var name = String(payload.fileName || "").replace(/[\\\\/:*?"<>|\\x00-\\x1F]/g, "_").trim();
+  if (!name || name.length > 180 || !/\\.pdf$/i.test(name)) throw new Error("INVALID_PDF_FILENAME");
+  if (payload.mimeType && payload.mimeType !== "application/pdf") throw new Error("UNSUPPORTED_MIME_TYPE");
+  if (typeof payload.base64 !== "string" || !payload.base64 || payload.base64.length > 16777216 || !/^[A-Za-z0-9+/]+={0,2}$/.test(payload.base64)) {
+    throw new Error("INVALID_BASE64_OR_FILE_TOO_LARGE");
+  }
+  var bytes = Utilities.base64Decode(payload.base64);
+  if (bytes.length < 8 || bytes.length > 12 * 1024 * 1024) throw new Error("FILE_SIZE_OUT_OF_RANGE");
+  var signature = bytes.slice(0, 5).map(function (byte) { return String.fromCharCode(byte < 0 ? byte + 256 : byte); }).join("");
+  if (signature !== "%PDF-") throw new Error("INVALID_PDF_SIGNATURE");
+  var folderId = PropertiesService.getScriptProperties().getProperty("DEV_CATALOG_FOLDER_ID");
+  if (!folderId) throw new Error("CONFIG_MISSING: DEV_CATALOG_FOLDER_ID");
+  var blob = Utilities.newBlob(bytes, "application/pdf", name);
+  var file = DriveApp.getFolderById(folderId).createFile(blob);
+  var catalogPayload = InputValidation.catalogPayload({
+    driveFileId: file.getId(),
+    supplierName: payload.supplierName,
+    catalogTitle: payload.catalogTitle || "",
+    catalogRevision: payload.catalogRevision || ""
+  });
+  var registered = CatalogService.register(catalogPayload);
+  return {
+    catalogId: registered.catalogId,
+    runId: registered.runId,
+    fileName: file.getName(),
+    sha256: registered.sha256,
+    status: registered.status,
+    idempotentReplay: registered.idempotentReplay
+  };
+}
+
+/** Owner-only data endpoint called by the HtmlService dashboard. */
+function getCatalogDashboard() {
+  assertPrimaryUser_();
+  var catalogs = SheetsRepository.listRecent("Catalogs", 30);
+  var runs = SheetsRepository.listRecent("Run_Log", 60);
+  var sheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty("DEV_SPREADSHEET_ID")).getSheetByName("Catalogs");
+  return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
 }
 
 /** Run manually from the Apps Script editor after DEV properties are configured. */
