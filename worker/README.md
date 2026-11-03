@@ -12,7 +12,7 @@ Implemented in V2.1:
 - Result-manifest checksum verification and atomic manifest updates.
 - Deterministic idempotency key validation.
 - Retry lineage validation: a retry uses a new `Run_ID`, positive `Attempt_Number`, and `Parent_Run_ID`.
-- Local output-directory lock against concurrent processing.
+- Local output-directory lock against concurrent processing; stale same-host locks are reclaimed only when the recorded PID is demonstrably absent. Unknown/malformed/remote-owner locks fail closed for manual inspection.
 - Exact V2.1 enum values: `CATALOG_EXTRACTION`, `CATALOG_PAGE`, and registered Run/Unit statuses.
 
 Not implemented: OCR, page rendering, table recognition, image extraction, product/variant inference, staging import, review/promotion, Drive access, Sheets writes, Apps Script callbacks, durable distributed leases, cloud queueing, and production hosting. No claim of production readiness is made.
