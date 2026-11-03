@@ -75,7 +75,7 @@ var SheetsRepository = (function () {
       return;
     }
     if (type === "DATE") {
-      if (value instanceof Date) return;
+      if (value instanceof Date) { if (isNaN(value.getTime())) throw new Error(errorCode); return; }
       if (typeof value !== "string") throw new Error(errorCode);
       var dateParts = value.split("-");
       if (dateParts.length !== 3 || dateParts[0].length !== 4 || dateParts[1].length !== 2 || dateParts[2].length !== 2) throw new Error(errorCode);
