@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Industrial Catalog Studio</title>
+  <style>
+    :root{--bg:#f4f6f8;--panel:#fff;--ink:#17212b;--muted:#697786;--line:#e5eaf0;--accent:#173f5f;--accent2:#2d6b83;--ok:#18794e;--warn:#a15c00;--bad:#b42318}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Noto Sans Arabic",sans-serif}
+    .shell{max-width:1180px;margin:auto;padding:28px 22px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}
+    .brand{display:flex;align-items:center;gap:13px}.mark{width:44px;height:44px;border-radius:13px;background:var(--accent);color:white;display:grid;place-items:center;font-weight:800;font-size:19px}
+    h1{font-size:22px;margin:0 0 5px}.sub{font-size:13px;color:var(--muted)}.env{font-size:12px;padding:7px 11px;border-radius:30px;background:#eaf2f6;color:var(--accent);font-weight:700}
+    .intro{margin-bottom:22px}.intro h2{font-size:25px;margin:0 0 8px}.intro p{color:var(--muted);margin:0;line-height:1.8}
+    .grid{display:grid;grid-template-columns:minmax(320px, .9fr) minmax(0,1.4fr);gap:18px;align-items:start}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 4px 18px #162b3b08}
+    .panel h3{font-size:16px;margin:0 0 18px}.field{margin-bottom:14px}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px}
+    input[type=text],input[type=date],textarea{width:100%;border:1px solid #d7dee6;border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink);outline:none}
+    input:focus,textarea:focus{border-color:var(--accent2);box-shadow:0 0 0 3px #2d6b8318}
+    .drop{border:1.5px dashed #b9c7d2;border-radius:12px;padding:22px 14px;text-align:center;background:#f9fbfc;cursor:pointer}
+    .drop strong{display:block;margin-bottom:6px;font-size:14px}.drop span{font-size:12px;color:var(--muted)}.drop input{display:none}
+    .file-name{font-size:12px;color:var(--accent);margin-top:9px;overflow-wrap:anywhere}
+    .btn{border:0;border-radius:9px;background:var(--accent);color:white;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;width:100%;margin-top:4px}
+    .btn:disabled{opacity:.55;cursor:wait}.notice{font-size:12px;color:var(--muted);line-height:1.7;margin-top:12px}
+    .status{padding:11px 13px;border-radius:9px;font-size:13px;margin-top:14px;display:none;line-height:1.7}.status.show{display:block}.status.ok{background:#eaf6ef;color:var(--ok)}.status.err{background:#fff0ef;color:var(--bad)}.status.wait{background:#edf4f8;color:var(--accent)}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.toolbar h3{margin:0}.refresh{border:1px solid var(--line);background:white;border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--accent);font-weight:700}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:17px}.stat{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:13px}.stat b{font-size:23px;display:block;margin-bottom:4px}.stat span{font-size:11px;color:var(--muted)}
+    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:460px}th,td{text-align:right;padding:12px 9px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}th{color:var(--muted);font-weight:700;background:#fbfcfd}
+    .pill{display:inline-block;padding:5px 8px;border-radius:20px;font-size:11px;background:#edf2f6;color:#425466}.pill.queued{background:#fff5e5;color:var(--warn)}.empty{text-align:center;color:var(--muted);padding:32px 10px;font-size:13px}
+    .footer{color:#8a96a3;text-align:center;font-size:11px;margin-top:24px}
+    @media(max-width:800px){.shell{padding:18px 13px 40px}.grid{grid-template-columns:1fr}.top{margin-bottom:22px}.intro h2{font-size:21px}.panel{padding:17px}.stats{gap:7px}.stat{padding:10px}.stat b{font-size:20px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div class="brand"><div class="mark">IC</div><div><h1>Industrial Catalog Studio</h1><div class="sub">منصة إدارة الكتالوجات الفنية</div></div></div>
+      <div class="env">بيئة التطوير · DEV</div>
+    </header>
+    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF، وسجّل بيانات المصدر، وتابع حالة المعالجة من مكان واحد. هذه النسخة تسجل الكتالوج وتتحقق من الملف؛ استخراج المنتجات سيضاف في المرحلة التالية.</p></section>
+    <section class="grid">
+      <div class="panel">
+        <h3>إضافة كتالوج جديد</h3>
+        <form id="uploadForm">
+          <div class="field"><label for="supplier">اسم المورد *</label><input id="supplier" type="text" maxlength="160" placeholder="مثال: Turkish Machinery Co." required></div>
+          <div class="field"><label for="title">عنوان الكتالوج</label><input id="title" type="text" maxlength="240" placeholder="اسم المجموعة أو المنتج"></div>
+          <div class="field"><label for="revision">رقم الإصدار</label><input id="revision" type="text" maxlength="80" placeholder="Rev. 02"></div>
+          <div class="field"><label>ملف الكتالوج PDF *</label><label class="drop" for="pdf"><strong>اختر ملف PDF من جهازك</strong><span>الحد الأقصى 12 ميجابايت · PDF فقط</span><input id="pdf" type="file" accept="application/pdf,.pdf" required><div class="file-name" id="fileName">لم يتم اختيار ملف</div></label></div>
+          <button class="btn" id="submitBtn" type="submit">رفع وتسجيل الكتالوج</button>
+          <div class="status" id="status" role="status" aria-live="polite"></div>
+          <div class="notice">يُحفظ الملف داخل مجلد DEV المخصص، ثم يسجل النظام بصمته الرقمية لمنع التكرار. لا ترفع كتالوجات سرية أو ملفات عمل حقيقية قبل اعتماد بيئة التشغيل.</div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="toolbar"><h3>الكتالوجات المسجلة</h3><button class="refresh" id="refreshBtn" type="button">تحديث القائمة</button></div>
+        <div class="stats"><div class="stat"><b id="totalCount">—</b><span>إجمالي الكتالوجات</span></div><div class="stat"><b id="queuedCount">—</b><span>بانتظار المعالجة</span></div><div class="stat"><b id="doneCount">—</b><span>مكتملة</span></div></div>
+        <div class="table-wrap"><table><thead><tr><th>المورد</th><th>الكتالوج</th><th>تاريخ التسجيل</th><th>الحالة</th></tr></thead><tbody id="catalogRows"><tr><td colspan="4" class="empty">جارٍ تحميل البيانات...</td></tr></tbody></table></div>
+        <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
+      </div>
+    </section>
+    <div class="footer">Industrial Catalog System · DEV build</div>
+  </main>
+<script>
+  const el = id => document.getElementById(id);
+  let selectedFile = null;
+  el("pdf").addEventListener("change", event => {
+    selectedFile = event.target.files && event.target.files[0] || null;
+    el("fileName").textContent = selectedFile ? selectedFile.name + " · " + (selectedFile.size/1024/1024).toFixed(2) + " MB" : "لم يتم اختيار ملف";
+  });
+  function showStatus(message, type) {
+    const box=el("status"); box.textContent=message; box.className="status show "+type;
+  }
+  function formatDate(value) {
+    if(!value)return "—";
+    const d=new Date(value); return isNaN(d.getTime())?String(value):d.toLocaleDateString("ar-EG");
+  }
+  function loadDashboard() {
+    el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">جارٍ تحميل البيانات...</td></tr>';
+    google.script.run.withSuccessHandler(renderDashboard).withFailureHandler(err=>{
+      el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">تعذر تحميل البيانات. تحقق من إعدادات DEV.</td></tr>';
+    }).getCatalogDashboard();
+  }
+  function renderDashboard(data) {
+    const catalogs=data.catalogs||[], runs=data.runs||[];
+    el("totalCount").textContent=data.totalCount||catalogs.length;
+    el("queuedCount").textContent=runs.filter(r=>r.Run_Status==="QUEUED").length;
+    el("doneCount").textContent=runs.filter(r=>r.Run_Status==="COMPLETED").length;
+    if(!catalogs.length){el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">لا توجد كتالوجات مسجلة حتى الآن.</td></tr>';return;}
+    el("catalogRows").innerHTML=catalogs.map(c=>{
+      const run=runs.find(r=>r.Catalog_ID===c.Catalog_ID);
+      const state=run?run.Run_Status:"REGISTERED";
+      const safe=s=>String(s||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      return '<tr><td>'+safe(c.Supplier_Name)+'</td><td>'+safe(c.Catalog_Title||c.Source_File_Name)+'</td><td>'+formatDate(c.Received_At)+'</td><td><span class="pill '+(state==="QUEUED"?"queued":"")+'">'+safe(state)+'</span></td></tr>';
+    }).join("");
+  }
+  el("refreshBtn").addEventListener("click",loadDashboard);
+  el("uploadForm").addEventListener("submit",event=>{
+    event.preventDefault();
+    if(!selectedFile){showStatus("اختر ملف PDF أولاً.","err");return;}
+    if(selectedFile.type!=="application/pdf"&&!selectedFile.name.toLowerCase().endsWith(".pdf")){showStatus("الملف يجب أن يكون بصيغة PDF.","err");return;}
+    if(selectedFile.size>12*1024*1024){showStatus("حجم الملف يتجاوز الحد المسموح (12 MB).","err");return;}
+    const button=el("submitBtn");button.disabled=true;button.textContent="جارٍ رفع الملف وتسجيله...";
+    showStatus("جارٍ التحقق من الملف وحفظه في مجلد DEV...","wait");
+    const reader=new FileReader();
+    reader.onerror=()=>{button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";showStatus("تعذرت قراءة الملف من الجهاز.","err");};
+    reader.onload=()=>{
+      const dataUrl=String(reader.result||"");const base64=dataUrl.split(",")[1]||"";
+      const payload={supplierName:el("supplier").value,catalogTitle:el("title").value,catalogRevision:el("revision").value,fileName:selectedFile.name,mimeType:selectedFile.type||"application/pdf",base64:base64};
+      google.script.run.withSuccessHandler(result=>{
+        button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";
+        showStatus("تم تسجيل الكتالوج بنجاح. رقم العملية: "+result.runId,"ok");
+        el("uploadForm").reset();selectedFile=null;el("fileName").textContent="لم يتم اختيار ملف";loadDashboard();
+      }).withFailureHandler(error=>{
+        button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";
+        showStatus("لم يكتمل التسجيل: "+(error&&error.message?error.message:"خطأ غير معروف"),"err");
+      }).uploadCatalogFromBrowser(payload);
+    };
+    reader.readAsDataURL(selectedFile);
+  });
+  loadDashboard();
+</script>
+</body>
+</html>
