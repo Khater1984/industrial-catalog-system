@@ -55,8 +55,7 @@ var WorkerIntegration = (function () {
         catalog_id: catalogId, source_pdf_file_id: catalog.Source_File_ID,
         source_sha256: catalog.SHA256, attempt_number: Number(run.Attempt_Number) || 1,
         parent_run_id: run.Parent_Run_ID || null, retry_reason: run.Retry_Reason || null,
-        extraction_profile: "embedded-text-v1", run_folder_id: folder.getId(),
-        created_at: new Date().toISOString()
+        extraction_profile: "embedded-text-v1", run_folder_id: folder.getId()
       };
       var jobFile = immutableJobFile_(folder, job);
       var now = new Date().toISOString();
