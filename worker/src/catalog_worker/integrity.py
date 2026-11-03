@@ -144,11 +144,15 @@ def verify_gate_3(
     manifest_result: ManifestResult,
 ) -> GateResult:
     """Verify completed Run_Units against unique manifest pages and raw artifacts."""
-    completed = [
+    completed_candidates = [
         row for row in units
         if isinstance(row, dict) and row.get("Unit_Status") in _COMPLETED
     ]
+    completed = [row for row in completed_candidates if row.get("Run_ID") == run_id]
     if not completed:
+        if completed_candidates:
+            return GateResult("3-Integrity", "INCOMPLETE",
+                              "completed Run_Units were supplied, but none match the requested Run_ID")
         return GateResult("3-Integrity", "SKIP", "no COMPLETED/REUSED units to verify")
 
     if manifest_result.manifest is None:
@@ -160,6 +164,10 @@ def verify_gate_3(
         return GateResult("3-Integrity", "FAIL", "manifest Run_ID mismatch or invalid manifest")
     if manifest.get("run_status") != "COMPLETED" or not isinstance(manifest.get("pages"), list):
         return GateResult("3-Integrity", "FAIL", "manifest is not a completed run with a pages list")
+    if (manifest.get("page_count") != len(manifest["pages"])
+            or manifest.get("completed_units") != len(manifest["pages"])
+            or manifest.get("failed_units") != 0):
+        return GateResult("3-Integrity", "FAIL", "manifest page/unit counters are inconsistent")
     digest = manifest.get("manifest_sha256")
     if (not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest)
             or _hash_payload(manifest, "manifest_sha256") != digest):
