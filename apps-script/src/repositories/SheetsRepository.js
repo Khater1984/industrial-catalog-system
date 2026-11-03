@@ -64,10 +64,10 @@ var SheetsRepository = (function () {
     return null;
   }
   function findBy(name, column, value) {
-    var record = getBy(name, column, value);
-    if (!record) return null;
     var headers = TABLES[name];
+    if (!headers || headers.indexOf(column) < 0) throw new Error("INVALID_LOOKUP");
     var sheet = spreadsheet_().getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return null;
     var col = headers.indexOf(column) + 1;
     var values = sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues();
     for (var i = 0; i < values.length; i++) if (String(values[i][0]) === String(value)) return i + 2;
