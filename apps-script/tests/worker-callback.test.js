@@ -109,3 +109,27 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   assert.equal(job.source_pdf_file_id, "source-file-id-123456");
   assert.equal(job.run_folder_id, "run-folder-id-123456");
 });
+
+test("poller marks an expired worker lease failed when no result manifest exists", () => {
+  const run = {
+    Run_ID: "run-expired", Run_Status: "RUNNING",
+    Input_Manifest_File_ID: "job-expired",
+    Lease_Expires_At: "2000-01-01T00:00:00.000Z"
+  };
+  const updates = [];
+  const folder = { getFilesByName: () => ({ hasNext: () => false }) };
+  const jobFile = { getParents: () => ({ hasNext: () => true, next: () => folder }) };
+  const context = {
+    SheetsRepository: {
+      listAll: () => [run],
+      updateBy: (_table, _key, _id, patch) => updates.push(patch)
+    },
+    DriveApp: { getFileById: () => jobFile },
+    Ingest: { ingestManifest: () => { throw new Error("must not ingest"); } }
+  };
+  vm.runInNewContext(source, context);
+  const result = context.WorkerIntegration.processCompletedRuns();
+  assert.equal(result.errors[0].code, "WORKER_LEASE_EXPIRED");
+  assert.equal(updates[0].Run_Status, "FAILED");
+  assert.equal(updates[0].Lease_Expires_At, "");
+});
