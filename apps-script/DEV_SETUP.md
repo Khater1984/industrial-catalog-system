@@ -31,7 +31,7 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 ## Automated validation tests
 - From this directory, run `npm test` with Node.js 20 or later.
 - Run `npm run build` to create `dist/Code.gs` from the explicit source manifest.
-- The current suite covers catalog payload validation only; it is not an Apps Script integration test.
+- The current suite covers catalog payload validation and mocked registration/retry recovery. It is not an Apps Script or Google Sheets integration test.
 
 ## Register a synthetic PDF
 - Place a non-confidential synthetic PDF in the DEV intake folder.
