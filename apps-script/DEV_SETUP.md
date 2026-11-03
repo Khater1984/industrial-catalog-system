@@ -50,6 +50,6 @@ Follow worker/DEPLOYMENT.md for Cloud Run, Cloud Tasks, IAM, and Drive-sharing s
 - Cloud Run service and Cloud Tasks queue must be deployed/configured separately; this repository does not provision cloud infrastructure.
 - Share the DEV intake and DEV runs folders with the Cloud Run runtime service account; shared-drive access must be granted explicitly.
 - The current Worker extracts embedded page text and stores page-level Run_Units plus Catalog_Pages. It does not perform OCR, table recognition, product/variant inference, staging, review, or promotion.
-- The five-minute poller is eventual rather than an immediate push callback. Run_Log remains recoverable if a poll fails. Cloud Run must be configured with a finite Cloud Tasks retry policy and a dead-letter/review path for persistent infrastructure failures.
+- The five-minute poller is eventual rather than an immediate push callback. Run_Log remains recoverable if a poll fails. Cloud Run must be configured with a finite Cloud Tasks retry policy and an operator review path for persistent infrastructure failures.
 - The effective-user identity check must be verified in the chosen Google account/Workspace before relying on it. If Apps Script does not expose the deploying account identity, stop and use a separately reviewed authentication design; do not weaken access to anonymous.
 - This slice has not been deployed or runtime-tested. The next gate is to provision the isolated DEV resources and execute the setup/registration tests.
