@@ -18,7 +18,7 @@ Do not add worker credentials yet. Worker/API signing design, hosting and callba
 
 ## Initialize
 1. Install Node.js 20 or later and create a standalone Apps Script project.
-2. From `apps-script/`, run `npm test` and `npm run build`.
+2. From `apps-script/`, run `npm run build` first (it regenerates the schema from the Markdown source of truth), then run `npm test`.
 3. Copy the generated `dist/Code.gs` into the Apps Script project as `Code.gs`, and copy `appsscript.json` as the project manifest. The repository `.js` files are source modules; they are bundled into a valid Apps Script `.gs` file by the build script.
 4. Set Script Properties above.
 5. Run `initializeDevSchema` manually from the editor.
