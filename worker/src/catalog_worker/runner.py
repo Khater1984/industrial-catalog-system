@@ -1,17 +1,17 @@
-"""Drive-backed runner joining job.json to the resumable PDF engine."""
+"""Drive-backed runner joining immutable job manifests to the resumable PDF engine."""
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pypdf
 
-from .drive_io import DriveClient, DriveError
+from .drive_io import DriveClient
 from .resumable import (
     MANIFEST_VERSION, WORKER_VERSION, WorkerError, canonical_json_bytes,
     process_resumable_catalog_job, sha256_bytes,
@@ -27,6 +27,101 @@ def _required(data: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise RunnerError("INVALID_JOB_MANIFEST")
     return value.strip()
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _manifest_digest(manifest: dict[str, Any]) -> str:
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_sha256", None)
+    return sha256_bytes(canonical_json_bytes(unsigned))
+
+
+def _publish_manifest(drive: DriveClient, folder_id: str, manifest: dict[str, Any]) -> dict[str, Any]:
+    value = dict(manifest)
+    value.pop("manifest_sha256", None)
+    value["manifest_sha256"] = _manifest_digest(value)
+    payload = canonical_json_bytes(value)
+    manifest_id, raw_sha = drive.upload_bytes(
+        folder_id, "result-manifest.json", payload, "application/json"
+    )
+    return {
+        "accepted": True,
+        "run_id": value["run_id"],
+        "result_manifest_file_id": manifest_id,
+        "result_manifest_sha256": raw_sha,
+        "run_status": value["run_status"],
+    }
+
+
+def _failure_manifest(
+    *, run_id: str, logical_job_id: str, catalog_id: str, source_sha: str,
+    attempt: int, parent_run_id: str | None, retry_reason: str | None,
+    error_code: str, error_message: str, page_count: int = 0,
+) -> dict[str, Any]:
+    now = _utc_now()
+    return {
+        "manifest_version": MANIFEST_VERSION,
+        "protocol_version": "1",
+        "worker_version": WORKER_VERSION,
+        "run_type": "CATALOG_EXTRACTION",
+        "run_id": run_id,
+        "logical_job_id": logical_job_id,
+        "attempt_number": attempt,
+        "parent_run_id": parent_run_id,
+        "retry_reason": retry_reason,
+        "catalog_id": catalog_id,
+        "source_sha256": source_sha,
+        "job_input_sha256": "",
+        "page_count": page_count,
+        "completed_units": 0,
+        "failed_units": max(1, page_count),
+        "reused_units": 0,
+        "newly_processed_units": 0,
+        "run_status": "FAILED",
+        "started_at": now,
+        "finished_at": now,
+        "pages": [],
+        "error_code": error_code,
+        "error_message": error_message[:1500],
+    }
+
+
+def _existing_terminal_result(
+    drive: DriveClient, run_dir: Path, items: list[dict[str, Any]],
+    *, run_id: str, logical_job_id: str, catalog_id: str, source_sha: str,
+) -> dict[str, Any] | None:
+    for item in items:
+        if item.get("name") != "result-manifest.json":
+            continue
+        local_path = run_dir / "result-manifest.json"
+        drive.download(item["id"], local_path)
+        raw = local_path.read_bytes()
+        try:
+            manifest = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise RunnerError("RESULT_MANIFEST_INVALID") from exc
+        if not isinstance(manifest, dict):
+            raise RunnerError("RESULT_MANIFEST_INVALID")
+        if (manifest.get("run_id") != run_id or
+                manifest.get("logical_job_id") != logical_job_id or
+                manifest.get("catalog_id") != catalog_id or
+                manifest.get("source_sha256") != source_sha):
+            raise RunnerError("RESULT_MANIFEST_IDENTITY_CONFLICT")
+        if manifest.get("manifest_version") != MANIFEST_VERSION or manifest.get("protocol_version") != "1":
+            raise RunnerError("RESULT_MANIFEST_VERSION_CONFLICT")
+        if manifest.get("manifest_sha256") != _manifest_digest(manifest):
+            raise RunnerError("RESULT_MANIFEST_CORRUPT")
+        if manifest.get("run_status") in {"COMPLETED", "FAILED"}:
+            return {
+                "accepted": True, "run_id": run_id,
+                "result_manifest_file_id": item["id"],
+                "result_manifest_sha256": hashlib.sha256(raw).hexdigest(),
+                "run_status": manifest["run_status"],
+            }
+    return None
 
 
 def run_from_drive(
@@ -61,34 +156,12 @@ def run_from_drive(
     source_sha = _required(job, "source_sha256").lower()
     if not re.fullmatch(r"[a-f0-9]{64}", source_sha):
         raise RunnerError("INVALID_SOURCE_SHA256")
+    attempt = job.get("attempt_number", 1)
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
+        raise RunnerError("INVALID_ATTEMPT_NUMBER")
+    parent_run_id = job.get("parent_run_id") or None
+    retry_reason = job.get("retry_reason") or None
 
-    run_dir = work_root / "catalog-worker" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = run_dir / "source.pdf"
-    drive.download(source_file_id, pdf_path)
-    actual_sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
-    if actual_sha != source_sha:
-        raise RunnerError("SOURCE_HASH_MISMATCH")
-    try:
-        page_count = len(pypdf.PdfReader(str(pdf_path), strict=True).pages)
-    except Exception as exc:
-        raise RunnerError("PDF_READ_FAILED") from exc
-    if page_count < 1:
-        raise RunnerError("PDF_HAS_NO_PAGES")
-
-    # Deterministic Catalog_Page_IDs allow the first successful ingest to
-    # create the catalog page identities without a pre-existing page-count API.
-    page_ids = [f"cp_{catalog_id}_{number:05d}" for number in range(1, page_count + 1)]
-    local_job = {
-        "run_id": run_id, "logical_job_id": logical_job_id, "catalog_id": catalog_id,
-        "source_pdf_path": str(pdf_path), "source_sha256": source_sha,
-        "attempt_number": int(job.get("attempt_number", 1)),
-        "parent_run_id": job.get("parent_run_id") or None,
-        "retry_reason": job.get("retry_reason") or None,
-        "catalog_page_ids": page_ids,
-        "extraction_profile": job.get("extraction_profile", "embedded-text-v1"),
-        "idempotency_key": job.get("idempotency_key"),
-    }
     run_folder_id = job.get("run_folder_id")
     if not isinstance(run_folder_id, str) or not run_folder_id:
         metadata = drive.metadata(job_file_id)
@@ -99,37 +172,74 @@ def run_from_drive(
     if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", run_folder_id):
         raise RunnerError("INVALID_RUN_FOLDER_ID")
 
-    # Restore immutable artifacts from Drive before resuming after a Cloud Run retry.
+    run_dir = work_root / "catalog-worker" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
     pages_dir = run_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
-    for item in drive.list_children(run_folder_id):
+    drive_items = drive.list_children(run_folder_id)
+    for item in drive_items:
         name = item.get("name", "")
         if name.startswith("page-") and name.endswith(".json"):
             drive.download(item["id"], pages_dir / name)
-        elif name == "result-manifest.json":
-            drive.download(item["id"], run_dir / name)
+    existing = _existing_terminal_result(
+        drive, run_dir, drive_items, run_id=run_id,
+        logical_job_id=logical_job_id, catalog_id=catalog_id, source_sha=source_sha,
+    )
+    if existing:
+        return existing
+
+    pdf_path = run_dir / "source.pdf"
+    drive.download(source_file_id, pdf_path)
+    actual_sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    if actual_sha != source_sha:
+        failure = _failure_manifest(
+            run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
+            source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
+            retry_reason=retry_reason, error_code="SOURCE_HASH_MISMATCH",
+            error_message="Downloaded source PDF SHA-256 differs from the immutable job manifest.",
+        )
+        return _publish_manifest(drive, run_folder_id, failure)
+    try:
+        page_count = len(pypdf.PdfReader(str(pdf_path), strict=True).pages)
+    except Exception:
+        failure = _failure_manifest(
+            run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
+            source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
+            retry_reason=retry_reason, error_code="PDF_READ_FAILED",
+            error_message="Source PDF is corrupt or unreadable.",
+        )
+        return _publish_manifest(drive, run_folder_id, failure)
+    if page_count < 1:
+        failure = _failure_manifest(
+            run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
+            source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
+            retry_reason=retry_reason, error_code="PDF_HAS_NO_PAGES",
+            error_message="Source PDF contains no pages.",
+        )
+        return _publish_manifest(drive, run_folder_id, failure)
+
+    # Deterministic Catalog_Page_IDs are created by the Apps Script ingest step.
+    page_ids = [f"cp_{catalog_id}_{number:05d}" for number in range(1, page_count + 1)]
+    local_job = {
+        "run_id": run_id, "logical_job_id": logical_job_id, "catalog_id": catalog_id,
+        "source_pdf_path": str(pdf_path), "source_sha256": source_sha,
+        "attempt_number": attempt, "parent_run_id": parent_run_id,
+        "retry_reason": retry_reason, "catalog_page_ids": page_ids,
+        "extraction_profile": job.get("extraction_profile", "embedded-text-v1"),
+        "idempotency_key": job.get("idempotency_key"),
+    }
 
     try:
         result = process_resumable_catalog_job(local_job, run_dir)
         manifest = dict(result)
     except WorkerError as exc:
-        # Publish a terminal failure result for the owner-executed Drive poller. A failed
-        # attempt is never silently retried as the same logical run.
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        manifest = {
-            "manifest_version": MANIFEST_VERSION, "protocol_version": "1",
-            "worker_version": WORKER_VERSION, "run_type": "CATALOG_EXTRACTION",
-            "run_id": run_id, "logical_job_id": logical_job_id,
-            "attempt_number": local_job["attempt_number"],
-            "parent_run_id": local_job["parent_run_id"],
-            "retry_reason": local_job["retry_reason"], "catalog_id": catalog_id,
-            "source_sha256": source_sha, "job_input_sha256": "",
-            "page_count": page_count, "completed_units": 0,
-            "failed_units": page_count, "reused_units": 0, "newly_processed_units": 0,
-            "run_status": "FAILED", "started_at": now, "finished_at": now,
-            "pages": [], "error_code": exc.code, "error_message": exc.message,
-        }
+        manifest = _failure_manifest(
+            run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
+            source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
+            retry_reason=retry_reason, error_code=exc.code,
+            error_message=exc.message, page_count=page_count,
+        )
+
     uploaded_pages = []
     for page in manifest.get("pages", []):
         artifact_path = (run_dir / page["artifact_path"]).resolve()
@@ -145,11 +255,4 @@ def run_from_drive(
         row["output_manifest_file_id"] = artifact_id
         uploaded_pages.append(row)
     manifest["pages"] = uploaded_pages
-    manifest.pop("manifest_sha256", None)
-    manifest["manifest_sha256"] = sha256_bytes(canonical_json_bytes(manifest))
-    manifest_bytes = canonical_json_bytes(manifest)
-    manifest_id, manifest_raw_sha = drive.upload_bytes(
-        run_folder_id, "result-manifest.json", manifest_bytes, "application/json",
-    )
-    return {"accepted": True, "run_id": run_id, "result_manifest_file_id": manifest_id,
-            "result_manifest_sha256": manifest_raw_sha, "run_status": manifest.get("run_status")}
+    return _publish_manifest(drive, run_folder_id, manifest)
