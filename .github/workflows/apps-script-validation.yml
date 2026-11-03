@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - "apps-script/**"
+      - "schema/**"
+      - "ENUM_REGISTRY.md"
       - ".github/workflows/apps-script-validation.yml"
   pull_request:
     paths:
