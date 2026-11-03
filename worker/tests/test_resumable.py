@@ -1,4 +1,6 @@
 import json
+import os
+import socket
 from pathlib import Path
 
 import pytest
@@ -361,3 +363,45 @@ def test_cross_run_reuse_rejects_different_logical_job(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(retry, tmp_path / "retry-run")
     assert error.value.code == "REUSE_LOGICAL_JOB_MISMATCH"
+
+
+
+def test_abandoned_same_host_lock_is_reclaimed(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Recover"])
+    out = tmp_path / "out"
+    lock = out / ".worker.lock"
+    lock.mkdir(parents=True)
+    (lock / "owner.json").write_text(json.dumps({
+        "pid": 2147483647, "host": socket.gethostname(), "at": "2026-01-01T00:00:00+00:00"
+    }))
+    result = process_resumable_catalog_job(job_for(source), out)
+    assert result["run_status"] == "COMPLETED"
+    assert not lock.exists()
+
+
+def test_live_lock_is_not_stolen(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Do not steal"])
+    out = tmp_path / "out"
+    lock = out / ".worker.lock"
+    lock.mkdir(parents=True)
+    (lock / "owner.json").write_text(json.dumps({
+        "pid": os.getpid(), "host": socket.gethostname(), "at": "2026-11-03T00:00:00+00:00"
+    }))
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(job_for(source), out)
+    assert error.value.code == "RUN_LOCKED"
+
+
+def test_unverifiable_lock_fails_closed(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Fail closed"])
+    out = tmp_path / "out"
+    lock = out / ".worker.lock"
+    lock.mkdir(parents=True)
+    (lock / "owner.json").write_text("{not-json")
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(job_for(source), out)
+    assert error.value.code == "RUN_LOCK_UNVERIFIABLE"
+    assert lock.exists()
