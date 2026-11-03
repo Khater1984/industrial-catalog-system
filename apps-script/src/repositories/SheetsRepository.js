@@ -183,6 +183,21 @@ var SheetsRepository = (function () {
       return record;
     });
   }
+  function listAll(name) {
+    var headers = TABLES[name];
+    if (!headers) throw new Error("UNKNOWN_TABLE: " + name);
+    var sheet = spreadsheet_().getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+    return values.reverse().map(function (row) {
+      var record = {};
+      headers.forEach(function (header, index) {
+        var value = row[index];
+        record[header] = value instanceof Date && !isNaN(value.getTime()) ? value.toISOString() : value;
+      });
+      return record;
+    });
+  }
   function findBy(name, column, value) {
     var headers = TABLES[name];
     if (!headers || headers.indexOf(column) < 0) throw new Error("INVALID_LOOKUP");
@@ -224,5 +239,5 @@ var SheetsRepository = (function () {
     sheet.getRange(rowNumber, 1, 1, headers.length).setValues([row]);
     return rowNumber;
   }
-  return { updateBy: updateBy, initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
+  return { listAll: listAll, updateBy: updateBy, initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
 })();
