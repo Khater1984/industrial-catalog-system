@@ -2,7 +2,7 @@
 
 ## Hosted Drive-backed worker integration
 
-The hosted adapter is implemented in `catalog_worker.service` and deployed with the repository Dockerfile. `POST /run` requires a bearer token and enqueues a deterministic Cloud Task; the task handler verifies its Google OIDC identity, downloads the immutable job/PDF from Drive, runs the resumable engine, and uploads page artifacts plus `result-manifest.json`. It never writes to Sheets.
+The hosted adapter is implemented in `catalog_worker.service` and deployed with the repository Dockerfile. `POST /run` requires a bearer token and enqueues a deterministic Cloud Task; the task handler verifies its Google OIDC identity, downloads the immutable job/PDF from Drive, runs the resumable engine, uploads each verified page checkpoint before advancing, and uploads `result-manifest.json` only after the full run reaches a terminal state. It never writes to Sheets.
 
 Apps Script stays owner-only (`webapp.access=MYSELF`). It dispatches the task and uses an owner-executed five-minute trigger to discover result manifests in Drive and ingest them. This intentionally avoids making an execute-as-owner Apps Script deployment public merely to receive an external callback.
 
@@ -16,7 +16,7 @@ Required Cloud Run environment:
 
 Grant the Cloud Run runtime service account Drive access to both private DEV folders. Grant the Cloud Tasks invoker service account permission to invoke the Cloud Run service. Configure Cloud Tasks retry/backoff and queue rate limits. Deploy with `worker/Dockerfile`; the service listens on `$PORT`.
 
-The worker writes only Drive artifacts. Apps Script validates manifest version, source SHA-256, manifest checksum, each page artifact's raw SHA-256 and identity, then idempotently creates Catalog_Pages and Run_Units and updates Run_Log. Run `installWorkerPoller` once from the Apps Script editor as the owner.
+The worker writes only Drive artifacts. Apps Script validates manifest version, source SHA-256, manifest checksum, each page artifact's raw SHA-256 and identity, then idempotently creates Catalog_Pages and Run_Units and updates Run_Log. Run `installWorkerPoller` once from the Apps Script editor as the owner. A 120-minute Run_Log lease marks abandoned runs FAILED if no terminal result manifest arrives.
 
 ## V2.1 resumable local DEV implementation
 
