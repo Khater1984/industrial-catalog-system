@@ -28,3 +28,7 @@ jobs:
           node-version: "20"
       - name: Run validation tests
         run: npm test
+      - name: Build Apps Script bundle
+        run: npm run build
+      - name: Check generated JavaScript syntax
+        run: node --check < dist/Code.gs
