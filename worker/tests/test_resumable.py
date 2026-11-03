@@ -199,3 +199,43 @@ def test_idempotency_key_is_unique_per_attempt(tmp_path):
         tmp_path / "attempt-2",
     )
     assert first["idempotency_key"] != second["idempotency_key"]
+
+
+
+def test_cross_job_reuse_is_rejected(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Catalog data"])
+    source_dir = tmp_path / "source-run"
+    process_resumable_catalog_job(job_for(source), source_dir)
+    different_job = job_for(
+        source,
+        run_id="run_other_job",
+        logical_job_id="different_logical_job",
+        reuse_from_run_dir=str(source_dir),
+    )
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(different_job, tmp_path / "different-run")
+    assert error.value.code == "REUSE_LOGICAL_JOB_MISMATCH"
+
+
+def test_corrupt_source_artifact_cannot_be_reused(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Catalog data"])
+    source_dir = tmp_path / "source-run"
+    process_resumable_catalog_job(job_for(source), source_dir)
+    source_page = source_dir / "pages/page-00001.json"
+    page = json.loads(source_page.read_text())
+    page["extracted_text"] = "tampered source text"
+    source_page.write_text(json.dumps(page), encoding="utf-8")
+
+    retry = job_for(
+        source,
+        run_id="run_v21_retry",
+        attempt_number=2,
+        parent_run_id="run_v21_001",
+        retry_reason="Retry after interrupted attempt",
+        reuse_from_run_dir=str(source_dir),
+    )
+    with pytest.raises(WorkerError) as error:
+        process_resumable_catalog_job(retry, tmp_path / "retry-run")
+    assert error.value.code == "REUSE_SOURCE_CORRUPT"
