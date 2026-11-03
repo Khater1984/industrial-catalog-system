@@ -150,8 +150,14 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
     parent = job.get("parent_run_id")
     if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
         raise WorkerError("INVALID_ATTEMPT_NUMBER", "attempt_number must be a positive integer.")
-    if (attempt == 1 and parent not in (None, "")) or (attempt > 1 and (not isinstance(parent, str) or not parent.strip() or parent == run_id)):
-        raise WorkerError("INVALID_RUN_LINEAGE", "Retries require a new Run_ID and the prior Run_ID as Parent_Run_ID.")
+    retry_reason = job.get("retry_reason")
+    if attempt == 1 and (parent not in (None, "") or retry_reason not in (None, "")):
+        raise WorkerError("INVALID_RUN_LINEAGE", "The first attempt cannot have Parent_Run_ID or Retry_Reason.")
+    if attempt > 1:
+        if not isinstance(parent, str) or not parent.strip() or parent == run_id:
+            raise WorkerError("INVALID_RUN_LINEAGE", "Retries require a new Run_ID and the prior Run_ID as Parent_Run_ID.")
+        if not isinstance(retry_reason, str) or not retry_reason.strip() or len(retry_reason.strip()) > 1000:
+            raise WorkerError("INVALID_RUN_LINEAGE", "Retry_Reason is required for attempts after the first (maximum 1000 characters).")
     if not source.is_file():
         raise WorkerError("SOURCE_FILE_NOT_FOUND", "Source PDF does not exist.")
     with source.open("rb") as stream:
@@ -182,7 +188,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
         "toolchain": toolchain, "worker_version": WORKER_VERSION,
     }
     job_input_sha = sha256_bytes(canonical_json_bytes(logical_input))
-    expected_key = sha256_bytes(f"{logical_id}|{job_input_sha}".encode())
+    # Run_Log.Idempotency_Key is unique per attempt, not per logical job.
+    expected_key = sha256_bytes(f"{logical_id}|{run_id}|{attempt}|{job_input_sha}".encode())
     if job.get("idempotency_key") not in (None, expected_key):
         raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match logical input.")
 
@@ -256,7 +263,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
                 "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
                 "worker_version": WORKER_VERSION, "run_type": RUN_TYPE, "run_id": run_id,
                 "logical_job_id": logical_id, "idempotency_key": expected_key,
-                "attempt_number": attempt, "parent_run_id": parent, "catalog_id": catalog_id,
+                "attempt_number": attempt, "parent_run_id": parent, "retry_reason": retry_reason,
+                "catalog_id": catalog_id,
                 "source_sha256": actual_sha, "job_input_sha256": job_input_sha,
                 "page_count": page_count, "completed_units": len(pages), "failed_units": 0,
                 "reused_units": reused, "newly_processed_units": created,
@@ -269,7 +277,8 @@ def process_resumable_catalog_job(job: dict[str, Any], output_dir: str | Path) -
             "manifest_version": MANIFEST_VERSION, "protocol_version": PROTOCOL_VERSION,
             "worker_version": WORKER_VERSION, "run_type": RUN_TYPE, "run_id": run_id,
             "logical_job_id": logical_id, "idempotency_key": expected_key,
-            "attempt_number": attempt, "parent_run_id": parent, "catalog_id": catalog_id,
+            "attempt_number": attempt, "parent_run_id": parent, "retry_reason": retry_reason,
+            "catalog_id": catalog_id,
             "source_sha256": actual_sha, "job_input_sha256": job_input_sha,
             "page_count": page_count, "completed_units": page_count, "failed_units": 0,
             "reused_units": reused, "newly_processed_units": created, "run_status": "COMPLETED",
