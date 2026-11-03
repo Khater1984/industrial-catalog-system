@@ -7,7 +7,7 @@
 
 - The browser calls the Apps Script application API; it does not write Sheets or Drive directly.
 - The Python worker receives scoped job manifests and returns structured results through an authenticated API boundary.
-- Every mutating request has a request ID and idempotency key.
+- Every mutating request has a request ID and a durable idempotency key. For `catalog.register`, the server derives the canonical key from the verified source PDF SHA256; the browser cannot choose or override it.
 - Every response has a stable error code and correlation ID.
 - The API validates all IDs, foreign-key ownership, lifecycle state, enum values, hashes, and permissions server-side.
 - Large files and manifests use Drive file IDs plus SHA256, not inline JSON in Sheets/API payloads.
