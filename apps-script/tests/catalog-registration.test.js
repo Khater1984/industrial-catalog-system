@@ -52,6 +52,7 @@ test("registers a catalog and creates one queued run", () => {
   assert.equal(result.status, "QUEUED");
   assert.equal(h.rows.Catalogs.length, 1);
   assert.equal(h.rows.Run_Log.length, 1);
+  assert.match(h.rows.Run_Log[0].Idempotency_Key, /^catalog_sha256_/);
   assert.equal(h.wasLockReleased(), true);
 });
 
