@@ -34,9 +34,10 @@ var CatalogService = (function () {
       MIME_Type: mime,
       File_Size_Bytes: file.getSize()
     };
-    return Object.keys(expected).every(function (key) {
-      return String(catalog[key] === undefined || catalog[key] === null ? "" : catalog[key]) === String(expected[key]);
+    var mismatches = Object.keys(expected).filter(function (key) {
+      return String(catalog[key] === undefined || catalog[key] === null ? "" : catalog[key]) !== String(expected[key]);
     });
+    return mismatches.length ? mismatches[0] : "";
   }
   function createRun_(catalogId, sourceHash, now) {
     var runId = id_("run");
@@ -72,8 +73,9 @@ var CatalogService = (function () {
     try {
       var existingCatalog = SheetsRepository.getBy("Catalogs", "SHA256", hash);
       if (existingCatalog) {
-        if (!sameRegistration_(existingCatalog, payload, file, mime)) {
-          throw new Error("DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW");
+        var mismatchField = sameRegistration_(existingCatalog, payload, file, mime);
+        if (mismatchField) {
+          throw new Error("DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW: " + mismatchField);
         }
         var existingRun = SheetsRepository.getBy("Run_Log", "Catalog_ID", existingCatalog.Catalog_ID);
         // A crash after the Catalogs append but before Run_Log append is repaired on retry.
