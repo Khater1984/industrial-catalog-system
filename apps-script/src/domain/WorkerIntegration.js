@@ -48,7 +48,7 @@ var WorkerIntegration = (function () {
       var jobFile = immutableJobFile_(folder, job);
       var now = new Date().toISOString();
       var startedAt = run.Started_At instanceof Date ? run.Started_At.toISOString() : (run.Started_At || now);
-      var leaseExpiresAt = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+      var leaseExpiresAt = new Date(Date.now() + 120 * 60 * 1000).toISOString();
       SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
         Run_Status: "RUNNING", Current_Step: "WORKER_DISPATCH",
         Input_Manifest_File_ID: jobFile.getId(), Started_At: startedAt,
