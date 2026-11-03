@@ -17,7 +17,7 @@ Set these values in the Apps Script project settings (never commit them):
 - `DEV_WORKER_SHARED_TOKEN`: high-entropy bearer token shared with Cloud Run; never commit it.
 - `ALLOWED_USER_EMAIL`: exact Google account email allowed to use the application.
 
-The Worker is dispatched asynchronously through Cloud Tasks. It writes immutable result artifacts to Drive; Apps Script remains owner-only and polls Drive from an owner-executed time trigger. Do not expose this Apps Script Web App anonymously: an execute-as-owner public deployment could expose owner privileges.
+Follow worker/DEPLOYMENT.md for Cloud Run, Cloud Tasks, IAM, and Drive-sharing setup. The Worker is dispatched asynchronously through Cloud Tasks. It writes immutable result artifacts to Drive; Apps Script remains owner-only and polls Drive from an owner-executed time trigger. Do not expose this Apps Script Web App anonymously: an execute-as-owner public deployment could expose owner privileges.
 
 ## Initialize
 1. Install Node.js 20 or later and create a standalone Apps Script project.
