@@ -61,7 +61,9 @@ var Api = (function () {
       }
       if (body.action === "catalog.register") {
         var payload = InputValidation.catalogPayload(body.payload || {});
-        return success_(requestId, CatalogService.register(payload));
+        var registered = CatalogService.register(payload);
+        registered.workerDispatch = dispatchRegisteredCatalog_(registered);
+        return success_(requestId, registered);
       }
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
@@ -103,12 +105,7 @@ function uploadCatalogFromBrowser(payload) {
     catalogRevision: upload.catalogRevision
   });
   var registered = CatalogService.register(catalogPayload);
-  var workerDispatch = null;
-  if (registered.status === "QUEUED" || registered.status === "RETRY_PENDING") {
-    workerDispatch = WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
-  } else {
-    workerDispatch = { accepted: false, reason: "RUN_NOT_DISPATCHABLE", status: registered.status };
-  }
+  var workerDispatch = dispatchRegisteredCatalog_(registered);
   return {
     catalogId: registered.catalogId,
     runId: registered.runId,
