@@ -259,3 +259,23 @@ def test_same_run_cannot_change_attempt_lineage(tmp_path):
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(changed, out)
     assert error.value.code == "RESULT_MANIFEST_CONFLICT"
+
+
+def test_catalog_page_ids_become_stable_unit_keys(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Page A", "Page B"])
+    ids = ["catalog_page_A001", "catalog_page_A002"]
+    result = process_resumable_catalog_job(job_for(source, catalog_page_ids=ids), tmp_path / "out")
+    assert [page["unit_key"] for page in result["pages"]] == ids
+    assert [page["catalog_page_id"] for page in result["pages"]] == ids
+    first_artifact = json.loads((tmp_path / "out/pages/page-00001.json").read_text())
+    assert first_artifact["catalog_page_id"] == ids[0]
+
+
+def test_catalog_page_ids_must_match_page_count_and_be_unique(tmp_path):
+    source = tmp_path / "catalog.pdf"
+    make_pdf(source, ["Page A", "Page B"])
+    for ids in (["only-one"], ["duplicate", "duplicate"], ["", "second"]):
+        with pytest.raises(WorkerError) as error:
+            process_resumable_catalog_job(job_for(source, catalog_page_ids=ids), tmp_path / "out")
+        assert error.value.code == "INVALID_CATALOG_PAGE_IDS"
