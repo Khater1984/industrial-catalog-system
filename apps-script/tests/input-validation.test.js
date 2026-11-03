@@ -48,3 +48,7 @@ test("rejects unknown fields instead of silently ignoring them", () => {
 test("rejects oversized supplier names", () => {
   assert.throws(() => validate({ ...valid, supplierName: "x".repeat(161) }), /VALIDATION_TOO_LONG/);
 });
+
+test("rejects HTTP URLs without a host", () => {
+  assert.throws(() => validate({ ...valid, sourceUrl: "https://" }), /VALIDATION_INVALID_FORMAT/);
+});
