@@ -78,3 +78,11 @@ test("repairs a catalog row when the Run_Log append fails and the request is ret
   assert.equal(h.rows.Run_Log.length, 1);
   assert.equal(retry.catalogId, h.rows.Catalogs[0].Catalog_ID);
 });
+
+test("does not silently reuse identical PDF bytes for different catalog metadata", () => {
+  const h = harness();
+  h.register(payload);
+  assert.throws(() => h.register({ ...payload, supplierName: "Different Supplier" }), /DUPLICATE_SOURCE_SHA256_REQUIRES_REVIEW/);
+  assert.equal(h.rows.Catalogs.length, 1);
+  assert.equal(h.rows.Run_Log.length, 1);
+});
