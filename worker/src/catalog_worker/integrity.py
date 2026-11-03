@@ -160,6 +160,10 @@ def verify_gate_3(
         return GateResult("3-Integrity", "FAIL", "manifest Run_ID mismatch or invalid manifest")
     if manifest.get("run_status") != "COMPLETED" or not isinstance(manifest.get("pages"), list):
         return GateResult("3-Integrity", "FAIL", "manifest is not a completed run with a pages list")
+    digest = manifest.get("manifest_sha256")
+    if (not isinstance(digest, str) or not _SHA256_RE.fullmatch(digest)
+            or _hash_payload(manifest, "manifest_sha256") != digest):
+        return GateResult("3-Integrity", "FAIL", "manifest checksum is missing, malformed, or incorrect")
 
     unit_by_key: dict[str, dict[str, Any]] = {}
     unit_ids: set[str] = set()
@@ -181,6 +185,8 @@ def verify_gate_3(
         unit_ids.add(unit_id)
 
     page_by_key: dict[str, dict[str, Any]] = {}
+    page_run_unit_ids: set[str] = set()
+    page_catalog_ids: set[str] = set()
     for page in manifest["pages"]:
         if not isinstance(page, dict):
             details.append("manifest.pages contains a non-object entry")
@@ -191,11 +197,18 @@ def verify_gate_3(
             details.append("manifest page has missing/invalid unit_key")
             failures += 1
             continue
-        if key in page_by_key:
-            details.append(f"duplicate manifest unit_key: {key}")
+        run_unit_id = page.get("run_unit_id")
+        catalog_page_id = page.get("catalog_page_id")
+        if key in page_by_key or (run_unit_id and run_unit_id in page_run_unit_ids) or (
+                catalog_page_id and catalog_page_id in page_catalog_ids):
+            details.append(f"duplicate manifest page identity: {key}")
             failures += 1
             continue
         page_by_key[key] = page
+        if isinstance(run_unit_id, str):
+            page_run_unit_ids.add(run_unit_id)
+        if isinstance(catalog_page_id, str):
+            page_catalog_ids.add(catalog_page_id)
 
     if failures:
         return GateResult("3-Integrity", "FAIL",
