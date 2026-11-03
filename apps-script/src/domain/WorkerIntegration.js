@@ -115,7 +115,16 @@ var WorkerIntegration = (function () {
         });
         processed.push(result);
       } catch (err) {
-        errors.push({ run_id: run.Run_ID, code: String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120) });
+        var code = String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120);
+        if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) < 0) {
+          try {
+            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
+              Error_Code: "RESULT_INGEST_REJECTED",
+              Error_Summary: code
+            });
+          } catch (ignore) {}
+        }
+        errors.push({ run_id: run.Run_ID, code: code });
       }
     });
     return { processed: processed, errors: errors };
