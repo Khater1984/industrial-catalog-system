@@ -13,6 +13,7 @@ Set these values in the Apps Script project settings (never commit them):
 - `DEV_SPREADSHEET_ID`: ID of the disposable DEV spreadsheet.
 - `DEV_CATALOG_FOLDER_ID`: ID of the private DEV intake folder.
 - `DEV_DOCUMENTS_FOLDER_ID`: ID of a separate private DEV Drive folder for uploaded document originals and immutable versions.
+- `DEV_BACKUP_FOLDER_ID`: ID of a private DEV Drive folder reserved for timestamped workbook snapshots and copied Drive dependencies.
 - `DEV_RUNS_FOLDER_ID`: ID of a private DEV Drive folder for immutable per-run job and result files.
 - `DEV_WORKER_ENDPOINT`: HTTPS Cloud Run URL ending in `/run`.
 - `DEV_WORKER_SHARED_TOKEN`: high-entropy bearer token shared with Cloud Run; never commit it.
