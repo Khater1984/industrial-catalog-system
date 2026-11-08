@@ -15,6 +15,9 @@ dependencies = [
   "google-api-python-client>=2.140,<3.0",
   "google-auth>=2.30,<3.0",
   "google-cloud-tasks>=2.16,<3.0",
+  "reportlab>=4.0,<5.0",
+  "arabic-reshaper>=3.0,<4.0",
+  "python-bidi>=0.6,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +27,7 @@ test = ["pytest>=8.0,<9.0", "reportlab>=4.0,<5.0", "Pillow>=10.0,<13.0"]
 catalog-worker = "catalog_worker.cli:main"
 catalog-worker-v21 = "catalog_worker.resumable_cli:main"
 catalog-worker-images = "catalog_worker.images:main"
+catalog-pdf-render = "catalog_worker.pdf_renderer_cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
