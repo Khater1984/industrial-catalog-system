@@ -65,6 +65,15 @@ var Api = (function () {
         registered.workerDispatch = dispatchRegisteredCatalog_(registered);
         return success_(requestId, registered);
       }
+      if (body.action === "staging.promote") {
+        var promoPayload = InputValidation.promotionPayload(body.payload || {});
+        var promoted = StagingPromotion.promoteReviewedStaging({
+          stagingSetFileId: promoPayload.stagingSetFileId,
+          stagingSetSha256: promoPayload.stagingSetSha256,
+          actor: APP.ACTOR_ID
+        });
+        return success_(requestId, promoted);
+      }
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
       return failure_(requestId, safeCode_(err));
@@ -130,6 +139,17 @@ function getCatalogDashboard() {
 function initializeDevSchema() {
   assertPrimaryUser_();
   return SheetsRepository.initialize();
+}
+
+/** Owner-only endpoint for promoting a reviewed staging set from Drive. */
+function promoteStagingFromBrowser(payload) {
+  assertPrimaryUser_();
+  var validated = InputValidation.promotionPayload(payload || {});
+  return StagingPromotion.promoteReviewedStaging({
+    stagingSetFileId: validated.stagingSetFileId,
+    stagingSetSha256: validated.stagingSetSha256,
+    actor: APP.ACTOR_ID
+  });
 }
 
 function doPost(e) {
