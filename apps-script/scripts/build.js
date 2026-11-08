@@ -23,10 +23,17 @@ const order = [
 let code = "// Auto-generated bundle. Do not edit.\n\n";
 for (const rel of order) {
   const file = path.join(src, rel);
-  if (fs.existsSync(file)) {
-    code += `// ===== ${rel} =====\n` + fs.readFileSync(file, "utf8") + "\n\n";
+  if (!fs.existsSync(file)) {
+    throw new Error(`Required Apps Script source file is missing: ${rel}`);
   }
+  code += `// ===== ${rel} =====\n` + fs.readFileSync(file, "utf8") + "\n\n";
+}
+
+const htmlSource = path.join(root, "Index.html");
+if (!fs.existsSync(htmlSource)) {
+  throw new Error("Required Apps Script HTML file is missing: Index.html");
 }
 
 fs.writeFileSync(path.join(dist, "Code.gs"), code);
-console.log("Built dist/Code.gs");
+fs.copyFileSync(htmlSource, path.join(dist, "Index.html"));
+console.log("Built dist/Code.gs and copied dist/Index.html");
