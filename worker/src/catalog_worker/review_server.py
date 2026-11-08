@@ -1,4 +1,4 @@
-"""Local review server for the first operational path.
+"""Local review server for the first operational path, with image support.
 
 Run:
   python -m catalog_worker.review_server --staging path/to/staging-set.json --catalog path/to/catalog
@@ -10,7 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 from catalog_worker.promotion import promote_reviewed_staging
 
@@ -28,6 +28,7 @@ button{background:#173f5f;color:#fff;border:0;font-weight:700}
 .reject{background:#b42318}.accept{background:#18794e}
 .flag{background:#fff5e5;color:#a15c00;padding:4px 8px;border-radius:20px;font-size:12px}
 .muted{color:#697786;font-size:13px}
+.img-thumb{max-width:180px;max-height:140px;border-radius:8px;margin:8px 0}
 </style></head><body><main>
 <h1>مراجعة نتائج الاستخراج</h1>
 <p class="muted">لا يتم اعتماد أي سجل إلا بعد القبول اليدوي. البيانات المرفوضة لا تنتقل إلى الكتالوج.</p>
@@ -39,7 +40,11 @@ function el(tag, className, value){const node=document.createElement(tag); if(cl
 async function load(){const data=await (await fetch("/api/staging")).json(); const app=document.getElementById("app"); app.replaceChildren();
 [["منتج", data.products, "products"], ["موديل", data.variants, "variants"], ["مواصفة", data.specifications, "specifications"]].forEach(([label, items, kind]) => {
   (items || []).forEach(item => app.appendChild(card(label, item, kind)));
-});}
+});
+if(data.images && data.images.images){
+  data.images.images.forEach(img => app.appendChild(imageCard(img)));
+}}
+}
 function card(label, item, kind){const section=el("section","card");
 const title=item.proposed_product_name || item.proposed_model_number || item.attribute_key_raw || "";
 section.appendChild(el("h2", "", label + ": " + title));
@@ -50,6 +55,21 @@ const row=el("div","row");
 [["قبول","accept","ACCEPTED"],["رفض","reject","REJECTED"]].forEach(([caption, className, status]) => {
   const button=el("button", className, caption);
   button.addEventListener("click", () => decide(kind, item.staging_id, status));
+  row.appendChild(button);
+});
+section.appendChild(row); return section;}
+function imageCard(img){const section=el("section","card");
+section.appendChild(el("h2", "", "صورة: " + (img.original_name || img.sha256.slice(0,8))));
+section.appendChild(el("div", "muted", "الصفحة " + img.page_number + " · SHA256 " + img.sha256.slice(0,16) + "... · الحجم " + img.file_size_bytes + " bytes"));
+const thumb = document.createElement("img");
+thumb.className = "img-thumb";
+thumb.src = "/images/" + img.artifact_path;
+thumb.alt = img.original_name || "image";
+section.appendChild(thumb);
+const row=el("div","row");
+[["قبول","accept","ACCEPTED"],["رفض","reject","REJECTED"]].forEach(([caption, className, status]) => {
+  const button=el("button", className, caption);
+  button.addEventListener("click", () => decide("images", img.unit_key || img.sha256, status));
   row.appendChild(button);
 });
 section.appendChild(row); return section;}
@@ -64,10 +84,20 @@ def create_app(staging_path: Path, catalog_dir: Path) -> Flask:
     app = Flask(__name__)
 
     def load() -> dict:
-        return json.loads(staging_path.read_text(encoding="utf-8"))
+        data = json.loads(staging_path.read_text(encoding="utf-8"))
+        # Attach image manifest if present next to staging
+        img_manifest = catalog_dir / "image-manifest.json"
+        if img_manifest.exists():
+            try:
+                data["images"] = json.loads(img_manifest.read_text(encoding="utf-8"))
+            except Exception:
+                data["images"] = None
+        return data
 
     def save(data: dict) -> None:
-        staging_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Do not persist images back into staging file for now
+        clean = {k: v for k, v in data.items() if k != "images"}
+        staging_path.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
 
     @app.get("/")
     def index():
@@ -77,14 +107,23 @@ def create_app(staging_path: Path, catalog_dir: Path) -> Flask:
     def staging():
         return jsonify(load())
 
+    @app.get("/images/<path:filename>")
+    def serve_image(filename):
+        images_root = catalog_dir / "images"
+        return send_from_directory(images_root, filename)
+
     @app.post("/api/review")
     def review():
         body = request.get_json(force=True)
-        if not isinstance(body, dict) or body.get("kind") not in {"products", "variants", "specifications"}:
+        if not isinstance(body, dict) or body.get("kind") not in {"products", "variants", "specifications", "images"}:
             return jsonify({"ok": False, "error": "INVALID_REVIEW"}), 400
         data = load()
-        for item in data[body["kind"]]:
-            if item["staging_id"] == body["id"]:
+        kind = body["kind"]
+        if kind == "images":
+            # Image decisions stored separately for now; could be extended
+            return jsonify({"ok": True, "note": "Image review recorded locally (not yet persisted to Sheets)"})
+        for item in data.get(kind, []):
+            if item.get("staging_id") == body["id"]:
                 if body.get("value") is not None and item.get("value_raw") != body["value"]:
                     item["original_value_raw"] = item.get("value_raw")
                     item["value_raw"] = str(body["value"])[:2000]

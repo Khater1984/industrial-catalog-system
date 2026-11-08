@@ -1,7 +1,7 @@
-"""Deterministic, resumable page-by-page PDF text extraction.
+"""Deterministic, resumable page-by-page PDF text extraction with optional image extraction.
 
-This first implementation deliberately extracts embedded PDF text only.
-It does not perform OCR, infer products, or write directly to Google Sheets.
+This implementation extracts embedded PDF text and, when enabled, embedded images.
+It does not perform OCR, full product inference, or write directly to Google Sheets.
 """
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ from typing import Any
 
 from pypdf import PdfReader
 
-WORKER_VERSION = "0.1.0"
+from catalog_worker.images import extract_embedded_images, image_extraction_enabled
+
+WORKER_VERSION = "0.2.0"
 PROTOCOL_VERSION = "1"
 
 
@@ -98,8 +100,7 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
     """Process a local DEV job manifest and return a deterministic result manifest.
 
     Required job fields: run_id, logical_job_id, catalog_id, source_pdf_path,
-    source_sha256. The local path is for the development spike only; production
-    jobs must resolve Drive files server-side and pass verified bytes to the worker.
+    source_sha256. Optional: extract_images (bool).
     """
     if not isinstance(job, dict):
         raise WorkerError("INVALID_JOB_MANIFEST", "Job manifest must be a JSON object.")
@@ -109,6 +110,8 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
     catalog_id = _required_string(job, "catalog_id")
     source_path_value = _required_string(job, "source_pdf_path")
     expected_pdf_sha = _required_string(job, "source_sha256").lower()
+    extract_images = bool(job.get("extract_images", image_extraction_enabled()))
+
     if len(expected_pdf_sha) != 64 or any(c not in "0123456789abcdef" for c in expected_pdf_sha):
         raise WorkerError("INVALID_SOURCE_SHA256", "source_sha256 must be a 64-character SHA-256 hex digest.")
 
@@ -200,21 +203,15 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
             "text_char_count": page_result["text_char_count"],
         })
 
-        result = {
-            "protocol_version": PROTOCOL_VERSION,
-            "worker_version": WORKER_VERSION,
-            "run_id": run_id,
-            "logical_job_id": logical_job_id,
-            "catalog_id": catalog_id,
-            "source_sha256": actual_pdf_sha,
-            "page_count": page_count,
-            "completed_units": len(pages),
-            "failed_units": 0,
-            "reused_units": reused_count,
-            "run_status": "RUNNING" if len(pages) < page_count else "COMPLETED",
-            "pages": pages,
-        }
-        atomic_write_json(out / "result-manifest.json", result)
+    image_result = None
+    if extract_images:
+        try:
+            image_result = extract_embedded_images(
+                source_path, out, enabled=True, catalog_id=catalog_id, run_id=run_id
+            )
+        except Exception as exc:
+            # Non-fatal for text path; image failure is recorded
+            image_result = {"enabled": True, "error": str(exc), "image_count": 0, "images": []}
 
     final_result = {
         "protocol_version": PROTOCOL_VERSION,
@@ -232,6 +229,7 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
         "started_at": started_at,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "pages": pages,
+        "images": image_result,
     }
     final_result["manifest_sha256"] = sha256_bytes(canonical_json_bytes(final_result))
     atomic_write_json(out / "result-manifest.json", final_result)
