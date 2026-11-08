@@ -32,20 +32,31 @@ button{background:#173f5f;color:#fff;border:0;font-weight:700}
 <h1>مراجعة نتائج الاستخراج</h1>
 <p class=\"muted\">لا يتم اعتماد أي سجل إلا بعد القبول اليدوي. البيانات المرفوضة لا تنتقل إلى الكتالوج.</p>
 <div id=\"app\"></div>
-<div class=\"card\"><button onclick=\"promote()\">اعتماد المقبول فقط</button><pre id=\"result\"></pre></div>
+<div class=\"card\"><button id=\"promote\">اعتماد المقبول فقط</button><pre id=\"result\"></pre></div>
 <script>
-async function load(){const data=await (await fetch('/api/staging')).json();const app=document.getElementById('app');
-app.innerHTML=data.products.map(p=>card('منتج',p,'products')).join('')+data.variants.map(v=>card('موديل',v,'variants')).join('')+data.specifications.map(s=>card('مواصفة',s,'specifications')).join('');}
-function card(label,item,kind){const flags=(item.flags||[]).map(f=>`<span class=\"flag\">${f}</span>`).join(' ');
-const editable=kind==='specifications'?`<input id=\"v_${item.staging_id}\" value=\"${item.value_raw||''}\">`:'';
-return `<section class=\"card\"><h2>${label}: ${item.proposed_product_name||item.proposed_model_number||item.attribute_key_raw}</h2>
-<div class=\"muted\">المصدر: ${item.source_quote} · الصفحة ${item.page_number} · الحالة ${item.review_status}</div>
-${flags}${editable}
-<div class=\"row\"><button class=\"accept\" onclick=\"decide('${kind}','${item.staging_id}','ACCEPTED')\">قبول</button>
-<button class=\"reject\" onclick=\"decide('${kind}','${item.staging_id}','REJECTED')\">رفض</button></div></section>`;}
-async function decide(kind,id,status){const value=document.getElementById('v_'+id)?.value;await fetch('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,id,status,value})});load();}
-async function promote(){const r=await (await fetch('/api/promote',{method:'POST'})).json();document.getElementById('result').textContent=JSON.stringify(r,null,2);}
-load();
+function text(value){return document.createTextNode(value == null ? \"\" : String(value));}
+function el(tag, className, value){const node=document.createElement(tag); if(className) node.className=className; if(value != null) node.appendChild(text(value)); return node;}
+async function load(){const data=await (await fetch(\"/api/staging\")).json(); const app=document.getElementById(\"app\"); app.replaceChildren();
+[[\"منتج\", data.products, \"products\"], [\"موديل\", data.variants, \"variants\"], [\"مواصفة\", data.specifications, \"specifications\"]].forEach(([label, items, kind]) => {
+  (items || []).forEach(item => app.appendChild(card(label, item, kind)));
+});}
+function card(label, item, kind){const section=el(\"section\",\"card\");
+const title=item.proposed_product_name || item.proposed_model_number || item.attribute_key_raw || \"\";
+section.appendChild(el(\"h2\", \"\", label + \": \" + title));
+section.appendChild(el(\"div\", \"muted\", \"المصدر: \" + (item.source_quote || \"\") + \" · الصفحة \" + (item.page_number || \"\") + \" · الحالة \" + (item.review_status || \"\")));
+(item.flags || []).forEach(flag => section.appendChild(el(\"span\", \"flag\", flag)));
+if(kind === \"specifications\"){const input=document.createElement(\"input\"); input.id=\"v_\" + item.staging_id; input.value=item.value_raw || \"\"; section.appendChild(input);}
+const row=el(\"div\",\"row\");
+[[\"قبول\",\"accept\",\"ACCEPTED\"],[\"رفض\",\"reject\",\"REJECTED\"]].forEach(([caption, className, status]) => {
+  const button=el(\"button\", className, caption);
+  button.addEventListener(\"click\", () => decide(kind, item.staging_id, status));
+  row.appendChild(button);
+});
+section.appendChild(row); return section;}
+async function decide(kind,id,status){const field=document.getElementById(\"v_\" + id); const value=field ? field.value : null;
+await fetch(\"/api/review\",{method:\"POST\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({kind,id,status,value})}); load();}
+async function promote(){const r=await (await fetch(\"/api/promote\",{method:\"POST\"})).json(); document.getElementById(\"result\").textContent=JSON.stringify(r,null,2);}
+document.getElementById(\"promote\").addEventListener(\"click\", promote); load();
 </script></main></body></html>"""
 
 
@@ -53,36 +64,38 @@ def create_app(staging_path: Path, catalog_dir: Path) -> Flask:
     app = Flask(__name__)
 
     def load() -> dict:
-        return json.loads(staging_path.read_text(encoding="utf-8"))
+        return json.loads(staging_path.read_text(encoding=\"utf-8\"))
 
     def save(data: dict) -> None:
-        staging_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        staging_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding=\"utf-8\")
 
-    @app.get("/")
+    @app.get(\"/\")
     def index():
         return HTML
 
-    @app.get("/api/staging")
+    @app.get(\"/api/staging\")
     def staging():
         return jsonify(load())
 
-    @app.post("/api/review")
+    @app.post(\"/api/review\")
     def review():
         body = request.get_json(force=True)
+        if not isinstance(body, dict) or body.get(\"kind\") not in {\"products\", \"variants\", \"specifications\"}:
+            return jsonify({\"ok\": False, \"error\": \"INVALID_REVIEW\"}), 400
         data = load()
-        for item in data[body["kind"]]:
-            if item["staging_id"] == body["id"]:
-                if body.get("value") is not None and item.get("value_raw") != body["value"]:
-                    item["original_value_raw"] = item.get("value_raw")
-                    item["value_raw"] = body["value"]
-                    item["edited"] = True
-                    item["edit_reason"] = "Reviewer edit before acceptance"
-                item["review_status"] = body["status"]
-                item["review_decision_recorded"] = True
+        for item in data[body[\"kind\"]]:
+            if item[\"staging_id\"] == body[\"id\"]:
+                if body.get(\"value\") is not None and item.get(\"value_raw\") != body[\"value\"]:
+                    item[\"original_value_raw\"] = item.get(\"value_raw\")
+                    item[\"value_raw\"] = str(body[\"value\"])[:2000]
+                    item[\"edited\"] = True
+                    item[\"edit_reason\"] = \"Reviewer edit before acceptance\"
+                item[\"review_status\"] = body[\"status\"]
+                item[\"review_decision_recorded\"] = True
         save(data)
-        return jsonify({"ok": True})
+        return jsonify({\"ok\": True})
 
-    @app.post("/api/promote")
+    @app.post(\"/api/promote\")
     def promote():
         return jsonify(promote_reviewed_staging(staging_path, catalog_dir))
 
@@ -91,13 +104,13 @@ def create_app(staging_path: Path, catalog_dir: Path) -> Flask:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--staging", required=True)
-    parser.add_argument("--catalog", required=True)
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(\"--staging\", required=True)
+    parser.add_argument(\"--catalog\", required=True)
+    parser.add_argument(\"--host\", default=\"0.0.0.0\")
+    parser.add_argument(\"--port\", type=int, default=8765)
     args = parser.parse_args()
     create_app(Path(args.staging), Path(args.catalog)).run(host=args.host, port=args.port)
 
 
-if __name__ == "__main__":
+if __name__ == \"__main__\"::
     main()
