@@ -1,0 +1,115 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const vm = require("node:vm");
+
+const source = fs.readFileSync("src/domain/StagingPromotion.js", "utf8");
+
+function sha(value) { return crypto.createHash("sha256").update(String(value)).digest("hex"); }
+
+function buildContext(options) {
+  const store = options.store || {};
+  const failAfter = options.failAfter == null ? Infinity : options.failAfter;
+  let writes = 0;
+  function rows(table) { return store[table] || (store[table] = []); }
+  const context = {
+    APP: { ACTOR_ID: "actor_primary" },
+    Utilities: {
+      DigestAlgorithm: { SHA_256: "SHA-256" },
+      computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
+    },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    SheetsRepository: {
+      getBy(table, key, value) {
+        return rows(table).find((row) => String(row[key]) === String(value)) || null;
+      },
+      append(table, record) {
+        writes += 1;
+        if (writes > failAfter) throw new Error("SHEETS_CONNECTION_FAILED");
+        rows(table).push(Object.assign({}, record));
+        return rows(table).length + 1;
+      },
+      updateBy(table, key, value, patch) {
+        const row = rows(table).find((item) => String(item[key]) === String(value));
+        if (!row) throw new Error("ROW_NOT_FOUND: " + table);
+        if (table === "Specifications") throw new Error("SOURCE_SPECIFICATION_MUTATED");
+        Object.assign(row, patch);
+        return 1;
+      }
+    }
+  };
+  vm.runInNewContext(source, context);
+  return { promote: context.StagingPromotion.promoteReviewedStaging, store };
+}
+
+function staging() {
+  return {
+    run_id: "run_demo_001",
+    catalog_id: "cat_demo_001",
+    source_key_algorithm_version: "source-key-v1",
+    products: [{
+      staging_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001",
+      proposed_product_name: "Plate Compactor PC Series", source_quote: "PRODUCT: Plate Compactor PC Series",
+      review_status: "ACCEPTED", staging_record_hash: "a".repeat(64)
+    }],
+    variants: [
+      { staging_id: "stg_var_1", parent_staging_product_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001", proposed_model_number: "PC90", source_quote: "VARIANT: PC90", review_status: "ACCEPTED", staging_record_hash: "b".repeat(64) },
+      { staging_id: "stg_var_2", parent_staging_product_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001", proposed_model_number: "PC100", source_quote: "VARIANT: PC100", review_status: "REJECTED", staging_record_hash: "c".repeat(64) }
+    ],
+    specifications: [
+      { staging_id: "stg_spec_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
+      { staging_id: "stg_spec_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", source_quote: "SPEC: Weight | 110 | kg", review_status: "ACCEPTED", confidence: "HIGH" }
+    ]
+  };
+}
+
+const options = {
+  stagingSetFileId: "stagingfileid1",
+  stagingSetSha256: sha("staging"),
+  intendedOutputFileId: "outputfileid1",
+  intendedOutputSha256: sha("output")
+};
+
+test("accepted records are written and rejected records are not", () => {
+  const ctx = buildContext({});
+  const result = ctx.promote(Object.assign({ staging: staging() }, options));
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Variants.length, 1);
+  assert.equal(ctx.store.Specifications.length, 2);
+  assert.equal(ctx.store.Specification_Changes.length, 1);
+  assert.equal(ctx.store.Specification_Changes[0].Operation, "UPDATE");
+  assert.equal(ctx.store.Specification_Changes[0].Product_ID, ctx.store.Products[0].Product_ID);
+  assert.equal(ctx.store.Specification_Changes[0].Variant_ID, ctx.store.Variants[0].Variant_ID);
+  assert.equal(ctx.store.Specification_Changes[0].Target_Specification_ID, ctx.store.Specifications[1].Specification_ID);
+  assert.equal(ctx.store.Specifications[1].Attribute_Value_Source, "90");
+  assert.equal(JSON.parse(ctx.store.Specification_Changes[0].Value_JSON), "91");
+});
+
+test("retry does not duplicate products, variants, or source specifications", () => {
+  const ctx = buildContext({});
+  ctx.promote(Object.assign({ staging: staging() }, options));
+  const again = ctx.promote(Object.assign({ staging: staging() }, options));
+  assert.equal(again.skipped, true);
+  assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Variants.length, 1);
+  assert.equal(ctx.store.Specifications.length, 2);
+  assert.equal(ctx.store.Specification_Changes.length, 1);
+});
+
+test("connection failure leaves the operation in doubt and retry resumes without duplicates", () => {
+  const first = buildContext({ failAfter: 4 });
+  assert.throws(() => first.promote(Object.assign({ staging: staging() }, options)), /SHEETS_CONNECTION_FAILED/);
+  assert.equal(first.store.Promotion_Operations[0].Operation_Status, "IN_DOUBT");
+  const before = first.store.Products.length;
+  const resumed = buildContext({ store: first.store });
+  const result = resumed.promote(Object.assign({ staging: staging() }, options));
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(resumed.store.Products.length, before);
+  assert.equal(resumed.store.Variants.length, 1);
+  assert.equal(resumed.store.Specifications.length, 2);
+  assert.equal(resumed.store.Specification_Changes[0].Product_ID, resumed.store.Products[0].Product_ID);
+});
