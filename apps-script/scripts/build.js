@@ -17,6 +17,7 @@ const order = [
   "domain/WorkerIntegration.js",
   "domain/StagingPromotion.js",
   "domain/ImagePromotion.js",
+  "domain/DocumentService.js",
   "api/Api.js",
 ];
 
