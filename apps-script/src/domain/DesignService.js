@@ -93,6 +93,36 @@ var DesignService=(function(){
   var patch={Version_Status:"PUBLISHED",Published_At:now_(),Published_By:APP.ACTOR_ID};
   SheetsRepository.updateBy(table,idField,id,patch);audit_("PUBLISH","DESIGN_VERSION",id,{Version_Status:"DRAFT"},{Version_Status:"PUBLISHED",Config_SHA256:digest});return one_(table,idField,id);
  }
+ function newDraft_(table,entityTable,entityKey,entityId,idField,configField,hashField,prefix){
+  if(!one_(entityTable,entityKey,entityId))throw new Error("DESIGN_ENTITY_NOT_FOUND");
+  var versions=rows_(table).filter(function(v){return String(v[entityKey])===String(entityId);});
+  if(!versions.length)throw new Error("DESIGN_VERSION_NOT_FOUND");
+  var latest=versions.sort(function(a,b){return Number(b.Version_Number)-Number(a.Version_Number);})[0];
+  if(latest.Version_Status==="DRAFT")throw new Error("DESIGN_DRAFT_ALREADY_EXISTS");
+  var source=versions.filter(function(v){return v.Version_Status==="PUBLISHED";}).sort(function(a,b){return Number(b.Version_Number)-Number(a.Version_Number);})[0];
+  if(!source)throw new Error("DESIGN_PUBLISHED_VERSION_REQUIRED");
+  var raw=DriveApp.getFileById(source[configField]).getBlob().getDataAsString("UTF-8");
+  if(hash_(Utilities.newBlob(raw).getBytes())!==source[hashField])throw new Error("DESIGN_CONFIG_HASH_MISMATCH");
+  var config=JSON.parse(raw);checkAssetRefs_(config);var cfg=saveConfig_(prefix,entityId,config);
+  var version={};version[idField]=id_(idField.toLowerCase());version[entityKey]=entityId;
+  version.Version_Number=Number(latest.Version_Number)+1;version.Version_Status="DRAFT";
+  version[configField]=cfg.file_id;version[hashField]=cfg.sha256;
+  if(table==="Brand_Versions"||table==="Template_Versions")version.Change_Notes="New draft cloned from published version "+source.Version_Number;
+  if(table==="Template_Versions")version.Preview_File_ID="";
+  if(table==="Brand_Versions"||table==="Template_Versions"){version.Published_At="";version.Published_By="";}
+  version.Created_At=now_();version.Created_By=APP.ACTOR_ID;
+  SheetsRepository.append(table,version);audit_("CREATE","DESIGN_VERSION",version[idField],null,version);return version;
+ }
+ function attachBrandAsset(p){
+  var brand=one_("Brands","Brand_ID",p.brandId),asset=one_("Design_Assets","Design_Asset_ID",p.designAssetId);
+  if(!brand||!asset)throw new Error("DESIGN_ASSET_LINK_TARGET_MISSING");
+  var role=text_(p.usageRole,40,"BRAND_ASSET_ROLE",true);
+  if(!ENUMS["Brand_Assets.Usage_Role"]||ENUMS["Brand_Assets.Usage_Role"].indexOf(role)<0)throw new Error("BRAND_ASSET_ROLE_INVALID");
+  var existing=rows_("Brand_Assets").filter(function(x){return x.Brand_ID===p.brandId&&x.Design_Asset_ID===p.designAssetId&&x.Usage_Role===role;})[0];
+  if(existing)return existing;
+  var row={Brand_Asset_ID:id_("basset"),Brand_ID:p.brandId,Design_Asset_ID:p.designAssetId,Usage_Role:role,Lifecycle_Status:"ACTIVE",Created_At:now_(),Created_By:APP.ACTOR_ID};
+  SheetsRepository.append("Brand_Assets",row);audit_("LINK","BRAND_ASSET",row.Brand_Asset_ID,null,row);return row;
+ }
  function linkTemplateIdentity(p){
   var t=one_("Templates","Template_ID",p.templateId),b=one_("Brands","Brand_ID",p.brandId);if(!t||!b)throw new Error("DESIGN_IDENTITY_LINK_TARGET_MISSING");
   var active=rows_("Template_Identity_Links").filter(function(x){return x.Template_ID===p.templateId&&x.Brand_ID===p.brandId&&x.Status==="ACTIVE";})[0];
@@ -102,7 +132,7 @@ var DesignService=(function(){
   SheetsRepository.append("Template_Identity_Links",link);audit_("LINK","TEMPLATE_IDENTITY",link.Template_Identity_Link_ID,null,link);return link;
  }
  function list(){return {assets:rows_("Design_Assets"),brands:rows_("Brands"),brandVersions:rows_("Brand_Versions"),papers:rows_("Papers"),paperVersions:rows_("Paper_Versions"),templates:rows_("Templates"),templateVersions:rows_("Template_Versions"),templateIdentityLinks:rows_("Template_Identity_Links")};}
- return {registerAsset:registerAsset,createBrand:createBrand,createTemplate:createTemplate,createPaper:createPaper,updateBrandDraft:function(id,c,n){return updateDraft_("Brand_Versions","Brand_Version_ID",id,c,n);},updateTemplateDraft:function(id,c,n){return updateDraft_("Template_Versions","Template_Version_ID",id,c,n);},updatePaperDraft:function(id,c){return updateDraft_("Paper_Versions","Paper_Version_ID",id,c,"");},publishBrand:function(id){return publish_("Brand_Versions","Brand_Version_ID",id,"Design_Config_File_ID","Config_SHA256");},publishTemplate:function(id){return publish_("Template_Versions","Template_Version_ID",id,"Template_Config_File_ID","Config_SHA256");},publishPaper:function(id){return publish_("Paper_Versions","Paper_Version_ID",id,"Paper_Config_File_ID","Config_SHA256");},linkTemplateIdentity:linkTemplateIdentity,list:list};
+ return {registerAsset:registerAsset,createBrand:createBrand,createTemplate:createTemplate,createPaper:createPaper,updateBrandDraft:function(id,c,n){return updateDraft_("Brand_Versions","Brand_Version_ID",id,c,n);},updateTemplateDraft:function(id,c,n){return updateDraft_("Template_Versions","Template_Version_ID",id,c,n);},updatePaperDraft:function(id,c){return updateDraft_("Paper_Versions","Paper_Version_ID",id,c,"");},publishBrand:function(id){return publish_("Brand_Versions","Brand_Version_ID",id,"Design_Config_File_ID","Config_SHA256");},publishTemplate:function(id){return publish_("Template_Versions","Template_Version_ID",id,"Template_Config_File_ID","Config_SHA256");},publishPaper:function(id){return publish_("Paper_Versions","Paper_Version_ID",id,"Paper_Config_File_ID","Config_SHA256");},linkTemplateIdentity:linkTemplateIdentity,attachBrandAsset:attachBrandAsset,newBrandDraft:function(id){return newDraft_("Brand_Versions","Brands","Brand_ID",id,"Brand_Version_ID","Design_Config_File_ID","Config_SHA256","BRAND");},newTemplateDraft:function(id){return newDraft_("Template_Versions","Templates","Template_ID",id,"Template_Version_ID","Template_Config_File_ID","Config_SHA256","TEMPLATE");},newPaperDraft:function(id){return newDraft_("Paper_Versions","Papers","Paper_ID",id,"Paper_Version_ID","Paper_Config_File_ID","Config_SHA256","PAPER");},list:list};
 })();
 function listDesignStudioForBrowser(){assertPrimaryUser_();return DesignService.list();}
 function createBrandFromBrowser(p){assertPrimaryUser_();return DesignService.createBrand(p);}
