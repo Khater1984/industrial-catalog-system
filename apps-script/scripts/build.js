@@ -9,6 +9,7 @@ const sources = [
   "src/repositories/SheetsRepository.js",
   "src/domain/CatalogService.js",
   "src/domain/Ingest.js",
+  "src/domain/StagingPromotion.js",
   "src/domain/WorkerIntegration.js",
   "src/api/Api.js"
 ];
