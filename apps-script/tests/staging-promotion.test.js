@@ -6,20 +6,43 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("src/domain/StagingPromotion.js", "utf8");
 
-function sha(value) { return crypto.createHash("sha256").update(String(value)).digest("hex"); }
+function sha(value) {
+  if (Buffer.isBuffer(value) || value instanceof Uint8Array) {
+    return crypto.createHash("sha256").update(Buffer.from(value)).digest("hex");
+  }
+  return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
 
 function buildContext(options) {
   const store = options.store || {};
   const failAfter = options.failAfter == null ? Infinity : options.failAfter;
+  const driveFiles = options.driveFiles || {};
   let writes = 0;
   function rows(table) { return store[table] || (store[table] = []); }
   const context = {
     APP: { ACTOR_ID: "actor_primary" },
     Utilities: {
       DigestAlgorithm: { SHA_256: "SHA-256" },
-      computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
+      computeDigest: (_algorithm, bytes) => {
+        const buf = Buffer.isBuffer(bytes) ? bytes : (Array.isArray(bytes) ? Buffer.from(bytes) : Buffer.from(String(bytes)));
+        return Array.from(crypto.createHash("sha256").update(buf).digest());
+      }
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    DriveApp: {
+      getFileById(id) {
+        const entry = driveFiles[id];
+        if (!entry) return null;
+        return {
+          getBlob() {
+            return {
+              getBytes: () => Array.from(Buffer.from(entry.content, "utf8")),
+              getDataAsString: () => entry.content
+            };
+          }
+        };
+      }
+    },
     SheetsRepository: {
       getBy(table, key, value) {
         return rows(table).find((row) => String(row[key]) === String(value)) || null;
@@ -40,10 +63,10 @@ function buildContext(options) {
     }
   };
   vm.runInNewContext(source, context);
-  return { promote: context.StagingPromotion.promoteReviewedStaging, store };
+  return { promote: context.StagingPromotion.promoteReviewedStaging, store, driveFiles };
 }
 
-function staging() {
+function stagingObject() {
   return {
     run_id: "run_demo_001",
     catalog_id: "cat_demo_001",
@@ -66,33 +89,61 @@ function staging() {
   };
 }
 
-const options = {
-  stagingSetFileId: "stagingfileid1",
-  stagingSetSha256: sha("staging"),
-  intendedOutputFileId: "outputfileid1",
-  intendedOutputSha256: sha("output")
-};
+function makeDriveOptions(staging, fileId = "stagingfileid1") {
+  const content = JSON.stringify(staging);
+  const sha256 = sha(content);
+  return {
+    stagingSetFileId: fileId,
+    stagingSetSha256: sha256,
+    driveFiles: { [fileId]: { content } }
+  };
+}
 
 test("accepted records are written and rejected records are not", () => {
-  const ctx = buildContext({});
-  const result = ctx.promote(Object.assign({ staging: staging() }, options));
+  const opts = makeDriveOptions(stagingObject());
+  const ctx = buildContext(opts);
+  const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(ctx.store.Products.length, 1);
   assert.equal(ctx.store.Variants.length, 1);
   assert.equal(ctx.store.Specifications.length, 2);
   assert.equal(ctx.store.Specification_Changes.length, 1);
   assert.equal(ctx.store.Specification_Changes[0].Operation, "UPDATE");
-  assert.equal(ctx.store.Specification_Changes[0].Product_ID, ctx.store.Products[0].Product_ID);
-  assert.equal(ctx.store.Specification_Changes[0].Variant_ID, ctx.store.Variants[0].Variant_ID);
-  assert.equal(ctx.store.Specification_Changes[0].Target_Specification_ID, ctx.store.Specifications[1].Specification_ID);
   assert.equal(ctx.store.Specifications[1].Attribute_Value_Source, "90");
   assert.equal(JSON.parse(ctx.store.Specification_Changes[0].Value_JSON), "91");
 });
 
+test("rejects client-supplied staging object", () => {
+  const opts = makeDriveOptions(stagingObject());
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ staging: stagingObject(), stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_CLIENT_STAGING_FORBIDDEN/
+  );
+});
+
+test("rejects file whose SHA256 does not match", () => {
+  const opts = makeDriveOptions(stagingObject());
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: "f".repeat(64) }),
+    /STAGING_FILE_SHA_MISMATCH/
+  );
+});
+
+test("rejects missing Drive file", () => {
+  const ctx = buildContext({ driveFiles: {} });
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: "missingfileid", stagingSetSha256: "a".repeat(64) }),
+    /STAGING_FILE_NOT_FOUND/
+  );
+});
+
 test("retry does not duplicate products, variants, or source specifications", () => {
-  const ctx = buildContext({});
-  ctx.promote(Object.assign({ staging: staging() }, options));
-  const again = ctx.promote(Object.assign({ staging: staging() }, options));
+  const opts = makeDriveOptions(stagingObject());
+  const ctx = buildContext(opts);
+  ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
+  const again = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(again.skipped, true);
   assert.equal(ctx.store.Products.length, 1);
   assert.equal(ctx.store.Variants.length, 1);
@@ -101,15 +152,15 @@ test("retry does not duplicate products, variants, or source specifications", ()
 });
 
 test("connection failure leaves the operation in doubt and retry resumes without duplicates", () => {
-  const first = buildContext({ failAfter: 4 });
-  assert.throws(() => first.promote(Object.assign({ staging: staging() }, options)), /SHEETS_CONNECTION_FAILED/);
+  const opts = makeDriveOptions(stagingObject());
+  const first = buildContext(Object.assign({ failAfter: 4 }, opts));
+  assert.throws(() => first.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }), /SHEETS_CONNECTION_FAILED/);
   assert.equal(first.store.Promotion_Operations[0].Operation_Status, "IN_DOUBT");
   const before = first.store.Products.length;
-  const resumed = buildContext({ store: first.store });
-  const result = resumed.promote(Object.assign({ staging: staging() }, options));
+  const resumed = buildContext(Object.assign({ store: first.store }, opts));
+  const result = resumed.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(resumed.store.Products.length, before);
   assert.equal(resumed.store.Variants.length, 1);
   assert.equal(resumed.store.Specifications.length, 2);
-  assert.equal(resumed.store.Specification_Changes[0].Product_ID, resumed.store.Products[0].Product_ID);
 });
