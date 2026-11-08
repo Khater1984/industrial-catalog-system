@@ -83,7 +83,7 @@ test("resolves product inheritance, variant exclusion and direct variant inclusi
   h.service.link({ docId: docA.document.Doc_ID, targetType: "VARIANT", targetId: "var_1", linkMode: "EXCLUDE" });
   h.service.link({ docId: docB.document.Doc_ID, targetType: "VARIANT", targetId: "var_1", linkMode: "INCLUDE" });
   const resolved = h.service.resolve("VARIANT", "var_1");
-  assert.deepEqual(resolved.map(x => x.document.Doc_ID), [docB.document.Doc_ID]);
+  assert.deepEqual(Array.from(resolved, x => x.document.Doc_ID), [docB.document.Doc_ID]);
   assert.equal(resolved[0].inherited, false);
 });
 
