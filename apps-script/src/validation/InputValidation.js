@@ -81,5 +81,17 @@ var InputValidation = (function () {
       notes: optionalString_(payload.notes, "notes", 2000)
     };
   }
-  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_ };
+  function promotionPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["stagingSetFileId", "stagingSetSha256"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var stagingSetFileId = requiredString_(payload.stagingSetFileId, "stagingSetFileId", 200);
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(stagingSetFileId)) throw new Error("VALIDATION_INVALID_FORMAT: stagingSetFileId");
+    var stagingSetSha256 = requiredString_(payload.stagingSetSha256, "stagingSetSha256", 64);
+    if (!/^[a-f0-9]{64}$/.test(stagingSetSha256)) throw new Error("VALIDATION_INVALID_FORMAT: stagingSetSha256");
+    return { stagingSetFileId: stagingSetFileId, stagingSetSha256: stagingSetSha256 };
+  }
+  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_, promotionPayload: promotionPayload_ };
 })();
