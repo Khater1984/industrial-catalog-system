@@ -8,7 +8,7 @@ const apiSource = fs.readFileSync("src/api/Api.js", "utf8");
 
 function createApiContext(overrides = {}) {
   let uuid = 0;
-  const calls = { auth: 0, register: [] };
+  const calls = { auth: 0, register: [], imagePromotions: [] };
   const context = {
     APP: { VERSION: "test", SCHEMA_VERSION: "2.1", ENVIRONMENT: "TEST" },
     Utilities: { getUuid: () => "test-uuid-" + (++uuid) },
@@ -27,6 +27,12 @@ function createApiContext(overrides = {}) {
       register: (payload) => {
         calls.register.push(payload);
         return { catalogId: "cat_test", runId: "run_test", status: "QUEUED" };
+      }
+    },
+    ImagePromotion: {
+      promoteAcceptedImages: (payload) => {
+        calls.imagePromotions.push(payload);
+        return { status: "COMPLETED", counts: { assets: 1, links: 0, skipped: 0 } };
       }
     },
     ...overrides
@@ -122,4 +128,52 @@ test("post maps validation errors to stable safe error codes", () => {
   });
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "VALIDATION_INVALID_FORMAT");
+});
+
+
+test("images.promote validates payloads before calling the promotion domain", () => {
+  const { api, calls } = createApiContext();
+  const invalid = api.post({
+    postData: {
+      contents: JSON.stringify({
+        protocol_version: "1",
+        action: "images.promote",
+        payload: { catalog_id: "catalog_test", images: [{ review_status: "ACCEPTED", width_px: "100" }] }
+      })
+    }
+  });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, "VALIDATION_REQUIRED");
+  assert.equal(calls.imagePromotions.length, 0);
+});
+
+test("images.promote forwards only validated image fields", () => {
+  const { api, calls } = createApiContext();
+  const result = api.post({
+    postData: {
+      contents: JSON.stringify({
+        protocol_version: "1",
+        action: "images.promote",
+        payload: {
+          catalog_id: "catalog_test",
+          run_id: "run_test",
+          images: [{
+            review_status: "ACCEPTED",
+            sha256: "b".repeat(64),
+            drive_file_id: "drive-file-id-123456",
+            original_name: "pump.png",
+            mime_type: "image/png",
+            width_px: 100,
+            height_px: 80,
+            file_size_bytes: 1000,
+            has_alpha: false,
+            ignored_extra: "not-allowed"
+          }]
+        }
+      })
+    }
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "VALIDATION_UNKNOWN_FIELD");
+  assert.equal(calls.imagePromotions.length, 0);
 });

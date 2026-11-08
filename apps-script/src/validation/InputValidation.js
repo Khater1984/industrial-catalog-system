@@ -93,5 +93,102 @@ var InputValidation = (function () {
     if (!/^[a-f0-9]{64}$/.test(stagingSetSha256)) throw new Error("VALIDATION_INVALID_FORMAT: stagingSetSha256");
     return { stagingSetFileId: stagingSetFileId, stagingSetSha256: stagingSetSha256 };
   }
-  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_, promotionPayload: promotionPayload_ };
+  function imagesPromotePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["images", "run_id", "catalog_id"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+
+    var catalogId = requiredString_(payload.catalog_id, "catalog_id", 128);
+    var runId = optionalString_(payload.run_id, "run_id", 128);
+    if (runId && !/^[A-Za-z0-9_.-]+$/.test(runId)) {
+      throw new Error("VALIDATION_INVALID_FORMAT: run_id");
+    }
+    if (!Array.isArray(payload.images) || payload.images.length > 500) {
+      throw new Error("VALIDATION_INVALID_TYPE: images");
+    }
+
+    var allowedImageFields = [
+      "review_status", "sha256", "drive_file_id", "original_name", "mime_type",
+      "width_px", "height_px", "file_size_bytes", "has_alpha",
+      "catalog_page_id", "page_number", "target_type", "target_id"
+    ];
+    var allowedMimeTypes = {
+      "image/jpeg": true, "image/png": true, "image/webp": true,
+      "image/gif": true, "image/tiff": true, "image/bmp": true,
+      "image/jp2": true, "image/jpx": true, "image/x-ms-bmp": true
+    };
+
+    function positiveInteger_(value, field, maximum) {
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > maximum) {
+        throw new Error("VALIDATION_INVALID_TYPE: " + field);
+      }
+      return value;
+    }
+
+    var images = payload.images.map(function (image, index) {
+      var label = "images[" + index + "]";
+      if (!isPlainObject_(image)) throw new Error("VALIDATION_INVALID_OBJECT: " + label);
+      Object.keys(image).forEach(function (key) {
+        if (allowedImageFields.indexOf(key) < 0) {
+          throw new Error("VALIDATION_UNKNOWN_FIELD: " + label + "." + key);
+        }
+      });
+      var status = requiredString_(image.review_status, label + ".review_status", 20);
+      if (["ACCEPTED", "REJECTED", "PENDING"].indexOf(status) < 0) {
+        throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".review_status");
+      }
+      var normalized = { review_status: status };
+      if (status !== "ACCEPTED") return normalized;
+
+      var sha = requiredString_(image.sha256, label + ".sha256", 64).toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(sha)) throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".sha256");
+      var driveId = requiredString_(image.drive_file_id, label + ".drive_file_id", 200);
+      if (!/^[A-Za-z0-9_-]{10,200}$/.test(driveId)) {
+        throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".drive_file_id");
+      }
+      var originalName = requiredString_(image.original_name, label + ".original_name", 255);
+      var mimeType = requiredString_(image.mime_type, label + ".mime_type", 100).toLowerCase();
+      if (!allowedMimeTypes[mimeType]) throw new Error("UNSUPPORTED_IMAGE_MIME_TYPE");
+      var width = positiveInteger_(image.width_px, label + ".width_px", 50000);
+      var height = positiveInteger_(image.height_px, label + ".height_px", 50000);
+      if (width * height > 100000000) throw new Error("IMAGE_PIXEL_LIMIT_EXCEEDED");
+      var fileSize = positiveInteger_(image.file_size_bytes, label + ".file_size_bytes", 26214400);
+      if (typeof image.has_alpha !== "boolean") {
+        throw new Error("VALIDATION_INVALID_TYPE: " + label + ".has_alpha");
+      }
+
+      normalized.sha256 = sha;
+      normalized.drive_file_id = driveId;
+      normalized.original_name = originalName;
+      normalized.mime_type = mimeType;
+      normalized.width_px = width;
+      normalized.height_px = height;
+      normalized.file_size_bytes = fileSize;
+      normalized.has_alpha = image.has_alpha;
+
+      var pageId = optionalString_(image.catalog_page_id, label + ".catalog_page_id", 180);
+      if (pageId) normalized.catalog_page_id = pageId;
+      if (image.page_number !== undefined && image.page_number !== null && image.page_number !== "") {
+        normalized.page_number = positiveInteger_(image.page_number, label + ".page_number", 1000000);
+      }
+      var targetType = optionalString_(image.target_type, label + ".target_type", 20);
+      var targetId = optionalString_(image.target_id, label + ".target_id", 120);
+      if (Boolean(targetType) !== Boolean(targetId)) {
+        throw new Error("IMAGE_TARGET_PAIR_REQUIRED");
+      }
+      if (targetType) {
+        if (["PRODUCT", "VARIANT"].indexOf(targetType) < 0) {
+          throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".target_type");
+        }
+        normalized.target_type = targetType;
+        normalized.target_id = targetId;
+      }
+      return normalized;
+    });
+
+    return { images: images, run_id: runId, catalog_id: catalogId };
+  }
+  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_, promotionPayload: promotionPayload_, imagesPromotePayload: imagesPromotePayload_ };
 })();

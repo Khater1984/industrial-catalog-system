@@ -27,8 +27,14 @@ var ImagePromotion = (function () {
   function promoteAcceptedImages(options) {
     require_(options && Array.isArray(options.images), "IMAGE_PROMOTION_IMAGES_INVALID");
     var actor = options.actor || APP.ACTOR_ID;
-    var catalogId = text_(options.catalog_id, 120);
+    var catalogId = text_(options.catalog_id, 128);
+    require_(catalogId, "IMAGE_CATALOG_ID_REQUIRED");
     var counts = { assets: 0, links: 0, skipped: 0 };
+    var allowedMimeTypes = {
+      "image/jpeg": true, "image/png": true, "image/webp": true,
+      "image/gif": true, "image/tiff": true, "image/bmp": true,
+      "image/jp2": true, "image/jpx": true, "image/x-ms-bmp": true
+    };
 
     options.images.forEach(function (img) {
       if (!img || img.review_status !== "ACCEPTED") {
@@ -41,14 +47,16 @@ var ImagePromotion = (function () {
       var driveFileId = text_(img.drive_file_id, 120);
       require_(driveFileId, "IMAGE_DRIVE_FILE_ID_REQUIRED");
       var originalName = text_(img.original_name, 255);
-      var mimeType = text_(img.mime_type, 100);
-      var width = Number(img.width_px);
-      var height = Number(img.height_px);
-      var fileSize = Number(img.file_size_bytes);
-      require_(originalName && mimeType, "IMAGE_FILE_METADATA_REQUIRED");
-      require_(Number.isInteger(width) && width > 0, "IMAGE_WIDTH_REQUIRED");
-      require_(Number.isInteger(height) && height > 0, "IMAGE_HEIGHT_REQUIRED");
-      require_(Number.isInteger(fileSize) && fileSize > 0, "IMAGE_FILE_SIZE_REQUIRED");
+      var mimeType = text_(img.mime_type, 100).toLowerCase();
+      var width = img.width_px;
+      var height = img.height_px;
+      var fileSize = img.file_size_bytes;
+      require_(originalName && allowedMimeTypes[mimeType], "IMAGE_FILE_METADATA_REQUIRED");
+      require_(typeof width === "number" && Number.isSafeInteger(width) && width > 0 && width <= 50000, "IMAGE_WIDTH_REQUIRED");
+      require_(typeof height === "number" && Number.isSafeInteger(height) && height > 0 && height <= 50000, "IMAGE_HEIGHT_REQUIRED");
+      require_(width * height <= 100000000, "IMAGE_PIXEL_LIMIT_EXCEEDED");
+      require_(typeof fileSize === "number" && Number.isSafeInteger(fileSize) && fileSize > 0 && fileSize <= 26214400, "IMAGE_FILE_SIZE_REQUIRED");
+      require_(typeof img.has_alpha === "boolean", "IMAGE_ALPHA_FLAG_REQUIRED");
 
       var imageId = stableId_("img", digest);
       var existingAsset = existingBy_("Image_Assets", "Image_ID", imageId);

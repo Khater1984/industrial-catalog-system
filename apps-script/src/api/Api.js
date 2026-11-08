@@ -75,7 +75,7 @@ var Api = (function () {
         return success_(requestId, promoted);
       }
       if (body.action === "images.promote") {
-        var imgPayload = body.payload || {};
+        var imgPayload = InputValidation.imagesPromotePayload(body.payload || {});
         var imgResult = ImagePromotion.promoteAcceptedImages({
           images: imgPayload.images,
           run_id: imgPayload.run_id,
@@ -165,10 +165,11 @@ function promoteStagingFromBrowser(payload) {
 /** Owner-only endpoint for promoting accepted images. */
 function promoteImagesFromBrowser(payload) {
   assertPrimaryUser_();
+  var validated = InputValidation.imagesPromotePayload(payload || {});
   return ImagePromotion.promoteAcceptedImages({
-    images: payload.images || [],
-    run_id: payload.run_id,
-    catalog_id: payload.catalog_id,
+    images: validated.images,
+    run_id: validated.run_id,
+    catalog_id: validated.catalog_id,
     actor: APP.ACTOR_ID
   });
 }
