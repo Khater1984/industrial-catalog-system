@@ -1,4 +1,5 @@
 """Cross-check the local worker protocol against the Apps Script V2.1 registry."""
+import hashlib
 import re
 from pathlib import Path
 
@@ -67,14 +68,17 @@ def test_worker_result_manifest_matches_registered_run_and_unit_enums(tmp_path):
     pdf.showPage()
     pdf.save()
 
+    source_sha = sha256_file(source)
+    key = hashlib.sha256(f"contract_job_001|contract_run_001|1|||{source_sha}".encode()).hexdigest()
     result = process_resumable_catalog_job({
         "run_id": "contract_run_001",
         "logical_job_id": "contract_job_001",
         "catalog_id": "contract_catalog_001",
         "source_pdf_path": str(source),
-        "source_sha256": sha256_file(source),
+        "source_sha256": source_sha,
         "attempt_number": 1,
         "catalog_page_ids": ["contract_page_001"],
+        "idempotency_key": key,
     }, tmp_path / "out")
 
     assert result["manifest_version"] == MANIFEST_VERSION == 2

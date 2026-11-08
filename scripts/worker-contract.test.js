@@ -7,9 +7,9 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(__dirname, "../..");
+const repoRoot = path.resolve(__dirname, "..");
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "worker-contract-"));
-const fixtureScript = path.join(repoRoot, "scripts/build_worker_contract_fixture.py");
+const fixtureScript = path.join(__dirname, "build_worker_contract_fixture.py");
 const generated = spawnSync("python", [fixtureScript, tempDir], {
   cwd: repoRoot, encoding: "utf8",
   env: {

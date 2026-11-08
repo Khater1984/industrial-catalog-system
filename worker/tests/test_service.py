@@ -1,9 +1,12 @@
+import hashlib
+
 from catalog_worker import service
 
 
 def test_dispatch_requires_bearer_and_enqueues_deterministic_task(monkeypatch):
     monkeypatch.setenv("WORKER_SHARED_TOKEN", "long-test-token")
-    monkeypatch.setattr(service, "_enqueue", lambda run_id, job_file_id: "task/" + run_id)
+    key = "a" * 64
+    monkeypatch.setattr(service, "_enqueue", lambda run_id, job_file_id, idempotency_key: "task/" + run_id)
     client = service.app.test_client()
 
     denied = client.post("/run", json={
@@ -12,8 +15,8 @@ def test_dispatch_requires_bearer_and_enqueues_deterministic_task(monkeypatch):
     assert denied.status_code == 401
 
     accepted = client.post("/run", headers={
-        "Authorization": "Bearer long-test-token"
-    }, json={"contract_version": "1", "run_id": "run_1", "job_file_id": "job_1"})
+        "Authorization": "Bearer long-test-token", "Idempotency-Key": key
+    }, json={"contract_version": "1", "run_id": "run_1", "job_file_id": "job_1", "idempotency_key": key})
     assert accepted.status_code == 202
     assert accepted.get_json()["accepted"] is True
     assert accepted.get_json()["run_id"] == "run_1"
@@ -40,9 +43,10 @@ def test_cloud_task_handler_binds_run_id_to_job(monkeypatch):
         "accepted": True, "run_id": kwargs["expected_run_id"], "run_status": "COMPLETED"
     })
     client = service.app.test_client()
-    response = client.post("/tasks/run", json={"run_id": "run_9", "job_file_id": "job_9"})
+    key = "b" * 64
+    response = client.post("/tasks/run", json={"run_id": "run_9", "job_file_id": "job_9", "idempotency_key": key})
     assert response.status_code == 200
-    assert calls == [{"job_file_id": "job_9", "expected_run_id": "run_9"}]
+    assert calls == [{"job_file_id": "job_9", "expected_run_id": "run_9", "expected_idempotency_key": key}]
 
 
 
@@ -69,7 +73,7 @@ def test_cloud_task_deadline_is_set_on_task_not_http_request(monkeypatch):
             return type("CreatedTask", (), {"name": request["task"]["name"]})()
 
     monkeypatch.setattr(service.tasks_v2, "CloudTasksClient", FakeTasksClient)
-    task_name = service._enqueue("run_42", "drive-job-id-123456")
+    task_name = service._enqueue("run_42", "drive-job-id-123456", "c" * 64)
     task = captured["task"]
     assert task_name == task["name"]
     assert task["dispatch_deadline"]["seconds"] == 1800

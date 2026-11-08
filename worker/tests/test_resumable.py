@@ -310,7 +310,7 @@ def test_same_run_cannot_change_attempt_lineage(tmp_path):
     changed = dict(retry_job, retry_reason="Changed retry reason")
     with pytest.raises(WorkerError) as error:
         process_resumable_catalog_job(changed, out)
-    assert error.value.code == "RESULT_MANIFEST_CONFLICT"
+    assert error.value.code == "IDEMPOTENCY_KEY_MISMATCH"
 
 
 def test_catalog_page_ids_become_stable_unit_keys(tmp_path):

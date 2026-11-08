@@ -2,17 +2,17 @@
 from __future__ import annotations
 import hashlib, json, sys
 from pathlib import Path
-from reportlab.pdfgen import canvas
+from pypdf import PdfWriter
 from catalog_worker.resumable import _hash_payload, canonical_json_bytes, process_resumable_catalog_job, sha256_file
 
 def main(output_dir: str) -> None:
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     pdf_path = root / "source.pdf"
-    pdf = canvas.Canvas(str(pdf_path))
-    pdf.drawString(72, 720, "Contract fixture: industrial pump")
-    pdf.showPage()
-    pdf.save()
+    writer = PdfWriter()
+    writer.add_blank_page(width=300, height=300)
+    with pdf_path.open("wb") as stream:
+        writer.write(stream)
     run_id, logical_job_id, catalog_id = "run_contract_001", "job_contract_001", "catalog_contract_001"
     source_sha = sha256_file(pdf_path)
     identity = "|".join([logical_job_id, run_id, "1", "", "", source_sha])

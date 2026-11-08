@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -36,6 +37,7 @@ def test_full_path_extract_stage_review_promote(tmp_path: Path):
         "catalog_id": "cat_demo_001",
         "source_pdf_path": str(source),
         "source_sha256": sha256_file(source),
+        "idempotency_key": hashlib.sha256(f"job_demo_001|run_demo_001|1|||{sha256_file(source)}".encode()).hexdigest(),
         "catalog_page_ids": ["cp_cat_demo_001_00001"],
     }
     result = process_resumable_catalog_job(job, tmp_path / "worker-out")
