@@ -68,6 +68,21 @@
         <div class="status" id="promoteStatus" role="status" aria-live="polite"></div>
       </form>
     </section>
+    <section class="panel" style="margin-top:18px">
+      <div class="toolbar"><h3>مكتبة المستندات وإصداراتها</h3><button class="refresh" id="documentsRefresh" type="button">تحديث</button></div>
+      <p class="notice">أضف كتيبات التشغيل والبروشورات والشهادات والضمانات. كل إصدار يُحفظ كملف مستقل ولا يستبدل الإصدار السابق.</p>
+      <form id="documentForm">
+        <div class="field"><label for="docTitle">عنوان المستند *</label><input id="docTitle" type="text" maxlength="250" required placeholder="مثال: Operating and Maintenance Manual"></div>
+        <div class="field"><label for="docType">نوع المستند *</label><select id="docType" required><option value="USER_MANUAL">دليل تشغيل</option><option value="BROCHURE">بروشور</option><option value="CERTIFICATE">شهادة</option><option value="WARRANTY">ضمان</option><option value="OTHER">أخرى</option></select></div>
+        <div class="field"><label for="docLanguage">اللغة</label><input id="docLanguage" type="text" maxlength="10" placeholder="en أو ar"></div>
+        <div class="field"><label for="docVersion">اسم الإصدار *</label><input id="docVersion" type="text" maxlength="80" value="Version 1" required></div>
+        <div class="field"><label for="docDescription">الوصف</label><textarea id="docDescription" rows="2" maxlength="1500" placeholder="وصف مختصر للمستند"></textarea></div>
+        <div class="field"><label>ملف PDF *</label><label class="drop" for="docPdf"><strong>اختر ملف PDF</strong><span>حتى 12 ميجابايت</span><input id="docPdf" type="file" accept="application/pdf,.pdf"><div class="file-name" id="docFileName">لم يتم اختيار ملف</div></label></div>
+        <button class="btn" id="docSubmit" type="submit">حفظ المستند والإصدار الأول</button>
+        <div class="status" id="docStatus" role="status" aria-live="polite"></div>
+      </form>
+      <div id="documentsList" style="margin-top:18px"><div class="empty">جارٍ تحميل المستندات...</div></div>
+    </section>
     <div class="footer">Industrial Catalog System · DEV build</div>
   </main>
 <script>
@@ -127,7 +142,62 @@
     };
     reader.readAsDataURL(selectedFile);
   });
+  let selectedDocumentFile = null;
+  el("docPdf").addEventListener("change", event => {
+    selectedDocumentFile = event.target.files && event.target.files[0] || null;
+    el("docFileName").textContent = selectedDocumentFile ? selectedDocumentFile.name + " · " + (selectedDocumentFile.size/1024/1024).toFixed(2) + " MB" : "لم يتم اختيار ملف";
+  });
+  function showDocumentStatus(message,type) {
+    const box=el("docStatus");box.textContent=message;box.className="status show "+type;
+  }
+  function loadDocuments() {
+    el("documentsList").textContent="جارٍ تحميل المستندات...";
+    google.script.run.withSuccessHandler(renderDocuments).withFailureHandler(error=>{
+      el("documentsList").textContent="تعذر تحميل المستندات. تحقق من إعداد DEV_DOCUMENTS_FOLDER_ID.";
+    }).listDocumentsForBrowser();
+  }
+  function renderDocuments(items) {
+    const root=el("documentsList");root.textContent="";
+    if(!items||!items.length){root.textContent="لا توجد مستندات مسجلة حتى الآن.";root.className="empty";return;}
+    root.className="";
+    items.forEach(item=>{
+      const doc=item.document, versions=item.versions||[];
+      const card=document.createElement("div");card.style.cssText="border:1px solid var(--line);border-radius:11px;padding:13px;margin:10px 0;background:#fbfcfd";
+      const title=document.createElement("strong");title.textContent=doc.Title+" · "+doc.Document_Type;card.appendChild(title);
+      const meta=document.createElement("div");meta.className="notice";meta.textContent="الحالة: "+doc.Lifecycle_Status+" · عدد الإصدارات: "+versions.length+" · الإصدار الحالي: "+(versions.find(v=>v.Version_ID===doc.Current_Version_ID)?.Version_Label||"—");card.appendChild(meta);
+      const row=document.createElement("div");row.style.cssText="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px";
+      const file=document.createElement("input");file.type="file";file.accept="application/pdf,.pdf";file.style.maxWidth="220px";
+      const label=document.createElement("input");label.type="text";label.placeholder="اسم الإصدار الجديد";label.value="Rev "+(versions.length+1);label.style.cssText="max-width:150px;padding:8px;border:1px solid var(--line);border-radius:8px";
+      const button=document.createElement("button");button.type="button";button.className="refresh";button.textContent="إضافة إصدار";
+      button.addEventListener("click",()=>{
+        const f=file.files&&file.files[0];if(!f){alert("اختر ملف PDF أولاً.");return;}
+        if(f.size>12*1024*1024||(!f.type.includes("pdf")&&!f.name.toLowerCase().endsWith(".pdf"))){alert("يجب اختيار PDF لا يتجاوز 12 ميجابايت.");return;}
+        button.disabled=true;button.textContent="جارٍ الرفع...";
+        const reader=new FileReader();reader.onload=()=>{
+          google.script.run.withSuccessHandler(()=>{loadDocuments();}).withFailureHandler(err=>{button.disabled=false;button.textContent="إضافة إصدار";alert("تعذر إضافة الإصدار: "+(err&&err.message||"خطأ"));}).addDocumentVersionFromBrowser({docId:doc.Doc_ID,fileName:f.name,base64:String(reader.result||"").split(",")[1]||"",versionLabel:label.value});
+        };reader.onerror=()=>{button.disabled=false;button.textContent="إضافة إصدار";alert("تعذرت قراءة الملف.");};reader.readAsDataURL(f);
+      });
+      row.appendChild(file);row.appendChild(label);row.appendChild(button);card.appendChild(row);root.appendChild(card);
+    });
+  }
+  el("documentsRefresh").addEventListener("click",loadDocuments);
+  el("documentForm").addEventListener("submit",event=>{
+    event.preventDefault();const f=selectedDocumentFile;
+    if(!f){showDocumentStatus("اختر ملف PDF أولاً.","err");return;}
+    if(f.size>12*1024*1024||(!f.type.includes("pdf")&&!f.name.toLowerCase().endsWith(".pdf"))){showDocumentStatus("الملف يجب أن يكون PDF وألا يتجاوز 12 ميجابايت.","err");return;}
+    const button=el("docSubmit");button.disabled=true;button.textContent="جارٍ حفظ المستند...";
+    const reader=new FileReader();reader.onerror=()=>{button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تعذرت قراءة الملف.","err");};
+    reader.onload=()=>{
+      google.script.run.withSuccessHandler(result=>{
+        button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تم حفظ المستند والإصدار الأول بنجاح.","ok");
+        el("documentForm").reset();selectedDocumentFile=null;el("docFileName").textContent="لم يتم اختيار ملف";loadDocuments();
+      }).withFailureHandler(err=>{
+        button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تعذر الحفظ: "+(err&&err.message||"خطأ غير معروف"),"err");
+      }).createDocumentFromBrowser({title:el("docTitle").value,documentType:el("docType").value,languageCode:el("docLanguage").value,description:el("docDescription").value,versionLabel:el("docVersion").value,fileName:f.name,base64:String(reader.result||"").split(",")[1]||""});
+    };reader.readAsDataURL(f);
+  });
   loadDashboard();
+  loadDocuments();
   el("promoteForm").addEventListener("submit", event => {
     event.preventDefault();
     const fileId = el("fileId").value.trim();
