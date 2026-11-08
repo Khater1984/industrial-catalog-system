@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
@@ -24,7 +25,8 @@ function harness(options = {}) {
     Utilities: {
       getUuid: () => "uuid-" + (++uuid),
       DigestAlgorithm: { SHA_256: "SHA_256" },
-      computeDigest: () => [1, 2, 3, 4]
+      newBlob: (value) => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
+      computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest()).map((byte) => byte > 127 ? byte - 256 : byte)
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (key) => key === "DEV_CATALOG_FOLDER_ID" ? "dev-folder-123" : null }) },
     DriveApp: { getFileById: () => file },
@@ -52,7 +54,7 @@ test("registers a catalog and creates one queued run", () => {
   assert.equal(result.status, "QUEUED");
   assert.equal(h.rows.Catalogs.length, 1);
   assert.equal(h.rows.Run_Log.length, 1);
-  assert.match(h.rows.Run_Log[0].Idempotency_Key, /^catalog_sha256_/);
+  assert.match(h.rows.Run_Log[0].Idempotency_Key, /^[a-f0-9]{64}$/);
   assert.equal(h.wasLockReleased(), true);
 });
 

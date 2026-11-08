@@ -66,6 +66,7 @@ function createApplication(options = {}) {
     Utilities: {
       getUuid: () => "uuid-" + (++uuid),
       DigestAlgorithm: { SHA_256: "SHA_256" },
+      newBlob: (value) => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
       computeDigest: () => Array(32).fill(0)
     }
   };

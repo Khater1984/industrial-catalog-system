@@ -86,7 +86,7 @@ function validPayload() {
   const manifest = {
     manifest_version: 2, protocol_version: "1", worker_version: "0.2.1",
     run_type: "CATALOG_EXTRACTION", run_id: "run_test_1",
-    logical_job_id: "job_test_1", attempt_number: 1, parent_run_id: null,
+    logical_job_id: "job_test_1", idempotency_key: "f".repeat(64), attempt_number: 1, parent_run_id: null,
     retry_reason: null, catalog_id: "cat_test_1", source_sha256: "b".repeat(64),
     job_input_sha256: "d".repeat(64), page_count: 1, completed_units: 1,
     failed_units: 0, reused_units: 0, newly_processed_units: 1,

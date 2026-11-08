@@ -34,6 +34,7 @@ function createServiceContext({ inAllowedFolder = true } = {}) {
     Utilities: {
       getUuid: () => "00000000-0000-4000-8000-" + String(++uuid).padStart(12, "0"),
       DigestAlgorithm: { SHA_256: "SHA_256" },
+      newBlob: (value) => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
       computeDigest: (_algorithm, bytes) =>
         Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
           .map((byte) => byte > 127 ? byte - 256 : byte)
