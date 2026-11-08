@@ -44,7 +44,7 @@ var DesignService=(function(){
   var label=text_(name,160,"DESIGN_NAME",true);
   if(rows_(table).some(function(r){return String(r[nameField]).toLowerCase()===label.toLowerCase();}))throw new Error("DESIGN_NAME_DUPLICATE");
   var row={};row[idField]=id_(idField.toLowerCase());row[nameField]=label;
-  if(description!==undefined)row.Description=text_(description,1000,"DESIGN_DESCRIPTION",false);
+  if(description!==undefined&&TABLES[table].indexOf("Description")>=0)row.Description=text_(description,1000,"DESIGN_DESCRIPTION",false);
   if(typeField)row[typeField]=typeValue;
   if(table==="Brands"){row.Identity_Type=identityType||"COMPANY";row.Lifecycle_Status="ACTIVE";}
   else row.Lifecycle_Status="ACTIVE";
@@ -79,8 +79,7 @@ var DesignService=(function(){
   if(version.Version_Status!=="DRAFT")throw new Error("PUBLISHED_DESIGN_VERSION_IMMUTABLE");
   var kind=table==="Brand_Versions"?"BRAND":table==="Template_Versions"?"TEMPLATE":"PAPER";
   var cfg=saveConfig_(kind,id,config);checkAssetRefs_(cfg.config);
-  SheetsRepository.updateBy(table,idField,id,{Design_Config_File_ID:table==="Brand_Versions"?cfg.file_id:undefined});
-  if(table==="Brand_Versions")SheetsRepository.updateBy(table,idField,id,{Config_SHA256:cfg.sha256,Change_Notes:text_(notes,1500,"DESIGN_CHANGE_NOTES",false)});
+  if(table==="Brand_Versions")SheetsRepository.updateBy(table,idField,id,{Design_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Change_Notes:text_(notes,1500,"DESIGN_CHANGE_NOTES",false)});
   if(table==="Template_Versions")SheetsRepository.updateBy(table,idField,id,{Template_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Change_Notes:text_(notes,1500,"DESIGN_CHANGE_NOTES",false)});
   if(table==="Paper_Versions")SheetsRepository.updateBy(table,idField,id,{Paper_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256});
   audit_("UPDATE","DESIGN_VERSION",id,{Config_SHA256:version.Config_SHA256},{Config_SHA256:cfg.sha256});return one_(table,idField,id);
