@@ -58,6 +58,16 @@
         <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
       </div>
     </section>
+    <section class="panel" style="margin-top:18px">
+      <h3>اعتماد دفعة المراجعة</h3>
+      <p class="notice">أدخل معرف ملف Staging على Google Drive وبصمة SHA256 المسجلة أثناء المراجعة. النظام سيقرأ الملف من Drive ويتحقق من البصمة قبل الاعتماد.</p>
+      <form id="promoteForm">
+        <div class="field"><label for="fileId">معرف ملف Staging (Drive File ID) *</label><input id="fileId" type="text" maxlength="200" placeholder="مثال: 1a2b3c4d5e6f..." required></div>
+        <div class="field"><label for="sha256">بصمة SHA256 *</label><input id="sha256" type="text" maxlength="64" placeholder="64 حرفاً سداسياً" pattern="[a-f0-9]{64}" required></div>
+        <button class="btn" id="promoteBtn" type="submit">اعتماد ونقل إلى Sheets</button>
+        <div class="status" id="promoteStatus" role="status" aria-live="polite"></div>
+      </form>
+    </section>
     <div class="footer">Industrial Catalog System · DEV build</div>
   </main>
 <script>
@@ -89,7 +99,7 @@
     el("catalogRows").innerHTML=catalogs.map(c=>{
       const run=runs.find(r=>r.Catalog_ID===c.Catalog_ID);
       const state=run?run.Run_Status:"REGISTERED";
-      const safe=s=>String(s||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const safe=s=>String(s||"").replace(/[&<>"']/g,ch=>({"&":"&","<":"<",">":">",'"':""","'":"&#39;"}[ch]));
       return '<tr><td>'+safe(c.Supplier_Name)+'</td><td>'+safe(c.Catalog_Title||c.Source_File_Name)+'</td><td>'+formatDate(c.Received_At)+'</td><td><span class="pill '+(state==="QUEUED"?"queued":"")+'">'+safe(state)+'</span></td></tr>';
     }).join("");
   }
@@ -118,6 +128,27 @@
     reader.readAsDataURL(selectedFile);
   });
   loadDashboard();
+  el("promoteForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const fileId = el("fileId").value.trim();
+    const sha = el("sha256").value.trim().toLowerCase();
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) { showPromoteStatus("معرف الملف غير صالح.","err"); return; }
+    if (!/^[a-f0-9]{64}$/.test(sha)) { showPromoteStatus("بصمة SHA256 يجب أن تكون 64 حرفاً سداسياً.","err"); return; }
+    const button = el("promoteBtn");
+    button.disabled = true; button.textContent = "جارٍ التحقق والاعتماد...";
+    showPromoteStatus("جارٍ قراءة الملف من Drive والتحقق من البصمة...","wait");
+    google.script.run.withSuccessHandler(result => {
+      button.disabled = false; button.textContent = "اعتماد ونقل إلى Sheets";
+      showPromoteStatus("تم الاعتماد بنجاح. معرف العملية: " + (result.promotion_operation_id || "—") + " · الحالة: " + (result.status || "COMPLETED"), "ok");
+      el("promoteForm").reset();
+    }).withFailureHandler(error => {
+      button.disabled = false; button.textContent = "اعتماد ونقل إلى Sheets";
+      showPromoteStatus("فشل الاعتماد: " + (error && error.message ? error.message : "خطأ غير معروف"), "err");
+    }).promoteStagingFromBrowser({ stagingSetFileId: fileId, stagingSetSha256: sha });
+  });
+  function showPromoteStatus(message, type) {
+    const box = el("promoteStatus"); box.textContent = message; box.className = "status show " + type;
+  }
 </script>
 </body>
 </html>
