@@ -18,6 +18,15 @@ def make_pdf(path: Path, pages: list[str]) -> None:
     pdf.save()
 
 
+def _attempt_key(data: dict) -> str:
+    import hashlib
+    identity = "|".join([
+        data["logical_job_id"], data["run_id"], str(data["attempt_number"]),
+        data.get("parent_run_id") or "", data.get("retry_reason") or "", data["source_sha256"],
+    ])
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
 def job_for(path: Path, **changes) -> dict:
     data = {
         "run_id": "run_v21_001", "logical_job_id": "logical_v21_001",
@@ -25,6 +34,7 @@ def job_for(path: Path, **changes) -> dict:
         "source_sha256": sha256_file(path), "attempt_number": 1,
     }
     data.update(changes)
+    data["idempotency_key"] = _attempt_key(data)
     return data
 
 

@@ -29,6 +29,11 @@ checks = {
     "Ingest clears terminal worker leases": 'Worker_Lease_ID: ""' in ingest and 'Lease_Expires_At: ""' in ingest,
     "Apps Script remains owner-authenticated": "assertPrimaryUser_();" in api,
     "Ingest checks source fingerprint": "manifest.source_sha256 !== catalog.SHA256" in ingest,
+    "Run_Log key is created from the attempt identity": 'logicalJobId + "|" + runId' in (ROOT / "apps-script/src/domain/CatalogService.js").read_text(),
+    "Apps Script dispatch persists the same key": "idempotency_key: idempotencyKey" in integration,
+    "Worker requires the supplied attempt key": 'job.get("idempotency_key") != expected_key' in worker,
+    "Worker result carries the same key": '"idempotency_key": expected_key' in worker,
+    "Ingest binds result to Run_Log key": "MANIFEST_IDEMPOTENCY_MISMATCH" in ingest,
     "Ingest validates per-page artifact": "verifyArtifact_(page, manifest)" in ingest,
 }
 failed = [name for name, ok in checks.items() if not ok]

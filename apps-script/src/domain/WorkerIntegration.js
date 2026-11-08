@@ -33,6 +33,8 @@ var WorkerIntegration = (function () {
       var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
       var catalog = SheetsRepository.getBy("Catalogs", "Catalog_ID", catalogId);
       if (!run || !catalog || run.Catalog_ID !== catalogId) throw new Error("RUN_CATALOG_NOT_FOUND");
+      var idempotencyKey = String(run.Idempotency_Key || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(idempotencyKey)) throw new Error("RUN_IDEMPOTENCY_KEY_INVALID");
       if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) >= 0) {
         throw new Error("TERMINAL_RUN_CANNOT_DISPATCH");
       }
@@ -43,6 +45,7 @@ var WorkerIntegration = (function () {
         catalog_id: catalogId, source_pdf_file_id: catalog.Source_File_ID,
         source_sha256: catalog.SHA256, attempt_number: Number(run.Attempt_Number) || 1,
         parent_run_id: run.Parent_Run_ID || null, retry_reason: run.Retry_Reason || null,
+        idempotency_key: idempotencyKey,
         extraction_profile: "embedded-text-v1", run_folder_id: folder.getId()
       };
       var jobFile = immutableJobFile_(folder, job);
@@ -56,7 +59,8 @@ var WorkerIntegration = (function () {
         Lease_Expires_At: leaseExpiresAt, Error_Code: "", Error_Summary: ""
       });
 
-      var payload = { contract_version: CONTRACT_VERSION, run_id: runId, job_file_id: jobFile.getId() };
+      var payload = { contract_version: CONTRACT_VERSION, run_id: runId,
+        job_file_id: jobFile.getId(), idempotency_key: idempotencyKey };
       var lastError = "";
       for (var attempt = 1; attempt <= 4; attempt++) {
         try {
@@ -64,7 +68,7 @@ var WorkerIntegration = (function () {
             method: "post", contentType: "application/json",
             headers: {
               Authorization: "Bearer " + token,
-              "Idempotency-Key": runId,
+              "Idempotency-Key": idempotencyKey,
               "Content-Type": "application/json"
             },
             payload: JSON.stringify(payload), muteHttpExceptions: true

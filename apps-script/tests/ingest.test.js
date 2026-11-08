@@ -29,7 +29,7 @@ function buildContext(manifest, artifact) {
   const run = {
     Run_ID: "run_test_1", Catalog_ID: "cat_test_1",
     Logical_Job_ID: "job_test_1", Attempt_Number: 1,
-    Run_Status: "RUNNING", Output_Manifest_File_ID: ""
+    Run_Status: "RUNNING", Output_Manifest_File_ID: "", Idempotency_Key: "f".repeat(64)
   };
   const catalog = { Catalog_ID: "cat_test_1", SHA256: "b".repeat(64) };
   const context = {
@@ -64,7 +64,7 @@ function buildContext(manifest, artifact) {
 function validPayload() {
   const artifact = {
     manifest_version: 2, protocol_version: "1", worker_version: "0.2.1",
-    run_id: "run_test_1", logical_job_id: "job_test_1", catalog_id: "cat_test_1",
+    run_id: "run_test_1", logical_job_id: "job_test_1", idempotency_key: "f".repeat(64), catalog_id: "cat_test_1",
     run_unit_id: "unit_test_1", unit_type: "CATALOG_PAGE",
     unit_key: "cp_cat_test_1_00001", catalog_page_id: "cp_cat_test_1_00001",
     run_type: "CATALOG_EXTRACTION", page_number: 1, unit_status: "COMPLETED",

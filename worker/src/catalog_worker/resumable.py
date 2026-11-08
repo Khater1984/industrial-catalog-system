@@ -326,10 +326,10 @@ def process_resumable_catalog_job(
     # Run_Log.Idempotency_Key is unique per attempt, not per logical job.
     # Unique per Run_Log attempt, as required by the schema.
     expected_key = sha256_bytes(
-        f"{logical_id}|{run_id}|{attempt}|{parent or ''}|{retry_reason or ''}|{job_input_sha}".encode()
+        f"{logical_id}|{run_id}|{attempt}|{parent or ''}|{retry_reason or ''}|{actual_sha}".encode()
     )
-    if job.get("idempotency_key") not in (None, expected_key):
-        raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match this run attempt.")
+    if job.get("idempotency_key") != expected_key:
+        raise WorkerError("IDEMPOTENCY_KEY_MISMATCH", "Idempotency key does not match the Run_Log attempt identity.")
 
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)

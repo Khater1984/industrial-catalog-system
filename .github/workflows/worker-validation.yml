@@ -22,6 +22,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -37,3 +41,5 @@ jobs:
         run: pytest -q
       - name: Compile worker
         run: python -m compileall -q src
+      - name: Run live Python-to-Apps-Script contract test
+        run: node ../apps-script/tests/worker-contract.test.js

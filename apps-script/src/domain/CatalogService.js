@@ -9,6 +9,9 @@ var CatalogService = (function () {
       return v.length === 1 ? "0" + v : v;
     }).join("");
   }
+  function sha256Text_(value) {
+    return sha256_(Utilities.newBlob(String(value), "text/plain").getBytes());
+  }
   function resultFor_(catalog, run) {
     return {
       catalogId: catalog.Catalog_ID,
@@ -42,10 +45,12 @@ var CatalogService = (function () {
   function createRun_(catalogId, sourceHash, now) {
     var runId = id_("run");
     var logicalJobId = id_("job");
+    var attempt = 1, parentRunId = "", retryReason = "";
+    var idempotencyKey = sha256Text_(logicalJobId + "|" + runId + "|" + attempt + "|||" + sourceHash);
     SheetsRepository.append("Run_Log", {
       Run_ID: runId, Run_Type: "CATALOG_EXTRACTION", Catalog_ID: catalogId,
-      Logical_Job_ID: logicalJobId, Parent_Run_ID: "", Attempt_Number: 1,
-      Retry_Reason: "", Idempotency_Key: "catalog_sha256_" + sourceHash, Run_Status: "QUEUED",
+      Logical_Job_ID: logicalJobId, Parent_Run_ID: parentRunId, Attempt_Number: attempt,
+      Retry_Reason: retryReason, Idempotency_Key: idempotencyKey, Run_Status: "QUEUED",
       Current_Step: "REGISTERED", Total_Units: "", Completed_Units: 0, Failed_Units: 0,
       Created_At: now, Created_By: APP.ACTOR_ID
     });

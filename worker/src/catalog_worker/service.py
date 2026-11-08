@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 from flask import Flask, jsonify, request
 from google.cloud import tasks_v2
 
@@ -26,7 +27,7 @@ def _authorized() -> bool:
     return bool(expected) and hmac.compare_digest(supplied, "Bearer " + expected)
 
 
-def _enqueue(run_id: str, job_file_id: str) -> str:
+def _enqueue(run_id: str, job_file_id: str, idempotency_key: str) -> str:
     project = _required_env("GOOGLE_CLOUD_PROJECT")
     location = _required_env("CLOUD_TASKS_LOCATION")
     queue = _required_env("CLOUD_TASKS_QUEUE")
@@ -35,7 +36,8 @@ def _enqueue(run_id: str, job_file_id: str) -> str:
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project, location, queue)
     task_name = client.task_path(project, location, queue, "catalog-" + run_id.replace("_", "-"))
-    body = json.dumps({"run_id": run_id, "job_file_id": job_file_id}).encode()
+    body = json.dumps({"run_id": run_id, "job_file_id": job_file_id,
+                       "idempotency_key": idempotency_key}).encode()
     task = {
         "name": task_name,
         "dispatch_deadline": {"seconds": 1800},
@@ -70,10 +72,13 @@ def dispatch():
         return jsonify({"ok": False, "error": "CONTRACT_VERSION_MISMATCH"}), 400
     run_id = body.get("run_id")
     job_file_id = body.get("job_file_id")
-    if not all(isinstance(v, str) and v.strip() for v in (run_id, job_file_id)):
-        return jsonify({"ok": False, "error": "INVALID_REQUEST"}), 400
+    idempotency_key = body.get("idempotency_key")
+    header_key = request.headers.get("Idempotency-Key", "").strip().lower()
+    if (not all(isinstance(v, str) and v.strip() for v in (run_id, job_file_id, idempotency_key)) or
+            not re.fullmatch(r"[a-f0-9]{64}", idempotency_key) or header_key != idempotency_key):
+        return jsonify({"ok": False, "error": "INVALID_IDEMPOTENCY_KEY"}), 400
     try:
-        task_name = _enqueue(run_id, job_file_id)
+        task_name = _enqueue(run_id, job_file_id, idempotency_key)
         return jsonify({"ok": True, "accepted": True, "run_id": run_id, "task": task_name}), 202
     except Exception:
         app.logger.exception("Could not enqueue catalog worker task")
@@ -105,6 +110,7 @@ def execute_task():
     try:
         result = run_from_drive(
             job_file_id=body["job_file_id"], expected_run_id=body["run_id"],
+            expected_idempotency_key=body["idempotency_key"],
         )
         return jsonify(result), 200
     except Exception:

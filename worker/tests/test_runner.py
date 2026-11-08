@@ -52,6 +52,11 @@ class FakeDrive:
         return file_id, hashlib.sha256(content).hexdigest()
 
 
+def idempotency_key(run_id, logical_job_id, source_sha, attempt=1, parent=None, retry=None):
+    identity = "|".join([logical_job_id, run_id, str(attempt), parent or "", retry or "", source_sha])
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
 def make_pdf(path):
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +90,7 @@ def test_drive_runner_processes_and_uploads_immutable_artifacts(tmp_path):
         "catalog_id": "cat_test_001",
         "source_pdf_file_id": "source-pdf",
         "source_sha256": source_sha,
+        "idempotency_key": idempotency_key("run_test_001", "job_test_001", source_sha),
         "attempt_number": 1,
         "run_folder_id": "folder-run",
         "extraction_profile": "embedded-text-v1",
@@ -114,6 +120,7 @@ def test_source_hash_mismatch_publishes_terminal_failure_manifest(tmp_path):
         "contract_version": "1", "run_id": "run_test_002",
         "logical_job_id": "job_test_002", "catalog_id": "cat_test_002",
         "source_pdf_file_id": "source-pdf", "source_sha256": "0" * 64,
+        "idempotency_key": idempotency_key("run_test_002", "job_test_002", "0" * 64),
         "attempt_number": 1, "run_folder_id": "folder-run",
     }
     drive = FakeDrive(job, pdf_bytes)
@@ -133,6 +140,7 @@ def test_repeated_delivery_reuses_the_same_immutable_result_manifest(tmp_path):
         "logical_job_id": "job_test_003", "catalog_id": "cat_test_003",
         "source_pdf_file_id": "source-pdf",
         "source_sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+        "idempotency_key": idempotency_key("run_test_003", "job_test_003", hashlib.sha256(pdf_bytes).hexdigest()),
         "attempt_number": 1, "run_folder_id": "folder-run",
     }
     drive = FakeDrive(job, pdf_bytes)
@@ -158,6 +166,7 @@ def test_drive_runner_extracts_and_uploads_images_when_enabled(tmp_path, monkeyp
         "catalog_id": "cat_test_images_001",
         "source_pdf_file_id": "source-pdf",
         "source_sha256": source_sha,
+        "idempotency_key": idempotency_key("run_test_images_001", "job_test_images_001", source_sha),
         "attempt_number": 1,
         "run_folder_id": "folder-run",
         "extraction_profile": "embedded-text-v1",
@@ -197,6 +206,7 @@ def test_drive_runner_records_images_disabled_by_default(tmp_path, monkeypatch):
         "catalog_id": "cat_test_images_002",
         "source_pdf_file_id": "source-pdf",
         "source_sha256": source_sha,
+        "idempotency_key": idempotency_key("run_test_images_002", "job_test_images_002", source_sha),
         "attempt_number": 1,
         "run_folder_id": "folder-run",
     }

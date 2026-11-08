@@ -60,7 +60,7 @@ def _publish_manifest(drive: DriveClient, folder_id: str, manifest: dict[str, An
 def _failure_manifest(
     *, run_id: str, logical_job_id: str, catalog_id: str, source_sha: str,
     attempt: int, parent_run_id: str | None, retry_reason: str | None,
-    error_code: str, error_message: str, page_count: int = 0,
+    idempotency_key: str, error_code: str, error_message: str, page_count: int = 0,
 ) -> dict[str, Any]:
     now = _utc_now()
     return {
@@ -70,6 +70,7 @@ def _failure_manifest(
         "run_type": "CATALOG_EXTRACTION",
         "run_id": run_id,
         "logical_job_id": logical_job_id,
+        "idempotency_key": idempotency_key,
         "attempt_number": attempt,
         "parent_run_id": parent_run_id,
         "retry_reason": retry_reason,
@@ -93,6 +94,7 @@ def _failure_manifest(
 def _existing_terminal_result(
     drive: DriveClient, run_dir: Path, items: list[dict[str, Any]],
     *, run_id: str, logical_job_id: str, catalog_id: str, source_sha: str,
+    idempotency_key: str,
 ) -> dict[str, Any] | None:
     for item in items:
         if item.get("name") != "result-manifest.json":
@@ -109,7 +111,8 @@ def _existing_terminal_result(
         if (manifest.get("run_id") != run_id or
                 manifest.get("logical_job_id") != logical_job_id or
                 manifest.get("catalog_id") != catalog_id or
-                manifest.get("source_sha256") != source_sha):
+                manifest.get("source_sha256") != source_sha or
+                manifest.get("idempotency_key") != idempotency_key):
             raise RunnerError("RESULT_MANIFEST_IDENTITY_CONFLICT")
         if manifest.get("manifest_version") != MANIFEST_VERSION or manifest.get("protocol_version") != "1":
             raise RunnerError("RESULT_MANIFEST_VERSION_CONFLICT")
@@ -127,6 +130,7 @@ def _existing_terminal_result(
 
 def run_from_drive(
     *, job_file_id: str, expected_run_id: str | None = None,
+    expected_idempotency_key: str | None = None,
     drive: DriveClient | None = None, output_root: str | Path | None = None,
 ) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", job_file_id or ""):
@@ -157,11 +161,23 @@ def run_from_drive(
     source_sha = _required(job, "source_sha256").lower()
     if not re.fullmatch(r"[a-f0-9]{64}", source_sha):
         raise RunnerError("INVALID_SOURCE_SHA256")
+    idempotency_key = _required(job, "idempotency_key").lower()
+    if not re.fullmatch(r"[a-f0-9]{64}", idempotency_key):
+        raise RunnerError("INVALID_IDEMPOTENCY_KEY")
     attempt = job.get("attempt_number", 1)
     if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
         raise RunnerError("INVALID_ATTEMPT_NUMBER")
     parent_run_id = job.get("parent_run_id") or None
     retry_reason = job.get("retry_reason") or None
+    parent_run_id = parent_run_id.strip() if isinstance(parent_run_id, str) else None
+    retry_reason = retry_reason.strip() if isinstance(retry_reason, str) else None
+    expected_key = hashlib.sha256(
+        f"{logical_job_id}|{run_id}|{attempt}|{parent_run_id or ''}|{retry_reason or ''}|{source_sha}".encode()
+    ).hexdigest()
+    if idempotency_key != expected_key:
+        raise RunnerError("IDEMPOTENCY_KEY_MISMATCH")
+    if expected_idempotency_key and idempotency_key != expected_idempotency_key:
+        raise RunnerError("DISPATCH_IDEMPOTENCY_KEY_MISMATCH")
 
     run_folder_id = job.get("run_folder_id")
     if not isinstance(run_folder_id, str) or not run_folder_id:
@@ -185,6 +201,7 @@ def run_from_drive(
     existing = _existing_terminal_result(
         drive, run_dir, drive_items, run_id=run_id,
         logical_job_id=logical_job_id, catalog_id=catalog_id, source_sha=source_sha,
+        idempotency_key=idempotency_key,
     )
     if existing:
         return existing
@@ -196,7 +213,7 @@ def run_from_drive(
         failure = _failure_manifest(
             run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
             source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
-            retry_reason=retry_reason, error_code="SOURCE_HASH_MISMATCH",
+            retry_reason=retry_reason, idempotency_key=idempotency_key, error_code="SOURCE_HASH_MISMATCH",
             error_message="Downloaded source PDF SHA-256 differs from the immutable job manifest.",
         )
         return _publish_manifest(drive, run_folder_id, failure)
@@ -206,7 +223,7 @@ def run_from_drive(
         failure = _failure_manifest(
             run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
             source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
-            retry_reason=retry_reason, error_code="PDF_READ_FAILED",
+            retry_reason=retry_reason, idempotency_key=idempotency_key, error_code="PDF_READ_FAILED",
             error_message="Source PDF is corrupt or unreadable.",
         )
         return _publish_manifest(drive, run_folder_id, failure)
@@ -214,7 +231,7 @@ def run_from_drive(
         failure = _failure_manifest(
             run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
             source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
-            retry_reason=retry_reason, error_code="PDF_HAS_NO_PAGES",
+            retry_reason=retry_reason, idempotency_key=idempotency_key, error_code="PDF_HAS_NO_PAGES",
             error_message="Source PDF contains no pages.",
         )
         return _publish_manifest(drive, run_folder_id, failure)
@@ -227,7 +244,7 @@ def run_from_drive(
         "attempt_number": attempt, "parent_run_id": parent_run_id,
         "retry_reason": retry_reason, "catalog_page_ids": page_ids,
         "extraction_profile": job.get("extraction_profile", "embedded-text-v1"),
-        "idempotency_key": job.get("idempotency_key"),
+        "idempotency_key": idempotency_key,
     }
 
     published_artifacts: dict[str, tuple[str, str]] = {}
@@ -248,7 +265,7 @@ def run_from_drive(
         manifest = _failure_manifest(
             run_id=run_id, logical_job_id=logical_job_id, catalog_id=catalog_id,
             source_sha=source_sha, attempt=attempt, parent_run_id=parent_run_id,
-            retry_reason=retry_reason, error_code=exc.code,
+            retry_reason=retry_reason, idempotency_key=idempotency_key, error_code=exc.code,
             error_message=exc.message, page_count=page_count,
         )
 

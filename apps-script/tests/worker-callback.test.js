@@ -57,7 +57,7 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   };
   const run = {
     Run_ID: "run_1", Catalog_ID: "cat_1", Logical_Job_ID: "logical_1",
-    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: ""
+    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: "", Idempotency_Key: "a".repeat(64)
   };
   const catalog = {
     Catalog_ID: "cat_1", Source_File_ID: "source-file-id-123456",
@@ -103,11 +103,13 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   assert.equal(run.Run_Status, "RUNNING");
   assert.equal(request.url, "https://worker.example/run");
   assert.equal(request.options.headers.Authorization, "Bearer shared-worker-token");
-  assert.equal(request.options.headers["Idempotency-Key"], "run_1");
+  assert.equal(request.options.headers["Idempotency-Key"], run.Idempotency_Key);
+  assert.equal(JSON.parse(request.options.payload).idempotency_key, run.Idempotency_Key);
   const job = JSON.parse(jobContent);
   assert.equal(job.run_id, "run_1");
   assert.equal(job.source_pdf_file_id, "source-file-id-123456");
   assert.equal(job.run_folder_id, "run-folder-id-123456");
+  assert.equal(job.idempotency_key, run.Idempotency_Key);
 });
 
 test("poller marks an expired worker lease failed when no result manifest exists", () => {

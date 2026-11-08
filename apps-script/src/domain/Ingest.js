@@ -32,6 +32,9 @@ var Ingest = (function () {
     if (requireString_(manifest, "run_id") !== run.Run_ID) throw new Error("MANIFEST_RUN_MISMATCH");
     if (requireString_(manifest, "catalog_id") !== run.Catalog_ID) throw new Error("MANIFEST_CATALOG_MISMATCH");
     if (requireString_(manifest, "logical_job_id") !== run.Logical_Job_ID) throw new Error("MANIFEST_LOGICAL_JOB_MISMATCH");
+    if (requireString_(manifest, "idempotency_key") !== String(run.Idempotency_Key || "").trim().toLowerCase()) {
+      throw new Error("MANIFEST_IDEMPOTENCY_MISMATCH");
+    }
     if (manifest.attempt_number !== Number(run.Attempt_Number) || manifest.run_type !== "CATALOG_EXTRACTION" ||
         String(manifest.parent_run_id || "") !== String(run.Parent_Run_ID || "") ||
         String(manifest.retry_reason || "") !== String(run.Retry_Reason || "")) {
