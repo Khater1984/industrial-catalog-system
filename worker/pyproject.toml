@@ -9,6 +9,7 @@ description = "Resumable page-by-page PDF intake worker"
 requires-python = ">=3.11"
 dependencies = [
   "pypdf>=5.0,<7.0",
+  "Pillow>=10.0,<13.0",
   "Flask>=3.0,<4.0",
   "gunicorn>=22.0,<24.0",
   "google-api-python-client>=2.140,<3.0",

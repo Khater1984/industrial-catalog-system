@@ -58,6 +58,12 @@ def test_extracts_embedded_image_and_writes_sha256_manifest(tmp_path):
     assert image["catalog_page_id"] == "catalog_page_001"
     assert image["source_type"] == "CATALOG_EMBEDDED"
     assert image["sha256"] == hashlib.sha256(image_bytes).hexdigest()
+    assert image["metadata_status"] == "COMPLETED"
+    assert image["mime_type"] == "image/png"
+    assert image["width_px"] == 3
+    assert image["height_px"] == 2
+    assert image["has_alpha"] is False
+    assert image["file_size_bytes"] == len(image_bytes)
     artifact = output / image["artifact_path"]
     assert artifact.read_bytes() == image_bytes
 
@@ -94,3 +100,28 @@ def test_rejects_invalid_image_size_limit(tmp_path):
     with pytest.raises(ImageExtractionError) as error:
         extract_embedded_images(source, tmp_path / "out", enabled=True, max_image_bytes=0)
     assert error.value.code == "INVALID_IMAGE_LIMIT"
+
+
+def test_probe_metadata_uses_image_bytes_not_file_extension():
+    from catalog_worker.images import _probe_image
+
+    buffer = BytesIO()
+    Image.new("RGBA", (7, 5), (10, 20, 30, 100)).save(buffer, format="PNG")
+    result = _probe_image(buffer.getvalue())
+
+    assert result["metadata_status"] == "COMPLETED"
+    assert result["mime_type"] == "image/png"
+    assert result["extension"] == ".png"
+    assert result["width_px"] == 7
+    assert result["height_px"] == 5
+    assert result["has_alpha"] is True
+
+
+def test_probe_metadata_marks_unsupported_bytes_for_review():
+    from catalog_worker.images import _probe_image
+
+    result = _probe_image(b"not-an-image")
+    assert result["metadata_status"] == "FAILED"
+    assert result["mime_type"] == "application/octet-stream"
+    assert result["width_px"] is None
+    assert result["height_px"] is None

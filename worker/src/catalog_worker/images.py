@@ -8,10 +8,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import mimetypes
 import os
 import tempfile
 from pathlib import Path
+from io import BytesIO
+
+from PIL import Image, UnidentifiedImageError
 from typing import Any
 
 from pypdf import PdfReader
@@ -55,8 +57,57 @@ def _hash_record(record: dict[str, Any]) -> str:
 
 def _safe_extension(name: str) -> str:
     suffix = Path(str(name or "")).suffix.lower()
-    allowed = {".jpg", ".jpeg", ".png", ".jp2", ".jpx", ".tif", ".tiff", ".bmp", ".gif"}
+    allowed = {".jpg", ".jpeg", ".png", ".jp2", ".jpx", ".tif", ".tiff", ".bmp", ".gif", ".webp"}
     return suffix if suffix in allowed else ".bin"
+
+
+_IMAGE_FORMATS = {
+    "JPEG": ("image/jpeg", ".jpg"),
+    "PNG": ("image/png", ".png"),
+    "WEBP": ("image/webp", ".webp"),
+    "GIF": ("image/gif", ".gif"),
+    "TIFF": ("image/tiff", ".tiff"),
+    "BMP": ("image/bmp", ".bmp"),
+    "JPEG2000": ("image/jp2", ".jp2"),
+}
+
+
+def _probe_image(data: bytes) -> dict[str, Any]:
+    """Read image properties from actual bytes, never from the filename."""
+    try:
+        with Image.open(BytesIO(data)) as candidate:
+            image_format = (candidate.format or "").upper()
+            candidate.verify()
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+            if width < 1 or height < 1 or width > 50000 or height > 50000:
+                raise ValueError("Image dimensions are outside the supported range.")
+            if width * height > 100000000:
+                raise ValueError("Image pixel count exceeds the supported limit.")
+            has_alpha = image.mode in {"RGBA", "LA", "PA"} or "transparency" in image.info
+        mime_type, extension = _IMAGE_FORMATS.get(
+            image_format, ("application/octet-stream", ".bin")
+        )
+        if mime_type == "application/octet-stream":
+            raise ValueError("Image format is not supported for metadata extraction.")
+        return {
+            "metadata_status": "COMPLETED",
+            "mime_type": mime_type,
+            "extension": extension,
+            "width_px": int(width),
+            "height_px": int(height),
+            "has_alpha": bool(has_alpha),
+        }
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        return {
+            "metadata_status": "FAILED",
+            "metadata_error": str(exc)[:300] or "IMAGE_METADATA_UNAVAILABLE",
+            "mime_type": "application/octet-stream",
+            "extension": ".bin",
+            "width_px": None,
+            "height_px": None,
+            "has_alpha": None,
+        }
 
 
 def _write_immutable(path: Path, data: bytes) -> None:
@@ -178,7 +229,8 @@ def extract_embedded_images(
 
             digest = sha256_bytes(raw)
             original_name = str(getattr(image, "name", "") or f"image-{image_index}")
-            extension = _safe_extension(original_name)
+            probe = _probe_image(raw)
+            extension = probe["extension"] if probe["metadata_status"] == "COMPLETED" else _safe_extension(original_name)
             relative_path = Path("images") / f"page-{page_number:05d}" / f"{digest}{extension}"
             artifact_path = root / relative_path
             _write_immutable(artifact_path, raw)
@@ -194,7 +246,13 @@ def extract_embedded_images(
                 "image_index": image_index,
                 "original_name": original_name,
                 "source_type": "CATALOG_EMBEDDED",
-                "mime_type": mimetypes.guess_type("image" + extension)[0] or "application/octet-stream",
+                "mime_type": probe["mime_type"],
+                "width_px": probe["width_px"],
+                "height_px": probe["height_px"],
+                "has_alpha": probe["has_alpha"],
+                "metadata_status": probe["metadata_status"],
+                "metadata_error": probe.get("metadata_error", ""),
+                "quality_status": "UNASSESSED" if probe["metadata_status"] == "COMPLETED" else "NEEDS_REVIEW",
                 "file_size_bytes": len(raw),
                 "sha256": digest,
                 "source_pdf_sha256": source_sha,
