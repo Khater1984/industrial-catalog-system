@@ -1,8 +1,7 @@
 /** Promotes accepted image staging records into Image_Assets / Image_Links.
 
-This is a companion to StagingPromotion. It expects an image-manifest or
-staging.images array with Drive file IDs already uploaded (or local paths
-for DEV). Source images are immutable.
+Images must already exist in Drive. This module refuses incomplete image metadata
+instead of writing invalid rows that violate Schema V2.1.
 */
 var ImagePromotion = (function () {
   function now_() { return new Date().toISOString(); }
@@ -17,65 +16,77 @@ var ImagePromotion = (function () {
     var text = value === undefined || value === null ? "" : String(value).trim();
     return text.length > limit ? text.slice(0, limit) : text;
   }
+  function require_(condition, code) {
+    if (!condition) throw new Error(code);
+  }
   function appendOnce_(table, record) { return SheetsRepository.append(table, record); }
   function existingBy_(table, column, value) {
     return value ? SheetsRepository.getBy(table, column, value) : null;
   }
 
   function promoteAcceptedImages(options) {
-    if (!options || !options.images) return { status: "SKIPPED", reason: "NO_IMAGES" };
+    require_(options && Array.isArray(options.images), "IMAGE_PROMOTION_IMAGES_INVALID");
     var actor = options.actor || APP.ACTOR_ID;
-    var runId = text_(options.run_id, 120);
     var catalogId = text_(options.catalog_id, 120);
     var counts = { assets: 0, links: 0, skipped: 0 };
 
-    (options.images || []).forEach(function (img) {
-      if (img.review_status && img.review_status !== "ACCEPTED") {
+    options.images.forEach(function (img) {
+      if (!img || img.review_status !== "ACCEPTED") {
         counts.skipped += 1;
         return;
       }
-      var digest = text_(img.sha256, 64);
-      if (!digest || digest.length !== 64) {
-        counts.skipped += 1;
-        return;
-      }
-      var imageId = stableId_("img", digest);
-      var existing = existingBy_("Image_Assets", "Image_ID", imageId);
-      if (existing) {
-        counts.skipped += 1;
-        return;
-      }
-      appendOnce_("Image_Assets", {
-        Image_ID: imageId,
-        Original_File_ID: text_(img.drive_file_id || "", 120),
-        Original_File_Name: text_(img.original_name, 255),
-        MIME_Type: text_(img.mime_type, 100),
-        Width_PX: Number(img.width_px) || 0,
-        Height_PX: Number(img.height_px) || 0,
-        File_Size_Bytes: Number(img.file_size_bytes) || 0,
-        Has_Alpha: false,
-        Orientation: "NORMALIZED",
-        SHA256: digest,
-        Source_Type: "CATALOG_EMBEDDED",
-        Source_Catalog_ID: catalogId,
-        Source_Catalog_Page_ID: text_(img.catalog_page_id, 120),
-        Source_Page_Label: String(img.page_number || ""),
-        Quality_Status: "UNASSESSED",
-        Lifecycle_Status: "ACTIVE",
-        Created_At: now_(),
-        Created_By: actor
-      });
-      counts.assets += 1;
 
-      // Optional link if target provided
-      if (img.target_type && img.target_id) {
+      var digest = text_(img.sha256, 64).toLowerCase();
+      require_(/^[a-f0-9]{64}$/.test(digest), "IMAGE_SHA256_INVALID");
+      var driveFileId = text_(img.drive_file_id, 120);
+      require_(driveFileId, "IMAGE_DRIVE_FILE_ID_REQUIRED");
+      var originalName = text_(img.original_name, 255);
+      var mimeType = text_(img.mime_type, 100);
+      var width = Number(img.width_px);
+      var height = Number(img.height_px);
+      var fileSize = Number(img.file_size_bytes);
+      require_(originalName && mimeType, "IMAGE_FILE_METADATA_REQUIRED");
+      require_(Number.isInteger(width) && width > 0, "IMAGE_WIDTH_REQUIRED");
+      require_(Number.isInteger(height) && height > 0, "IMAGE_HEIGHT_REQUIRED");
+      require_(Number.isInteger(fileSize) && fileSize > 0, "IMAGE_FILE_SIZE_REQUIRED");
+
+      var imageId = stableId_("img", digest);
+      var existingAsset = existingBy_("Image_Assets", "Image_ID", imageId);
+      if (!existingAsset) {
+        appendOnce_("Image_Assets", {
+          Image_ID: imageId,
+          Original_File_ID: driveFileId,
+          Original_File_Name: originalName,
+          MIME_Type: mimeType,
+          Width_PX: width,
+          Height_PX: height,
+          File_Size_Bytes: fileSize,
+          Has_Alpha: Boolean(img.has_alpha),
+          Orientation: "NORMALIZED",
+          SHA256: digest,
+          Source_Type: "CATALOG_EMBEDDED",
+          Source_Catalog_ID: catalogId,
+          Source_Catalog_Page_ID: text_(img.catalog_page_id, 120),
+          Source_Page_Label: text_(img.page_number, 80),
+          Quality_Status: "UNASSESSED",
+          Lifecycle_Status: "ACTIVE",
+          Created_At: now_(),
+          Created_By: actor
+        });
+        counts.assets += 1;
+      }
+
+      // Create a missing link even when the asset already exists (safe retry).
+      if (img.target_type || img.target_id) {
+        require_(img.target_type === "PRODUCT" || img.target_type === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
+        require_(text_(img.target_id, 120), "IMAGE_TARGET_ID_REQUIRED");
         var linkId = stableId_("imgl", imageId + "|" + img.target_type + "|" + img.target_id);
         if (!existingBy_("Image_Links", "Image_Link_ID", linkId)) {
           appendOnce_("Image_Links", {
             Image_Link_ID: linkId,
             Image_ID: imageId,
             Target_Type: img.target_type,
-            Target_ID: img.target_id,
+            Target_ID: text_(img.target_id, 120),
             Is_Primary: false,
             Catalog_Approved: false,
             DataSheet_Approved: false,
