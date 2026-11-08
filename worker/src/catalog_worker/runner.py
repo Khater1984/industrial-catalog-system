@@ -12,6 +12,7 @@ from typing import Any
 import pypdf
 
 from .drive_io import DriveClient
+from .images import ImageExtractionError, extract_embedded_images, image_extraction_enabled
 from .resumable import (
     MANIFEST_VERSION, WORKER_VERSION, WorkerError, canonical_json_bytes,
     process_resumable_catalog_job, sha256_bytes,
@@ -266,4 +267,80 @@ def run_from_drive(
         row["output_manifest_file_id"] = artifact_id
         uploaded_pages.append(row)
     manifest["pages"] = uploaded_pages
+
+    # Image extraction is an independent, opt-in stage. It runs after the
+    # resumable text engine and before publishing the terminal result manifest.
+    # Thus a process interruption can safely retry image uploads without
+    # repeating or corrupting completed page checkpoints.
+    if image_extraction_enabled():
+        try:
+            extracted = extract_embedded_images(
+                pdf_path,
+                run_dir,
+                enabled=True,
+                catalog_id=catalog_id,
+                run_id=run_id,
+                catalog_page_ids=page_ids,
+            )
+            uploaded_images = []
+            for image_row in extracted.get("images", []):
+                relative = Path(image_row["artifact_path"])
+                image_path = (run_dir / relative).resolve()
+                if run_dir not in image_path.parents or not image_path.is_file():
+                    raise RunnerError("IMAGE_ARTIFACT_PATH_INVALID")
+                drive_file_id, drive_sha = drive.upload_file(
+                    run_folder_id,
+                    image_path.name,
+                    image_path,
+                    image_row["mime_type"],
+                )
+                uploaded_row = dict(image_row)
+                uploaded_row["drive_file_id"] = drive_file_id
+                uploaded_row["drive_sha256"] = drive_sha
+                uploaded_images.append(uploaded_row)
+
+            image_manifest = dict(extracted)
+            image_manifest["images"] = uploaded_images
+            image_manifest.pop("manifest_sha256", None)
+            image_manifest["manifest_sha256"] = sha256_bytes(
+                canonical_json_bytes(image_manifest)
+            )
+            image_manifest_bytes = canonical_json_bytes(image_manifest)
+            image_manifest_id, image_manifest_sha = drive.upload_bytes(
+                run_folder_id,
+                "image-manifest.json",
+                image_manifest_bytes,
+                "application/json",
+            )
+            manifest["image_extraction"] = {
+                "enabled": True,
+                "status": "COMPLETED",
+                "image_count": len(uploaded_images),
+                "uploaded_count": len(uploaded_images),
+                "manifest_file_id": image_manifest_id,
+                "manifest_sha256": image_manifest_sha,
+            }
+        except ImageExtractionError as exc:
+            # Deterministic extraction failures are made explicit in the
+            # terminal result rather than silently reporting a complete run.
+            manifest["image_extraction"] = {
+                "enabled": True,
+                "status": "FAILED",
+                "image_count": 0,
+                "uploaded_count": 0,
+                "error_code": exc.code,
+                "error_message": exc.message[:1000],
+            }
+            manifest["run_status"] = "FAILED"
+            manifest["error_code"] = "IMAGE_EXTRACTION_FAILED"
+            manifest["error_message"] = exc.message[:1000]
+            manifest["failed_units"] = max(1, int(manifest.get("failed_units", 0)))
+    else:
+        manifest["image_extraction"] = {
+            "enabled": False,
+            "status": "DISABLED",
+            "image_count": 0,
+            "uploaded_count": 0,
+        }
+
     return _publish_manifest(drive, run_folder_id, manifest)

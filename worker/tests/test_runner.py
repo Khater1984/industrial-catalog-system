@@ -1,7 +1,10 @@
 import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
 
+from PIL import Image
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from catalog_worker import runner
@@ -54,6 +57,19 @@ def make_pdf(path):
     output.parent.mkdir(parents=True, exist_ok=True)
     pdf = canvas.Canvas(str(output))
     pdf.drawString(72, 720, "Industrial catalog page one")
+    pdf.showPage()
+    pdf.save()
+    return output.read_bytes()
+
+
+def make_pdf_with_image(path):
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image = BytesIO()
+    Image.new("RGB", (4, 3), (30, 90, 160)).save(image, format="PNG")
+    image.seek(0)
+    pdf = canvas.Canvas(str(output))
+    pdf.drawImage(ImageReader(image), 72, 700, width=40, height=30)
     pdf.showPage()
     pdf.save()
     return output.read_bytes()
@@ -129,3 +145,74 @@ def test_repeated_delivery_reuses_the_same_immutable_result_manifest(tmp_path):
     assert second["result_manifest_file_id"] == first["result_manifest_file_id"]
     assert second["result_manifest_sha256"] == first["result_manifest_sha256"]
     assert second["run_status"] == "COMPLETED"
+
+
+
+def test_drive_runner_extracts_and_uploads_images_when_enabled(tmp_path, monkeypatch):
+    pdf_bytes = make_pdf_with_image(tmp_path / "source-with-image.pdf")
+    source_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    job = {
+        "contract_version": "1",
+        "run_id": "run_test_images_001",
+        "logical_job_id": "job_test_images_001",
+        "catalog_id": "cat_test_images_001",
+        "source_pdf_file_id": "source-pdf",
+        "source_sha256": source_sha,
+        "attempt_number": 1,
+        "run_folder_id": "folder-run",
+        "extraction_profile": "embedded-text-v1",
+    }
+    drive = FakeDrive(job, pdf_bytes)
+    monkeypatch.setattr(runner, "image_extraction_enabled", lambda: True)
+
+    result = runner.run_from_drive(
+        job_file_id="job-file-id-123456",
+        drive=drive,
+        output_root=tmp_path / "work-images",
+    )
+
+    assert result["run_status"] == "COMPLETED"
+    manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
+    image_state = manifest["image_extraction"]
+    assert image_state["enabled"] is True
+    assert image_state["status"] == "COMPLETED"
+    assert image_state["image_count"] == image_state["uploaded_count"] == 1
+
+    image_manifest_file = drive.files[image_state["manifest_file_id"]]
+    image_manifest = json.loads(image_manifest_file["content"])
+    assert image_manifest["image_count"] == 1
+    uploaded_image = image_manifest["images"][0]
+    image_file = drive.files[uploaded_image["drive_file_id"]]
+    assert hashlib.sha256(image_file["content"]).hexdigest() == uploaded_image["sha256"]
+    assert uploaded_image["drive_sha256"] == uploaded_image["sha256"]
+
+
+def test_drive_runner_records_images_disabled_by_default(tmp_path, monkeypatch):
+    pdf_bytes = make_pdf(tmp_path / "source-no-image.pdf")
+    source_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    job = {
+        "contract_version": "1",
+        "run_id": "run_test_images_002",
+        "logical_job_id": "job_test_images_002",
+        "catalog_id": "cat_test_images_002",
+        "source_pdf_file_id": "source-pdf",
+        "source_sha256": source_sha,
+        "attempt_number": 1,
+        "run_folder_id": "folder-run",
+    }
+    drive = FakeDrive(job, pdf_bytes)
+    monkeypatch.setattr(runner, "image_extraction_enabled", lambda: False)
+
+    result = runner.run_from_drive(
+        job_file_id="job-file-id-123456",
+        drive=drive,
+        output_root=tmp_path / "work-images-disabled",
+    )
+
+    manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
+    assert manifest["image_extraction"] == {
+        "enabled": False,
+        "status": "DISABLED",
+        "image_count": 0,
+        "uploaded_count": 0,
+    }
