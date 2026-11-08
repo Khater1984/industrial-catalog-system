@@ -4,6 +4,23 @@ var WorkerIntegration = (function () {
   function property_(name) {
     return (PropertiesService.getScriptProperties().getProperty(name) || "").trim();
   }
+  function sha256Text_(value) {
+    var bytes = Utilities.newBlob(String(value), "text/plain").getBytes();
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
+    return digest.map(function (b) {
+      var v = (b < 0 ? b + 256 : b).toString(16);
+      return v.length === 1 ? "0" + v : v;
+    }).join("");
+  }
+  function expectedIdempotencyKey_(run, catalog) {
+    var attempt = Number(run.Attempt_Number) || 1;
+    var parent = String(run.Parent_Run_ID || "").trim();
+    var retry = String(run.Retry_Reason || "").trim();
+    return sha256Text_([
+      String(run.Logical_Job_ID).trim(), String(run.Run_ID).trim(), String(attempt),
+      parent, retry, String(catalog.SHA256).trim().toLowerCase()
+    ].join("|"));
+  }
   function getRunFolder_(runId) {
     var rootId = property_("DEV_RUNS_FOLDER_ID");
     if (!rootId) throw new Error("CONFIG_MISSING: DEV_RUNS_FOLDER_ID");
@@ -33,11 +50,21 @@ var WorkerIntegration = (function () {
       var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
       var catalog = SheetsRepository.getBy("Catalogs", "Catalog_ID", catalogId);
       if (!run || !catalog || run.Catalog_ID !== catalogId) throw new Error("RUN_CATALOG_NOT_FOUND");
-      var idempotencyKey = String(run.Idempotency_Key || "").trim().toLowerCase();
-      if (!/^[a-f0-9]{64}$/.test(idempotencyKey)) throw new Error("RUN_IDEMPOTENCY_KEY_INVALID");
       if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) >= 0) {
         throw new Error("TERMINAL_RUN_CANNOT_DISPATCH");
       }
+      var idempotencyKey = expectedIdempotencyKey_(run, catalog);
+      var storedKey = String(run.Idempotency_Key || "").trim().toLowerCase();
+      if (storedKey !== idempotencyKey) {
+        var migrationFolder = getRunFolder_(runId);
+        var existingJob = migrationFolder.getFilesByName("job.json");
+        var canMigrate = ["QUEUED", "RETRY_PENDING"].indexOf(run.Run_Status) >= 0 &&
+          !run.Input_Manifest_File_ID && !existingJob.hasNext();
+        if (!canMigrate) throw new Error("RUN_IDEMPOTENCY_KEY_MISMATCH");
+        SheetsRepository.updateBy("Run_Log", "Run_ID", runId, { Idempotency_Key: idempotencyKey });
+        run.Idempotency_Key = idempotencyKey;
+      }
+      if (!/^[a-f0-9]{64}$/.test(idempotencyKey)) throw new Error("RUN_IDEMPOTENCY_KEY_INVALID");
       var folder = getRunFolder_(runId);
       var job = {
         contract_version: CONTRACT_VERSION, manifest_version: 1,

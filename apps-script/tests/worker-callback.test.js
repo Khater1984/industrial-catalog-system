@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
@@ -57,7 +58,7 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   };
   const run = {
     Run_ID: "run_1", Catalog_ID: "cat_1", Logical_Job_ID: "logical_1",
-    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: "", Idempotency_Key: "a".repeat(64)
+    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: "", Idempotency_Key: "catalog_sha256_" + "a".repeat(64)
   };
   const catalog = {
     Catalog_ID: "cat_1", Source_File_ID: "source-file-id-123456",
@@ -82,7 +83,12 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     DriveApp: { getFolderById: () => root },
     MimeType: { JSON: "application/json" },
-    Utilities: { sleep() {}, getUuid: () => "lease-test-uuid" },
+    Utilities: {
+      sleep() {}, getUuid: () => "lease-test-uuid",
+      DigestAlgorithm: { SHA_256: "SHA-256" },
+      newBlob: (value) => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
+      computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest()).map((byte) => byte > 127 ? byte - 256 : byte)
+    },
     SheetsRepository: {
       getBy: (table) => table === "Run_Log" ? run : catalog,
       updateBy: (_table, _key, _value, patch) => Object.assign(run, patch)
@@ -110,6 +116,7 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   assert.equal(job.source_pdf_file_id, "source-file-id-123456");
   assert.equal(job.run_folder_id, "run-folder-id-123456");
   assert.equal(job.idempotency_key, run.Idempotency_Key);
+  assert.match(run.Idempotency_Key, /^[a-f0-9]{64}$/);
 });
 
 test("poller marks an expired worker lease failed when no result manifest exists", () => {
