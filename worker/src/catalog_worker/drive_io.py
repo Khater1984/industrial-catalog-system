@@ -2,6 +2,7 @@
 
 Uses Application Default Credentials (service account on Cloud Run). The service
 account must be explicitly shared on the configured Drive folder/shared drive.
+Transient Google API and transport failures use the client's bounded retry logic.
 """
 from __future__ import annotations
 
@@ -19,8 +20,21 @@ class DriveError(RuntimeError):
     pass
 
 
+def _retry_count(value: int | None) -> int:
+    if value is None:
+        raw = os.environ.get("WORKER_DRIVE_MAX_RETRIES", "5")
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise DriveError("DRIVE_RETRY_CONFIG_INVALID") from exc
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 10:
+        raise DriveError("DRIVE_RETRY_CONFIG_INVALID")
+    return value
+
+
 class DriveClient:
-    def __init__(self, service=None):
+    def __init__(self, service=None, *, max_retries: int | None = None):
+        self.max_retries = _retry_count(max_retries)
         if service is None:
             try:
                 import google.auth
@@ -41,7 +55,7 @@ class DriveClient:
             return self.service.files().get(
                 fileId=file_id, fields="id,name,mimeType,parents,sha256Checksum,size",
                 supportsAllDrives=True,
-            ).execute()
+            ).execute(num_retries=self.max_retries)
         except Exception as exc:
             raise DriveError("DRIVE_FILE_LOOKUP_FAILED") from exc
 
@@ -54,7 +68,7 @@ class DriveClient:
                 downloader = MediaIoBaseDownload(stream, request, chunksize=1024 * 1024)
                 done = False
                 while not done:
-                    _, done = downloader.next_chunk()
+                    _, done = downloader.next_chunk(num_retries=self.max_retries)
             return target
         except Exception as exc:
             target.unlink(missing_ok=True)
@@ -70,7 +84,7 @@ class DriveClient:
                     q=query, pageToken=token, pageSize=1000,
                     fields="nextPageToken,files(id,name,mimeType,parents,appProperties)",
                     includeItemsFromAllDrives=True, supportsAllDrives=True,
-                ).execute()
+                ).execute(num_retries=self.max_retries)
                 items.extend(response.get("files", []))
                 token = response.get("nextPageToken")
                 if not token:
@@ -94,7 +108,7 @@ class DriveClient:
                     downloader = MediaIoBaseDownload(local, request)
                     done = False
                     while not done:
-                        _, done = downloader.next_chunk()
+                        _, done = downloader.next_chunk(num_retries=self.max_retries)
                     if hashlib.sha256(local.getvalue()).hexdigest() == digest:
                         return item["id"], digest
                 except Exception:
@@ -109,7 +123,7 @@ class DriveClient:
                 body=body,
                 media_body=MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=True),
                 fields="id,name", supportsAllDrives=True,
-            ).execute()
+            ).execute(num_retries=self.max_retries)
             return created["id"], digest
         except Exception as exc:
             # A concurrent task may have created the content-addressed object.
@@ -121,7 +135,7 @@ class DriveClient:
                         downloader = MediaIoBaseDownload(local, request)
                         done = False
                         while not done:
-                            _, done = downloader.next_chunk()
+                            _, done = downloader.next_chunk(num_retries=self.max_retries)
                         if hashlib.sha256(local.getvalue()).hexdigest() == digest:
                             return item["id"], digest
             except Exception:
