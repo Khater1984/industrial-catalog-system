@@ -74,6 +74,16 @@ var Api = (function () {
         });
         return success_(requestId, promoted);
       }
+      if (body.action === "images.promote") {
+        var imgPayload = body.payload || {};
+        var imgResult = ImagePromotion.promoteAcceptedImages({
+          images: imgPayload.images,
+          run_id: imgPayload.run_id,
+          catalog_id: imgPayload.catalog_id,
+          actor: APP.ACTOR_ID
+        });
+        return success_(requestId, imgResult);
+      }
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
       return failure_(requestId, safeCode_(err));
@@ -148,6 +158,17 @@ function promoteStagingFromBrowser(payload) {
   return StagingPromotion.promoteReviewedStaging({
     stagingSetFileId: validated.stagingSetFileId,
     stagingSetSha256: validated.stagingSetSha256,
+    actor: APP.ACTOR_ID
+  });
+}
+
+/** Owner-only endpoint for promoting accepted images. */
+function promoteImagesFromBrowser(payload) {
+  assertPrimaryUser_();
+  return ImagePromotion.promoteAcceptedImages({
+    images: payload.images || [],
+    run_id: payload.run_id,
+    catalog_id: payload.catalog_id,
     actor: APP.ACTOR_ID
   });
 }
