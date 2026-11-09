@@ -263,6 +263,17 @@ var DesignStudio = (function () {
   function resolveItem_(productId, variantId) {
     var product = SheetsRepository.getBy("Products", "Product_ID", productId);
     if (!product) throw new Error("PRODUCT_NOT_FOUND: " + productId);
+    var company = SheetsRepository.getBy("Product_Company", "Product_ID", productId) || {};
+    var variant = variantId ? SheetsRepository.getBy("Variants", "Variant_ID", variantId) : null;
+    if (variantId && (!variant || variant.Product_ID !== productId)) {
+      throw new Error("VARIANT_NOT_FOUND_OR_PRODUCT_MISMATCH: " + variantId);
+    }
+    var variantCompany = variantId
+      ? (SheetsRepository.getBy("Variant_Company", "Variant_ID", variantId) || {})
+      : {};
+    var family = company.Product_Family_ID
+      ? SheetsRepository.getBy("Product_Families", "Product_Family_ID", company.Product_Family_ID)
+      : null;
     var resolved = EffectiveSpecificationResolver.resolveEffectiveSpecifications(productId, variantId || null);
     var specs = (resolved.source_specifications || []).map(function (s) {
       return {
@@ -286,17 +297,23 @@ var DesignStudio = (function () {
         });
       }
     });
+    var productNameEn = company.Product_Name_EN || productId;
+    var productNameAr = company.Product_Name_AR || "";
+    var variantNameEn = variantCompany.Model_Name_EN || "";
+    var variantNameAr = variantCompany.Model_Name_AR || "";
     return {
       productId: productId,
       variantId: variantId || null,
-      name: product.Product_Name_EN || product.Product_Name_AR || productId,
-      name_ar: product.Product_Name_AR || "",
-      description: product.Description_EN || product.Description_AR || "",
-      family: product.Family_Name || product.Product_Family || "",
-      model_number: variantId || "",
+      product_name: productNameEn,
+      product_name_ar: productNameAr,
+      name: variantNameEn || productNameEn,
+      name_ar: variantNameAr || productNameAr,
+      description: company.Company_Description || "",
+      family: family ? (family.Family_Name_EN || family.Family_Name_AR || "") : "",
+      model_number: variantNameEn || variantNameAr || "",
       specifications: specs,
-      images: [], // caller may attach approved image paths
-      publishable: product.Lifecycle_Status !== "ARCHIVED" && product.Publish_Status !== "HIDDEN",
+      images: [],
+      publishable: product.Lifecycle_Status === "ACTIVE",
       conflicts: resolved.conflicts || [],
       validation_errors: resolved.validation_errors || []
     };
