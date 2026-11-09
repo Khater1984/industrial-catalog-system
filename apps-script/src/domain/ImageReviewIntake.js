@@ -1,208 +1,302 @@
 /** Image Review Intake
-
-Accepts the two manifests published by the Python worker after Drive upload
-(image-manifest.json + drive-image-manifest.json) and creates human-review
-staging records.
-
-Does NOT write to Image_Assets or Image_Links.
-Does NOT auto-link images to products or variants.
-Does NOT call ImagePromotion.
-*/
+ *
+ * Verifies the worker's immutable image manifests and Drive objects, then
+ * idempotently creates Staging_Images, Review_Queue and Review_Staging_Links.
+ *
+ * Deliberately does not write Image_Assets/Image_Links, associate products,
+ * or invoke ImagePromotion.
+ */
 var ImageReviewIntake = (function () {
+  var SHA_RE = /^[a-f0-9]{64}$/;
+  var DRIVE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
+
+  function fail_(code) { throw new Error(code); }
+  function require_(condition, code) { if (!condition) fail_(code); }
   function now_() { return new Date().toISOString(); }
+
+  function bytes_(value) {
+    return typeof value === "string" ? Utilities.newBlob(value, "application/json").getBytes() : value;
+  }
   function sha_(value) {
-    var bytes = typeof value === "string" ? Utilities.newBlob(value).getBytes() : value;
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes_(value)).map(function (b) {
       var n = b < 0 ? b + 256 : b, hex = n.toString(16);
       return hex.length === 1 ? "0" + hex : hex;
     }).join("");
   }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
-  function text_(value, limit) {
-    var t = value === undefined || value === null ? "" : String(value).trim();
-    return t.length > limit ? t.slice(0, limit) : t;
-  }
-  function require_(cond, code) { if (!cond) throw new Error(code); }
-  function existingBy_(table, column, value) {
-    return value ? SheetsRepository.getBy(table, column, value) : null;
-  }
-  function appendOnce_(table, record) { return SheetsRepository.append(table, record); }
 
-  function loadManifest_(fileId, expectedSha) {
-    require_(fileId && /^[A-Za-z0-9_-]{10,200}$/.test(fileId), "MANIFEST_FILE_ID_INVALID");
-    var file = DriveApp.getFileById(fileId);
-    if (!file) throw new Error("MANIFEST_FILE_NOT_FOUND");
+  // Matches worker.images.canonical_json_bytes: UTF-8 JSON, sorted object keys,
+  // compact separators, non-ASCII characters retained.
+  function canonical_(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") {
+      if (!isFinite(value)) fail_("MANIFEST_NONFINITE_NUMBER");
+      return value;
+    }
+    if (Array.isArray(value)) return value.map(canonical_);
+    if (value && Object.prototype.toString.call(value) === "[object Object]") {
+      var out = {};
+      Object.keys(value).sort().forEach(function (key) {
+        if (value[key] === undefined) fail_("MANIFEST_UNDEFINED_VALUE");
+        out[key] = canonical_(value[key]);
+      });
+      return out;
+    }
+    fail_("MANIFEST_VALUE_UNSUPPORTED");
+  }
+  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
+  function withoutKey_(value, key) {
+    var out = {};
+    Object.keys(value).forEach(function (name) { if (name !== key) out[name] = value[name]; });
+    return out;
+  }
+  function verifyRecordHash_(record, hashField, errorCode) {
+    require_(record && typeof record[hashField] === "string" && SHA_RE.test(record[hashField]), errorCode);
+    require_(sha_(canonicalJson_(withoutKey_(record, hashField))) === record[hashField], errorCode);
+  }
+  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 24); }
+  function requireText_(value, code, maxLength) {
+    require_(typeof value === "string" && value.trim().length > 0, code);
+    var result = value.trim();
+    if (maxLength) require_(result.length <= maxLength, code);
+    return result;
+  }
+  function requireInteger_(value, code, minimum) {
+    require_(typeof value === "number" && Number.isSafeInteger(value) && value >= minimum, code);
+    return value;
+  }
+  function idValid_(value) { return typeof value === "string" && DRIVE_ID_RE.test(value); }
+
+  function loadManifest_(fileId, expectedSha, kind) {
+    require_(idValid_(fileId), "MANIFEST_FILE_ID_INVALID");
+    var file;
+    try { file = DriveApp.getFileById(fileId); } catch (e) { fail_("MANIFEST_FILE_NOT_FOUND"); }
+    require_(file, "MANIFEST_FILE_NOT_FOUND");
     var blob = file.getBlob();
-    var bytes = blob.getBytes();
-    var computed = sha_(bytes);
-    if (expectedSha && computed !== expectedSha) throw new Error("MANIFEST_SHA_MISMATCH");
-    var content = blob.getDataAsString();
+    var rawBytes = blob.getBytes();
+    var rawSha = sha_(rawBytes);
+    if (expectedSha) {
+      require_(typeof expectedSha === "string" && SHA_RE.test(expectedSha), "MANIFEST_EXPECTED_SHA_INVALID");
+      require_(rawSha === expectedSha, "MANIFEST_FILE_SHA_MISMATCH");
+    }
     var data;
-    try { data = JSON.parse(content); } catch (e) { throw new Error("MANIFEST_INVALID_JSON"); }
-    if (!data || !data.manifest_sha256) throw new Error("MANIFEST_STRUCTURE_INVALID");
-    // Re-verify internal checksum if possible (simple structural check)
-    return { data: data, sha: computed };
+    try { data = JSON.parse(blob.getDataAsString("UTF-8")); } catch (e) { fail_("MANIFEST_INVALID_JSON"); }
+    require_(data && Object.prototype.toString.call(data) === "[object Object]", "MANIFEST_STRUCTURE_INVALID");
+    verifyRecordHash_(data, "manifest_sha256", "MANIFEST_CHECKSUM_INVALID");
+    require_(data.manifest_version === 1, "MANIFEST_VERSION_UNSUPPORTED");
+    requireText_(data.catalog_id, "MANIFEST_CATALOG_INVALID", 120);
+    requireText_(data.run_id, "MANIFEST_RUN_INVALID", 120);
+    if (kind === "image") {
+      require_(Array.isArray(data.images), "IMAGE_MANIFEST_IMAGES_INVALID");
+      require_(data.image_count === data.images.length, "IMAGE_MANIFEST_COUNT_MISMATCH");
+      data.images.forEach(function (image) {
+        verifyRecordHash_(image, "output_sha256", "IMAGE_RECORD_CHECKSUM_INVALID");
+      });
+    } else {
+      require_(Array.isArray(data.images), "DRIVE_MANIFEST_IMAGES_INVALID");
+      require_(data.image_count === data.images.length, "DRIVE_MANIFEST_COUNT_MISMATCH");
+    }
+    return { data: data, sha: rawSha };
+  }
+
+  function verifyDriveManifest_(imageData, driveData) {
+    require_(driveData.catalog_id === imageData.catalog_id, "CATALOG_ID_MISMATCH");
+    require_(driveData.run_id === imageData.run_id, "RUN_ID_MISMATCH");
+    require_(driveData.source_manifest_sha256 === imageData.manifest_sha256, "SOURCE_MANIFEST_SHA_MISMATCH");
+    var counts = { UPLOADED: 0, REUSED: 0, FAILED: 0 };
+    var seen = {};
+    driveData.images.forEach(function (item) {
+      require_(item && typeof item === "object", "DRIVE_IMAGE_RECORD_INVALID");
+      var status = item.upload_status;
+      require_(Object.prototype.hasOwnProperty.call(counts, status), "DRIVE_UPLOAD_STATUS_INVALID");
+      counts[status] += 1;
+      if (status === "FAILED") return;
+      require_(SHA_RE.test(String(item.sha256 || "")), "DRIVE_IMAGE_SHA_INVALID");
+      requireText_(item.artifact_path, "DRIVE_IMAGE_PATH_INVALID", 500);
+      require_(idValid_(item.drive_file_id), "DRIVE_FILE_ID_INVALID");
+      require_(item.catalog_id === imageData.catalog_id && item.run_id === imageData.run_id, "DRIVE_IMAGE_IDENTITY_MISMATCH");
+      var key = item.sha256 + "|" + item.artifact_path;
+      require_(!seen[key], "DRIVE_IMAGE_DUPLICATE");
+      seen[key] = true;
+    });
+    require_(driveData.uploaded_count === counts.UPLOADED &&
+      driveData.reused_count === counts.REUSED &&
+      driveData.failed_count === counts.FAILED &&
+      driveData.stored_count === counts.UPLOADED + counts.REUSED, "DRIVE_MANIFEST_COUNTER_MISMATCH");
+    var expectedOverall = counts.FAILED === 0 ? "COMPLETED" :
+      (counts.UPLOADED + counts.REUSED > 0 ? "PARTIAL" : "FAILED");
+    require_(driveData.overall_status === expectedOverall, "DRIVE_MANIFEST_STATUS_MISMATCH");
   }
 
   function verifyDriveFile_(driveFileId, expected) {
-    require_(driveFileId, "DRIVE_FILE_ID_MISSING");
+    require_(idValid_(driveFileId), "DRIVE_FILE_ID_INVALID");
     var file;
-    try { file = DriveApp.getFileById(driveFileId); } catch (e) { throw new Error("DRIVE_FILE_NOT_FOUND"); }
-    if (!file) throw new Error("DRIVE_FILE_NOT_FOUND");
+    try { file = DriveApp.getFileById(driveFileId); } catch (e) { fail_("DRIVE_FILE_NOT_FOUND"); }
+    require_(file, "DRIVE_FILE_NOT_FOUND");
     var size = file.getSize();
     var mime = file.getMimeType();
-    if (expected.file_size_bytes && size !== expected.file_size_bytes) {
-      throw new Error("DRIVE_FILE_SIZE_MISMATCH");
+    require_(size === expected.file_size_bytes, "DRIVE_FILE_SIZE_MISMATCH");
+    require_(mime === expected.mime_type, "DRIVE_FILE_MIME_MISMATCH");
+    var actualSha = sha_(file.getBlob().getBytes());
+    require_(actualSha === expected.sha256, "DRIVE_FILE_SHA_MISMATCH");
+    return { size: size, mime: mime, sha256: actualSha };
+  }
+
+  function existingBy_(table, column, value) {
+    return SheetsRepository.getBy(table, column, value);
+  }
+  function compareExisting_(table, existing, expected, fields, code) {
+    fields.forEach(function (field) {
+      var actual = existing[field];
+      var wanted = expected[field];
+      if (actual instanceof Date && !isNaN(actual.getTime())) actual = actual.toISOString();
+      if (String(actual === undefined || actual === null ? "" : actual) !==
+          String(wanted === undefined || wanted === null ? "" : wanted)) fail_(code);
+    });
+  }
+  function ensureRecord_(table, idColumn, record, compareFields, conflictCode) {
+    var existing = existingBy_(table, idColumn, record[idColumn]);
+    if (existing) {
+      compareExisting_(table, existing, record, compareFields, conflictCode);
+      return false;
     }
-    if (expected.mime_type && mime !== expected.mime_type) {
-      throw new Error("DRIVE_FILE_MIME_MISMATCH");
+    SheetsRepository.append(table, record);
+    return true;
+  }
+
+  function buildStaging_(img, driveImage, options, catalogId, runId, stagingId) {
+    var name = requireText_(img.original_name, "IMAGE_ORIGINAL_NAME_MISSING", 255);
+    var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
+    var size = requireInteger_(img.file_size_bytes, "IMAGE_FILE_SIZE_INVALID", 1);
+    require_(driveImage.file_size_bytes === size, "DRIVE_MANIFEST_FILE_SIZE_MISMATCH");
+    require_(img.sha256 === driveImage.sha256, "DRIVE_MANIFEST_SHA_MISMATCH");
+    var record = {
+      Staging_ID: stagingId,
+      Run_ID: runId,
+      Catalog_ID: catalogId,
+      Raw_Extract_File_ID: options.imageManifestFileId,
+      Extraction_Method: "IMAGE_EXTRACTION",
+      Proposed_Status: "NEEDS_REVIEW",
+      Proposed_Image_File_ID: driveImage.drive_file_id,
+      Original_File_Name: name,
+      MIME_Type: mime,
+      File_Size_Bytes: size,
+      SHA256: img.sha256,
+      Quality_Status: "NEEDS_REVIEW"
+    };
+    if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
+    if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
+      record.Extraction_Tool_Version = requireText_(img.extractor_version, "IMAGE_EXTRACTOR_VERSION_INVALID", 120);
     }
-    // SHA-256 of Drive file when feasible (Apps Script can compute on blob)
-    if (expected.sha256) {
-      var blob = file.getBlob();
-      var actual = sha_(blob.getBytes());
-      if (actual !== expected.sha256) throw new Error("DRIVE_FILE_SHA_MISMATCH");
-    }
-    return { size: size, mime: mime };
+    if (img.width_px !== null && img.width_px !== undefined) record.Width_PX = requireInteger_(img.width_px, "IMAGE_WIDTH_INVALID", 1);
+    if (img.height_px !== null && img.height_px !== undefined) record.Height_PX = requireInteger_(img.height_px, "IMAGE_HEIGHT_INVALID", 1);
+    var hashPayload = withoutKey_(record, "Staging_Record_Hash");
+    record.Staging_Record_Hash = sha_(canonicalJson_(hashPayload));
+    record.Created_At = now_();
+    record.Updated_At = record.Created_At;
+    return record;
   }
 
   function intake(options) {
-    require_(options && options.imageManifestFileId && options.driveManifestFileId, "INTAKE_ARGUMENTS_INVALID");
-    var imageManifest = loadManifest_(options.imageManifestFileId, options.imageManifestSha256);
-    var driveManifest = loadManifest_(options.driveManifestFileId, options.driveManifestSha256);
+    require_(options && idValid_(options.imageManifestFileId) && idValid_(options.driveManifestFileId), "INTAKE_ARGUMENTS_INVALID");
+    var imageManifest = loadManifest_(options.imageManifestFileId, options.imageManifestSha256, "image");
+    var driveManifest = loadManifest_(options.driveManifestFileId, options.driveManifestSha256, "drive");
+    var imgData = imageManifest.data, drvData = driveManifest.data;
+    verifyDriveManifest_(imgData, drvData);
 
-    var imgData = imageManifest.data;
-    var drvData = driveManifest.data;
-    require_(imgData.catalog_id === drvData.catalog_id, "CATALOG_ID_MISMATCH");
-    require_(imgData.run_id === drvData.run_id, "RUN_ID_MISMATCH");
-
-    var catalogId = text_(imgData.catalog_id, 120);
-    var runId = text_(imgData.run_id, 120);
-    require_(catalogId && runId, "CATALOG_OR_RUN_MISSING");
-
-    // Index drive records by sha256 + artifact_path
+    var catalogId = requireText_(imgData.catalog_id, "CATALOG_OR_RUN_MISSING", 120);
+    var runId = requireText_(imgData.run_id, "CATALOG_OR_RUN_MISSING", 120);
+    var actor = requireText_(options.actor || APP.ACTOR_ID, "INTAKE_ACTOR_MISSING", 120);
     var driveByKey = {};
-    (drvData.images || []).forEach(function (d) {
-      if (d && d.sha256 && d.artifact_path && d.upload_status === "UPLOADED" && d.drive_file_id) {
-        var key = d.sha256 + "|" + d.artifact_path;
-        driveByKey[key] = d;
-      }
+    drvData.images.forEach(function (item) {
+      if (item.upload_status !== "FAILED") driveByKey[item.sha256 + "|" + item.artifact_path] = item;
+    });
+    var sourceKeys = {};
+    imgData.images.forEach(function (item) {
+      require_(item && SHA_RE.test(String(item.sha256 || "")), "IMAGE_RECORD_SHA_INVALID");
+      requireText_(item.artifact_path, "IMAGE_RECORD_PATH_INVALID", 500);
+      var key = item.sha256 + "|" + item.artifact_path;
+      require_(!sourceKeys[key], "IMAGE_RECORD_DUPLICATE");
+      sourceKeys[key] = true;
     });
 
-    var actor = options.actor || APP.ACTOR_ID;
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      var created = { staging: 0, reviews: 0, links: 0, skipped: 0, conflicts: 0 };
+      var counts = { staging: 0, reviews: 0, links: 0, reused: 0, skipped: 0, failed: 0, conflicts: 0 };
       var results = [];
-
-      (imgData.images || []).forEach(function (img) {
-        if (!img || !img.sha256 || !img.artifact_path) {
-          results.push({ sha256: img && img.sha256, status: "SKIPPED", reason: "INCOMPLETE_IMAGE_RECORD" });
-          created.skipped += 1;
-          return;
-        }
+      imgData.images.forEach(function (img) {
         var key = img.sha256 + "|" + img.artifact_path;
-        var drv = driveByKey[key];
-        if (!drv || drv.drive_file_id !== (img.drive_file_id || drv.drive_file_id)) {
-          results.push({ sha256: img.sha256, status: "REJECTED", reason: "DRIVE_RECORD_MISMATCH" });
-          created.skipped += 1;
+        var driveImage = driveByKey[key];
+        if (!driveImage) {
+          counts.skipped += 1;
+          results.push({ sha256: img.sha256, status: "SKIPPED", reason: "DRIVE_UPLOAD_NOT_AVAILABLE" });
           return;
         }
-        if (drv.drive_file_id !== img.drive_file_id && img.drive_file_id) {
-          results.push({ sha256: img.sha256, status: "REJECTED", reason: "DRIVE_FILE_ID_MISMATCH" });
-          created.skipped += 1;
-          return;
-        }
-
         try {
-          verifyDriveFile_(drv.drive_file_id, {
-            file_size_bytes: img.file_size_bytes || drv.file_size_bytes,
-            mime_type: img.mime_type || drv.mime_type,
-            sha256: img.sha256
+          require_(driveImage.drive_file_id, "DRIVE_FILE_ID_MISSING");
+          require_(driveImage.sha256 === img.sha256, "DRIVE_IMAGE_SHA_MISMATCH");
+          require_(driveImage.artifact_path === img.artifact_path, "DRIVE_IMAGE_PATH_MISMATCH");
+          var size = requireInteger_(img.file_size_bytes, "IMAGE_FILE_SIZE_INVALID", 1);
+          require_(driveImage.file_size_bytes === size, "DRIVE_MANIFEST_FILE_SIZE_MISMATCH");
+          var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
+          if (img.mime_type) require_(img.mime_type === mime, "IMAGE_MIME_TYPE_CONFLICT");
+          verifyDriveFile_(driveImage.drive_file_id, { file_size_bytes: size, mime_type: mime, sha256: img.sha256 });
+
+          var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
+          var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
+          var stagingFields = Object.keys(staging).filter(function (field) {
+            return field !== "Created_At" && field !== "Updated_At";
           });
-        } catch (e) {
-          results.push({ sha256: img.sha256, status: "REJECTED", reason: e.message });
-          created.skipped += 1;
-          return;
-        }
+          var stagingCreated = ensureRecord_("Staging_Images", "Staging_ID", staging, stagingFields, "STAGING_CONFLICT");
+          if (stagingCreated) counts.staging += 1;
 
-        var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
-        var existing = existingBy_("Staging_Images", "Staging_ID", stagingId);
-        if (existing) {
-          if (existing.SHA256 !== img.sha256 || existing.Proposed_Image_File_ID !== drv.drive_file_id) {
-            throw new Error("STAGING_CONFLICT");
-          }
-          created.skipped += 1;
-          results.push({ sha256: img.sha256, staging_id: stagingId, status: "REUSED" });
-          return;
-        }
-
-        var hash = sha_(JSON.stringify({
-          run_id: runId, catalog_id: catalogId, sha256: img.sha256,
-          drive_file_id: drv.drive_file_id, artifact_path: img.artifact_path
-        }));
-
-        var staging = {
-          Staging_ID: stagingId,
-          Run_ID: runId,
-          Catalog_ID: catalogId,
-          Catalog_Page_ID: text_(img.catalog_page_id, 120),
-          Raw_Extract_File_ID: options.imageManifestFileId,
-          Extraction_Method: "IMAGE_EXTRACTION",
-          Extraction_Tool_Version: text_(img.extractor_version || "0.1.0", 40),
-          Proposed_Status: "NEEDS_REVIEW",
-          Staging_Record_Hash: hash,
-          Proposed_Image_File_ID: drv.drive_file_id,
-          Original_File_Name: text_(img.original_name, 255),
-          MIME_Type: text_(img.mime_type, 100),
-          Width_PX: img.width_px || "",
-          Height_PX: img.height_px || "",
-          File_Size_Bytes: img.file_size_bytes || "",
-          SHA256: img.sha256,
-          Quality_Status: "NEEDS_REVIEW",
-          Created_At: now_(),
-          Updated_At: now_()
-        };
-        appendOnce_("Staging_Images", staging);
-        created.staging += 1;
-
-        var reviewId = stableId_("revimg", stagingId);
-        var existingReview = existingBy_("Review_Queue", "Review_Queue_ID", reviewId);
-        if (!existingReview) {
-          appendOnce_("Review_Queue", {
+          var reviewId = stableId_("revimg", stagingId);
+          var review = {
             Review_Queue_ID: reviewId,
             Review_Type: "IMAGE_QUALITY",
             Priority: "NORMAL",
             Review_Status: "OPEN",
-            Proposed_Action: "Review image quality and optionally associate with a product or variant.",
-            Created_At: now_(),
+            Proposed_Action: "Review image quality and decide whether it is suitable for use.",
+            Created_At: staging.Created_At,
             Created_By: actor
-          });
-          created.reviews += 1;
-        }
+          };
+          // Review status and assignment may be changed by a human after creation;
+          // retries verify identity fields without resetting that human decision.
+          var reviewCreated = ensureRecord_("Review_Queue", "Review_Queue_ID", review,
+            ["Review_Type", "Priority"], "REVIEW_QUEUE_CONFLICT");
+          if (reviewCreated) counts.reviews += 1;
 
-        var linkId = stableId_("rsl", reviewId + "|" + stagingId);
-        if (!existingBy_("Review_Staging_Links", "Review_Staging_Link_ID", linkId)) {
-          appendOnce_("Review_Staging_Links", {
+          var linkId = stableId_("rsl", reviewId + "|" + stagingId);
+          var link = {
             Review_Staging_Link_ID: linkId,
             Review_Queue_ID: reviewId,
             Staging_ID: stagingId,
             Review_Role: "PRIMARY",
-            Created_At: now_(),
+            Created_At: staging.Created_At,
             Created_By: actor
+          };
+          var linkCreated = ensureRecord_("Review_Staging_Links", "Review_Staging_Link_ID", link,
+            ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"], "REVIEW_STAGING_LINK_CONFLICT");
+          if (linkCreated) counts.links += 1;
+
+          if (!stagingCreated && !reviewCreated && !linkCreated) counts.reused += 1;
+          results.push({
+            sha256: img.sha256, staging_id: stagingId, review_id: reviewId,
+            status: stagingCreated || reviewCreated || linkCreated ? "CREATED_OR_COMPLETED" : "REUSED"
           });
-          created.links += 1;
+        } catch (err) {
+          var code = String(err && err.message ? err.message : "IMAGE_INTAKE_FAILED");
+          counts.failed += 1;
+          if (code.indexOf("CONFLICT") >= 0) counts.conflicts += 1;
+          results.push({ sha256: img.sha256, status: "FAILED", reason: code });
         }
-
-        results.push({ sha256: img.sha256, staging_id: stagingId, review_id: reviewId, status: "CREATED" });
       });
-
+      var finalStatus = counts.failed ? (counts.staging + counts.reviews + counts.links + counts.reused ? "PARTIAL" : "FAILED") : "COMPLETED";
       return {
-        status: created.conflicts > 0 ? "CONFLICT" : "COMPLETED",
+        status: finalStatus,
         catalog_id: catalogId,
         run_id: runId,
-        counts: created,
+        counts: counts,
         results: results
       };
     } finally {
