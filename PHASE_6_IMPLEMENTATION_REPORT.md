@@ -3,50 +3,43 @@
 **Date:** 2026-11-10
 **Branch:** dev/worker-v2.1-resumable
 
-## What Is Now Integrated (without new schema tables)
+## Pre-Schema Enhancements Added
 
-### Brand Identity
-- 5 built-in identities: Apple (default), 6D, Industrial, Minimal, Supplier
-- Full color system (primary, secondary, accent, text, background, header, table, border)
-- Logo preference (COMPANY / SUPPLIER / NONE)
-- Font notes, watermark, contact
-- Save custom identities
+### Renderer
+- Image watermark support (in addition to text)
+- Texture opacity control
+- Dedicated cover page option
+- Hard block on FINAL documents when conflicts exist and `block_on_conflict` is set
+- Company name in header when no logo is supplied
 
-### Template Studio
-- Create / update templates
-- Version increment on save
-- Publish status (DRAFT → PUBLISHED)
-- History of previous published versions
-- Copy template
-- Options: index, family grouping, provenance, exclude unpublished, block on conflict
+### Snapshot Validator
+- `worker/src/catalog_worker/snapshot_validator.py`
+- Validates version, type, scope, and conflict rules before rendering
+- Returns warnings for non-fatal issues
 
-### Domain-Aware Generation
-- `buildSnapshotFromDomain` reads real products via `SheetsRepository`
-- Calls `EffectiveSpecificationResolver` for effective specs + conflicts
-- Builds complete snapshot with brand + template settings
-- Blocks FINAL issue when conflicts exist and `blockOnConflict` is set
-- Stores recent issues in a simple library
+### Tests
+- Dedicated cover page count
+- Conflict blocking on FINAL
+- Validator empty-scope rejection
+- Conflict warning detection
 
-### UI
-- `DesignStudioFull.html`: integrated panel (brand select, template select, product IDs, generate, download, issue library)
-- Mobile-friendly layout
-
-### PDF Engine
-- Unchanged solid ReportLab renderer with all three document types
+## Existing Integrated Capabilities
+- 5 built-in brand identities (Apple default, 6D, etc.)
+- Versioned templates with publish/copy/history
+- Domain-aware snapshot generation via EffectiveSpecificationResolver
+- Full PDF engine for TDS / Product Catalog / Master Catalog
 
 ## What Still Requires Schema Approval
-- Immutable versioned configs in Drive + Sheets metadata
+- Sheets-backed Brands / Templates / Issued_Documents with immutable versions
+- Drive-pinned configs and PDFs with checksum manifests
 - Design_Assets registry
-- Issued_Documents / Issue_Operations ledger with dependency manifests
-- Historical reproduction from pinned artifacts
 
 ## Status
 | Dimension | Assessment |
 |-----------|------------|
-| Implemented | Integrated Design Studio + domain snapshot + renderer |
-| Integrated | Reads real product/spec data; produces renderer-ready snapshot |
-| Verified | Worker tests (19+); Apps Script services callable; no live Sheets write tests |
+| Implemented | Renderer + Studio + Validator + Domain snapshot |
+| Integrated | Reads real product data; produces real PDFs |
+| Verified | Local worker tests pass |
 
 ## Completion Estimate
-**~70%** of the functional surface that can be delivered without schema changes.
-The remaining portion is the persistent, versioned, Drive-backed design/issue system defined in the unapproved schema proposal.
+**~75%** of features deliverable without schema changes.
