@@ -65,3 +65,10 @@ def test_final_snapshot_rejects_specification_validation_errors():
     snap["items"][0]["validation_errors"] = [{"code": "LOGICAL_KEY_QUARANTINED"}]
     with pytest.raises(SnapshotValidationError, match="SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL"):
         validate_snapshot(snap)
+
+
+def test_renderer_blocks_final_with_specification_validation_errors(tmp_path: Path):
+    snap = build_snapshot("TECHNICAL_DATASHEET", "T", [{"name": "X", "description": "d"}], document_status="FINAL")
+    snap["items"][0]["validation_errors"] = [{"code": "LOGICAL_KEY_QUARANTINED"}]
+    with pytest.raises(PDFRenderError, match="SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL"):
+        render_pdf(snap, tmp_path / "invalid-final.pdf")
