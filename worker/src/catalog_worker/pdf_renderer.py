@@ -1,12 +1,21 @@
 """Deterministic offline PDF renderer for immutable issue snapshots.
 
-Only local, explicitly supplied asset paths are opened. No URLs or extracted text are executed.
-Supports cover pages, automatic index for multi-item catalogs, and ADR-040 conflict notes.
+Features:
+- Cover + automatic index
+- Family/section grouping for Master Catalog
+- Document revision and issue date
+- Multi-image sequential layout
+- Specification provenance notes
+- ADR-040 conflict warnings
+- Image DPI checks, watermarks, textures, brand palette
+- Arabic reshaping
+- Explicit PRINT_READY block
 """
 from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +30,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate, Frame, Image, PageTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, KeepTogether, ListFlowable, ListItem,
+    PageBreak, KeepTogether,
 )
 
 SUPPORTED_TYPES = {"TECHNICAL_DATASHEET", "PRODUCT_CATALOG", "MASTER_CATALOG", "COMPANY_PROFILE"}
@@ -115,30 +124,39 @@ def _image_flowable(item: dict[str, Any], asset_root: Path | None, max_width: fl
 
 
 def _spec_table(specs: list[dict[str, Any]], styles: dict[str, ParagraphStyle],
-                accent: colors.Color, width: float) -> Table | None:
+                accent: colors.Color, width: float, show_provenance: bool) -> Table | None:
     if not specs:
         return None
-    data = [[Paragraph(_arabic("المواصفة / Specification"), styles["table_head"]),
-             Paragraph(_arabic("القيمة / Value"), styles["table_head"]),
-             Paragraph(_arabic("الوحدة / Unit"), styles["table_head"])]]
+    headers = ["المواصفة / Spec", "القيمة / Value", "الوحدة / Unit"]
+    if show_provenance:
+        headers.append("المصدر / Source")
+    data = [[Paragraph(_arabic(h), styles["table_head"]) for h in headers]]
     for row in specs:
         key = row.get("label_ar") or row.get("label") or row.get("key") or ""
         value = row.get("value_ar") if row.get("value_ar") is not None else row.get("value", "")
+        if value is None or value == "":
+            value = "—"  # intentionally empty or missing
         unit = row.get("unit") or ""
-        data.append([Paragraph(_arabic(key), styles["table_cell"]),
-                     Paragraph(_arabic(str(value)), styles["table_cell"]),
-                     Paragraph(_arabic(unit), styles["table_cell"])])
-    table = Table(data, colWidths=[width * 0.42, width * 0.40, width * 0.18], repeatRows=1, hAlign="RIGHT")
+        cells = [Paragraph(_arabic(key), styles["table_cell"]),
+                 Paragraph(_arabic(str(value)), styles["table_cell"]),
+                 Paragraph(_arabic(unit), styles["table_cell"])]
+        if show_provenance:
+            prov = row.get("provenance") or row.get("source") or ""
+            cells.append(Paragraph(_arabic(str(prov)), styles["table_cell"]))
+        data.append(cells)
+    col_count = len(headers)
+    widths = [width * 0.38, width * 0.32, width * 0.15, width * 0.15] if col_count == 4 else [width * 0.42, width * 0.40, width * 0.18]
+    table = Table(data, colWidths=widths[:col_count], repeatRows=1, hAlign="RIGHT")
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), accent),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E0E7")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 7),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F8FA")]),
     ]))
     return table
@@ -150,10 +168,26 @@ def _build_index(items: list[dict[str, Any]], styles: dict[str, ParagraphStyle])
     flow: list[Any] = [Paragraph(_arabic("الفهرس / Index"), styles["Section"])]
     for i, item in enumerate(items, 1):
         name = item.get("name_ar") or item.get("name") or item.get("model_name") or f"Item {i}"
-        flow.append(Paragraph(f"{i}. {_arabic(name)}", styles["BodyRTL"]))
+        family = item.get("family") or item.get("section") or ""
+        line = f"{i}. {_arabic(name)}"
+        if family:
+            line += f"  —  {_arabic(family)}"
+        flow.append(Paragraph(line, styles["BodyRTL"]))
     flow.append(Spacer(1, 6 * mm))
     flow.append(PageBreak())
     return flow
+
+
+def _group_by_family(items: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for item in items:
+        fam = item.get("family") or item.get("section") or "General"
+        if fam not in groups:
+            groups[fam] = []
+            order.append(fam)
+        groups[fam].append(item)
+    return [(fam, groups[fam]) for fam in order]
 
 
 def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root: str | Path | None = None) -> dict[str, Any]:
@@ -199,10 +233,14 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     min_dpi = int(export.get("minimum_dpi_warning", 150))
     block_dpi = int(export.get("minimum_dpi_block", 72))
 
-    # ADR-040 conflict notes
     conflicts = snapshot.get("conflicts") or []
     if conflicts:
-        warnings.append(f"ADR-040 conflicts present ({len(conflicts)}); both scopes preserved in source data.")
+        warnings.append(f"ADR-040 conflicts present ({len(conflicts)}); both scopes preserved.")
+
+    show_provenance = bool(snapshot.get("show_provenance", False))
+    document_status = snapshot.get("document_status") or "ORIGINAL"
+    revision = snapshot.get("revision") or ""
+    issue_date = snapshot.get("issue_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="DocTitle", parent=styles["Title"], fontName=bold_font,
@@ -211,6 +249,8 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
                               fontSize=11, leading=16, textColor=ink, alignment=TA_RIGHT, spaceAfter=10))
     styles.add(ParagraphStyle(name="Section", parent=styles["Heading2"], fontName=bold_font,
                               fontSize=14, leading=19, textColor=accent, alignment=TA_RIGHT, spaceBefore=12, spaceAfter=7))
+    styles.add(ParagraphStyle(name="Family", parent=styles["Heading1"], fontName=bold_font,
+                              fontSize=16, leading=20, textColor=accent, alignment=TA_RIGHT, spaceBefore=10, spaceAfter=6))
     styles.add(ParagraphStyle(name="BodyRTL", parent=styles["BodyText"], fontName=regular_font,
                               fontSize=9.5, leading=14, textColor=ink, alignment=TA_RIGHT))
     styles.add(ParagraphStyle(name="table_head", parent=styles["Normal"], fontName=bold_font,
@@ -248,7 +288,8 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
         canvas.line(left, bottom - 4 * mm, page_size[0] - right, bottom - 4 * mm)
         canvas.setFont(regular_font, 7.5)
         canvas.setFillColor(colors.HexColor("#687684"))
-        canvas.drawRightString(page_size[0] - right, 8 * mm, _arabic(footer.get("text", "")))
+        footer_text = footer.get("text") or f"{document_status}  |  Rev {revision or '-'}  |  {issue_date}"
+        canvas.drawRightString(page_size[0] - right, 8 * mm, _arabic(footer_text))
         canvas.drawString(left, 8 * mm, str(document.page))
         canvas.restoreState()
 
@@ -273,18 +314,22 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     items = snapshot.get("items")
     if not isinstance(items, list):
         items = [snapshot.get("product") or {}]
+    # Optional filter for publishable only
+    if snapshot.get("exclude_unpublished", False):
+        items = [it for it in items if it.get("publishable", True)]
     if not items:
         raise PDFRenderError("ISSUE_SCOPE_EMPTY")
 
-    # Cover + index for catalogs
     include_cover = snapshot.get("include_cover", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"})
     include_index = snapshot.get("include_index", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"} and len(items) > 1)
     if include_cover and include_index:
         story.extend(_build_index(items, styles))
 
     content_width = page_size[0] - left - right
-    for index, item in enumerate(items):
-        if index and doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"}:
+    group_by_family = snapshot.get("group_by_family", doc_type == "MASTER_CATALOG")
+
+    def render_item(item: dict[str, Any], force_break: bool) -> None:
+        if force_break:
             story.append(PageBreak())
         name = item.get("name_ar") or item.get("name") or item.get("model_name") or ""
         reference = item.get("reference") or item.get("model_number") or ""
@@ -292,25 +337,38 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
             story.append(Paragraph(_arabic(name), styles["Section"]))
         if reference:
             story.append(Paragraph(_arabic("Model / Reference: " + str(reference)), styles["BodyRTL"]))
-            story.append(Spacer(1, 4 * mm))
+            story.append(Spacer(1, 3 * mm))
         description = item.get("description_ar") or item.get("description") or ""
         if description:
             story.append(Paragraph(_arabic(description), styles["BodyRTL"]))
-            story.append(Spacer(1, 4 * mm))
-        image_items = item.get("images") or []
-        for image_item in image_items:
+            story.append(Spacer(1, 3 * mm))
+        for image_item in (item.get("images") or []):
             if isinstance(image_item, dict):
-                flow = _image_flowable(image_item, root, content_width * 0.72, warnings, min_dpi, block_dpi)
+                flow = _image_flowable(image_item, root, content_width * 0.70, warnings, min_dpi, block_dpi)
                 if flow:
                     story.append(flow)
-                    story.append(Spacer(1, 3 * mm))
+                    story.append(Spacer(1, 2 * mm))
         specs = item.get("specifications") or []
-        table = _spec_table(specs, styles, accent, content_width)
+        table = _spec_table(specs, styles, accent, content_width, show_provenance)
         if table:
             story.append(table)
-        if not specs and not description and not image_items:
+        if not specs and not description and not item.get("images"):
             raise PDFRenderError("ISSUE_ITEM_HAS_NO_RENDERABLE_CONTENT")
-        story.append(Spacer(1, 6 * mm))
+        story.append(Spacer(1, 5 * mm))
+
+    if group_by_family:
+        groups = _group_by_family(items)
+        first = True
+        for fam, group_items in groups:
+            if not first:
+                story.append(PageBreak())
+            story.append(Paragraph(_arabic(fam), styles["Family"]))
+            for idx, item in enumerate(group_items):
+                render_item(item, force_break=False if idx == 0 else True)
+            first = False
+    else:
+        for index, item in enumerate(items):
+            render_item(item, force_break=index > 0 and doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"})
 
     doc.build(story)
     data = target.read_bytes()
@@ -322,12 +380,16 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
         "status": "WARNING" if warnings else "PASS",
         "document_type": doc_type,
         "output_class": output_class,
+        "document_status": document_status,
+        "revision": revision,
+        "issue_date": issue_date,
         "page_count": page_count,
         "pdf_size_bytes": len(data),
         "pdf_sha256": _sha256(data),
         "warnings": warnings,
         "blocked_conditions": [],
         "conflicts_noted": len(conflicts),
+        "items_rendered": len(items),
         "renderer": "ReportLab",
         "renderer_version": __import__("reportlab").Version,
         "print_ready_claimed": False,
