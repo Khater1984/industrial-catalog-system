@@ -80,22 +80,61 @@ def _register_fonts(fonts: dict[str, Any], asset_root: Path | None) -> tuple[str
     warnings: list[str] = []
     regular = "Helvetica"
     bold = "Helvetica-Bold"
-    for key, internal_name in (("regular", "CatalogArabic"), ("bold", "CatalogArabic-Bold")):
-        font_path = _safe_asset(fonts.get(key), asset_root)
-        if font_path:
-            try:
-                pdfmetrics.registerFont(TTFont(internal_name, str(font_path), subfontIndex=0))
-                if key == "regular":
-                    regular = internal_name
-                else:
-                    bold = internal_name
-            except Exception as exc:
-                raise PDFRenderError("FONT_REGISTRATION_FAILED") from exc
-    if regular == "Helvetica" and bold == "Helvetica-Bold":
-        warnings.append("No embedded brand font supplied; built-in Helvetica fallback used.")
-    elif bold == "Helvetica-Bold":
+    regular_path = _safe_asset(fonts.get("regular"), asset_root)
+    bold_path = _safe_asset(fonts.get("bold"), asset_root)
+
+    # Prefer a locally installed Unicode font with Arabic glyph coverage.
+    if regular_path is None:
+        for candidate in (
+            Path("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"),
+            Path("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        ):
+            if candidate.is_file():
+                regular_path = candidate
+                break
+    if bold_path is None:
+        for candidate in (
+            Path("/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf"),
+            Path("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ):
+            if candidate.is_file():
+                bold_path = candidate
+                break
+        if bold_path is None:
+            bold_path = regular_path
+
+    if regular_path:
+        try:
+            pdfmetrics.registerFont(TTFont("CatalogArabic", str(regular_path), subfontIndex=0))
+            regular = "CatalogArabic"
+        except Exception as exc:
+            raise PDFRenderError("FONT_REGISTRATION_FAILED") from exc
+    else:
+        warnings.append("No Unicode font with Arabic glyph coverage found; install Noto Sans Arabic or DejaVu Sans.")
+
+    if bold_path:
+        try:
+            pdfmetrics.registerFont(TTFont("CatalogArabic-Bold", str(bold_path), subfontIndex=0))
+            bold = "CatalogArabic-Bold"
+        except Exception as exc:
+            raise PDFRenderError("FONT_REGISTRATION_FAILED") from exc
+    elif regular_path:
         bold = regular
+    else:
+        warnings.append("Built-in Helvetica fallback used; Arabic glyph coverage is not guaranteed.")
     return regular, bold, warnings
+
+
+def _contains_arabic(value: Any) -> bool:
+    if isinstance(value, str):
+        return any("\\u0600" <= ch <= "\\u06ff" for ch in value)
+    if isinstance(value, dict):
+        return any(_contains_arabic(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_arabic(v) for v in value)
+    return False
 
 
 def _image_flowable(item: dict[str, Any], asset_root: Path | None, max_width: float, warnings: list[str],
@@ -201,9 +240,10 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
 
     # Optional hard block
     conflicts = snapshot.get("conflicts") or []
-    block_on_conflict = bool(snapshot.get("block_on_conflict", False))
-    document_status = snapshot.get("document_status") or "ORIGINAL"
-    if block_on_conflict and conflicts and document_status == "FINAL":
+    document_status = str(snapshot.get("document_status") or "ORIGINAL").upper()
+    # FINAL is always blocked when ADR-040 conflicts exist; the legacy flag
+    # cannot disable this invariant.
+    if conflicts and document_status == "FINAL":
         raise PDFRenderError("CONFLICTS_BLOCK_FINAL_ISSUE")
 
     root = Path(asset_root).resolve() if asset_root else None
@@ -234,6 +274,8 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     texture_opacity = float((paper.get("background") or {}).get("texture_opacity", 0.35))
     fonts = brand.get("fonts") or {}
     regular_font, bold_font, warnings = _register_fonts(fonts, root)
+    if _contains_arabic(snapshot) and regular_font == "Helvetica":
+        warnings.append("ARABIC_FONT_NOT_EMBEDDED: Arabic text may not render correctly.")
     min_dpi = int(export.get("minimum_dpi_warning", 150))
     block_dpi = int(export.get("minimum_dpi_block", 72))
 
