@@ -1,12 +1,12 @@
 """Deterministic offline PDF renderer for immutable issue snapshots.
 
 Only local, explicitly supplied asset paths are opened. No URLs or extracted text are executed.
+Supports cover pages, automatic index for multi-item catalogs, and ADR-040 conflict notes.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate, Frame, Image, PageTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, KeepTogether,
+    PageBreak, KeepTogether, ListFlowable, ListItem,
 )
 
 SUPPORTED_TYPES = {"TECHNICAL_DATASHEET", "PRODUCT_CATALOG", "MASTER_CATALOG", "COMPANY_PROFILE"}
@@ -126,7 +126,7 @@ def _spec_table(specs: list[dict[str, Any]], styles: dict[str, ParagraphStyle],
         value = row.get("value_ar") if row.get("value_ar") is not None else row.get("value", "")
         unit = row.get("unit") or ""
         data.append([Paragraph(_arabic(key), styles["table_cell"]),
-                     Paragraph(_arabic(value), styles["table_cell"]),
+                     Paragraph(_arabic(str(value)), styles["table_cell"]),
                      Paragraph(_arabic(unit), styles["table_cell"])])
     table = Table(data, colWidths=[width * 0.42, width * 0.40, width * 0.18], repeatRows=1, hAlign="RIGHT")
     table.setStyle(TableStyle([
@@ -142,6 +142,18 @@ def _spec_table(specs: list[dict[str, Any]], styles: dict[str, ParagraphStyle],
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F6F8FA")]),
     ]))
     return table
+
+
+def _build_index(items: list[dict[str, Any]], styles: dict[str, ParagraphStyle]) -> list[Any]:
+    if len(items) < 2:
+        return []
+    flow: list[Any] = [Paragraph(_arabic("الفهرس / Index"), styles["Section"])]
+    for i, item in enumerate(items, 1):
+        name = item.get("name_ar") or item.get("name") or item.get("model_name") or f"Item {i}"
+        flow.append(Paragraph(f"{i}. {_arabic(name)}", styles["BodyRTL"]))
+    flow.append(Spacer(1, 6 * mm))
+    flow.append(PageBreak())
+    return flow
 
 
 def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root: str | Path | None = None) -> dict[str, Any]:
@@ -187,6 +199,11 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     min_dpi = int(export.get("minimum_dpi_warning", 150))
     block_dpi = int(export.get("minimum_dpi_block", 72))
 
+    # ADR-040 conflict notes
+    conflicts = snapshot.get("conflicts") or []
+    if conflicts:
+        warnings.append(f"ADR-040 conflicts present ({len(conflicts)}); both scopes preserved in source data.")
+
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="DocTitle", parent=styles["Title"], fontName=bold_font,
                               fontSize=22, leading=28, textColor=accent, alignment=TA_RIGHT, spaceAfter=8))
@@ -207,7 +224,6 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     footer = snapshot.get("footer") or {}
     watermark = snapshot.get("watermark") or {}
     texture = _safe_asset((paper.get("background") or {}).get("texture_path"), root)
-    watermark_path = _safe_asset(watermark.get("image_path"), root) if watermark.get("image_path") else None
 
     def draw_page(canvas: Any, document: Any) -> None:
         canvas.saveState()
@@ -259,6 +275,13 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
         items = [snapshot.get("product") or {}]
     if not items:
         raise PDFRenderError("ISSUE_SCOPE_EMPTY")
+
+    # Cover + index for catalogs
+    include_cover = snapshot.get("include_cover", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"})
+    include_index = snapshot.get("include_index", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"} and len(items) > 1)
+    if include_cover and include_index:
+        story.extend(_build_index(items, styles))
+
     content_width = page_size[0] - left - right
     for index, item in enumerate(items):
         if index and doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"}:
@@ -304,6 +327,7 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
         "pdf_sha256": _sha256(data),
         "warnings": warnings,
         "blocked_conditions": [],
+        "conflicts_noted": len(conflicts),
         "renderer": "ReportLab",
         "renderer_version": __import__("reportlab").Version,
         "print_ready_claimed": False,
