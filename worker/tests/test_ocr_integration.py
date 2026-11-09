@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -115,3 +116,38 @@ def test_temp_images_cleaned_even_on_ocr_exception(tmp_path):
     assert not captured["path"].exists()
     assert result["pages"][0]["processing_status"] == "OCR_FAILED"
     assert "OCR_FAILED" in result["pages"][0]["warnings"]
+
+
+def test_render_save_failure_removes_created_temp_file(tmp_path):
+    from catalog_worker import processor
+
+    temp_png = tmp_path / "failed-render.png"
+
+    class FakePixmap:
+        def save(self, path):
+            raise OSError("synthetic PNG write failure")
+
+    class FakePage:
+        def get_pixmap(self, dpi):
+            assert dpi == processor.OCR_RENDER_DPI
+            return FakePixmap()
+
+    class FakeDocument:
+        page_count = 1
+
+        def __getitem__(self, index):
+            assert index == 0
+            return FakePage()
+
+        def close(self):
+            pass
+
+    def create_temp_file(**kwargs):
+        fd = os.open(temp_png, os.O_CREAT | os.O_RDWR, 0o600)
+        return fd, str(temp_png)
+
+    with patch("catalog_worker.processor.fitz.open", return_value=FakeDocument()), \
+         patch("catalog_worker.processor.tempfile.mkstemp", side_effect=create_temp_file):
+        assert processor._render_page_to_temp_image(tmp_path / "source.pdf", 0) is None
+
+    assert not temp_png.exists()
