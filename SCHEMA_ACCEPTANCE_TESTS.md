@@ -47,7 +47,7 @@
 - Every assertion retains its exact source record and scope.
 - Product-wide and variant-specific assertions are not silently collapsed.
 - Any conflict is surfaced for review.
-- Effective output follows an explicitly approved precedence policy; absent that policy, the system flags conflict rather than guessing.
+- Effective output preserves both assertions with their exact scope and provenance and flags a normalized-key conflict for review. No implicit product-versus-variant precedence is applied (ADR-040).
 
 ## B. Specification change ledger
 
