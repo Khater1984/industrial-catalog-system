@@ -31,3 +31,11 @@ def test_validator_warns_on_conflicts():
     snap["conflicts"] = [{"k": "v"}]
     warnings = validate_snapshot(snap)
     assert any("conflicts" in w for w in warnings)
+
+
+def test_final_conflicts_are_blocked_even_without_opt_in_flag(tmp_path: Path):
+    snap = build_snapshot("TECHNICAL_DATASHEET", "T", [{"name": "X", "description": "d"}], document_status="FINAL")
+    snap["conflicts"] = [{"normalized_key": "voltage"}]
+    snap.pop("block_on_conflict", None)
+    with pytest.raises(PDFRenderError, match="CONFLICTS_BLOCK_FINAL_ISSUE"):
+        render_pdf(snap, tmp_path / "must-not-exist.pdf")
