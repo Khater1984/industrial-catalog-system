@@ -129,7 +129,7 @@ def _register_fonts(fonts: dict[str, Any], asset_root: Path | None) -> tuple[str
 
 def _contains_arabic(value: Any) -> bool:
     if isinstance(value, str):
-        return any("\\u0600" <= ch <= "\\u06ff" for ch in value)
+        return any("؀" <= ch <= "ۿ" for ch in value)
     if isinstance(value, dict):
         return any(_contains_arabic(v) for v in value.values())
     if isinstance(value, (list, tuple)):
