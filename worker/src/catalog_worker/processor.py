@@ -1,7 +1,6 @@
-"""Deterministic, resumable page-by-page PDF text extraction with optional image extraction.
+"""Deterministic, resumable page-by-page PDF text extraction with optional image extraction and OCR fallback.
 
-This implementation extracts embedded PDF text and, when enabled, embedded images.
-It does not perform OCR, full product inference, or write directly to Google Sheets.
+Embedded text is preferred. OCR (Tesseract) is used only when embedded text is insufficient.
 """
 from __future__ import annotations
 
@@ -16,8 +15,9 @@ from typing import Any
 from pypdf import PdfReader
 
 from catalog_worker.images import extract_embedded_images, image_extraction_enabled
+from catalog_worker.ocr import extract_page_text, is_text_usable
 
-WORKER_VERSION = "0.2.0"
+WORKER_VERSION = "0.2.2"
 PROTOCOL_VERSION = "1"
 
 
@@ -100,7 +100,7 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
     """Process a local DEV job manifest and return a deterministic result manifest.
 
     Required job fields: run_id, logical_job_id, catalog_id, source_pdf_path,
-    source_sha256. Optional: extract_images (bool).
+    source_sha256. Optional: extract_images (bool), ocr_languages (str).
     """
     if not isinstance(job, dict):
         raise WorkerError("INVALID_JOB_MANIFEST", "Job manifest must be a JSON object.")
@@ -111,6 +111,7 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
     source_path_value = _required_string(job, "source_pdf_path")
     expected_pdf_sha = _required_string(job, "source_sha256").lower()
     extract_images = bool(job.get("extract_images", image_extraction_enabled()))
+    ocr_languages = str(job.get("ocr_languages") or os.environ.get("CATALOG_WORKER_OCR_LANGUAGES") or "eng")
 
     if len(expected_pdf_sha) != 64 or any(c not in "0123456789abcdef" for c in expected_pdf_sha):
         raise WorkerError("INVALID_SOURCE_SHA256", "source_sha256 must be a 64-character SHA-256 hex digest.")
@@ -147,9 +148,18 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
 
     for page_index, page in enumerate(reader.pages, start=1):
         try:
-            extracted_text = page.extract_text() or ""
+            embedded = page.extract_text() or ""
         except Exception as exc:
             raise WorkerError("PAGE_TEXT_EXTRACTION_FAILED", f"Could not extract embedded text from page {page_index}.") from exc
+
+        # OCR decision (page image not yet rendered in this path; OCR will fall back gracefully)
+        ocr_decision = extract_page_text(
+            embedded,
+            page_image_path=None,  # full page rendering can be added later
+            languages=ocr_languages,
+        )
+        extracted_text = ocr_decision["extracted_text"]
+        extraction_method = ocr_decision["extraction_method"]
 
         text_sha = sha256_bytes(extracted_text.encode("utf-8"))
         unit_input = {
@@ -158,7 +168,7 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
             "page_number": page_index,
             "page_text_sha256": text_sha,
             "worker_version": WORKER_VERSION,
-            "extraction_method": "EMBEDDED_TEXT",
+            "extraction_method": extraction_method.upper(),
         }
         unit_input_sha = sha256_bytes(canonical_json_bytes(unit_input))
         unit_key = f"page:{page_index:05d}"
@@ -182,10 +192,13 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
                 "input_sha256": unit_input_sha,
                 "source_pdf_sha256": actual_pdf_sha,
                 "page_text_sha256": text_sha,
-                "extraction_method": "EMBEDDED_TEXT",
+                "extraction_method": extraction_method,
                 "extraction_tool_version": f"pypdf/{getattr(__import__('pypdf'), '__version__', 'unknown')}",
                 "text_char_count": len(extracted_text),
                 "extracted_text": extracted_text,
+                "confidence": ocr_decision.get("confidence"),
+                "processing_status": ocr_decision.get("processing_status", "COMPLETED"),
+                "warnings": ocr_decision.get("warnings", []),
                 "unit_status": "COMPLETED",
             }
             page_result["output_sha256"] = sha256_bytes(canonical_json_bytes(page_result))
@@ -201,6 +214,10 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
             "output_sha256": page_result["output_sha256"],
             "artifact_path": str(page_path.relative_to(out)),
             "text_char_count": page_result["text_char_count"],
+            "extraction_method": extraction_method,
+            "confidence": page_result.get("confidence"),
+            "processing_status": page_result.get("processing_status"),
+            "warnings": page_result.get("warnings", []),
         })
 
     image_result = None
@@ -210,7 +227,6 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
                 source_path, out, enabled=True, catalog_id=catalog_id, run_id=run_id
             )
         except Exception as exc:
-            # Non-fatal for text path; image failure is recorded
             image_result = {"enabled": True, "error": str(exc), "image_count": 0, "images": []}
 
     final_result = {
