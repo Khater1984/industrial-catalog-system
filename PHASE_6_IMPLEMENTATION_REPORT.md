@@ -2,39 +2,44 @@
 
 **Date:** 2026-11-09
 **Branch:** dev/worker-v2.1-resumable
+**Final SHA:** (see latest commit)
 
 ## Summary
-Phase 6 PDF generation foundation is present and expanded with behavioral tests. Full Design Studio and Template Studio with Sheets persistence are blocked by the unapproved design schema.
+PDF generation engine is functional and enhanced. Design Studio / Template Studio with Sheets persistence remain blocked by the unapproved design schema (`schema/03-design-and-issued-output.md` is a proposal only).
 
-## What Was Done
-1. Confirmed existing ReportLab renderer supports the three document types.
-2. Added `worker/tests/test_pdf_phase6.py` covering:
-   - Multi-item Product Catalog (page count >= 2)
-   - Technical Datasheet
-   - Master Catalog
-   - Arabic text (no crash)
-   - PRINT_READY rejection
-   - Empty scope rejection
-   - Snapshot file round-trip
-3. Documented architecture and schema blocker.
+## Implemented
+- ReportLab-based deterministic renderer supporting TECHNICAL_DATASHEET, PRODUCT_CATALOG, MASTER_CATALOG.
+- Cover + automatic index for multi-item catalogs.
+- ADR-040 conflict notes in preflight warnings.
+- Arabic reshaping (arabic-reshaper + python-bidi).
+- Image DPI checks, watermarks, textures, brand palette, paper sizes.
+- Snapshot builder (`snapshot_builder.py`) for pure data → snapshot transformation.
+- Preflight report with SHA256, page count, warnings, conflicts_noted.
+- Explicit block of PRINT_READY_PDF.
 
-## Files Added
+## Tests (15 passed)
+```
+pytest tests/test_pdf_renderer.py tests/test_pdf_phase6.py tests/test_pdf_enhancements.py -q
+15 passed
+```
+
+## Files Added / Modified
+- `worker/src/catalog_worker/pdf_renderer.py` (enhanced)
+- `worker/src/catalog_worker/snapshot_builder.py` (new)
 - `worker/tests/test_pdf_phase6.py`
-- `PHASE_6_ARCHITECTURE.md`
-- `PHASE_6_IMPLEMENTATION_REPORT.md`
-- `PHASE_6_ACCEPTANCE_TESTS.md`
-- `PHASE_6_USER_GUIDE.md`
+- `worker/tests/test_pdf_enhancements.py`
+- PHASE_6_*.md documents
+- ROADMAP.md
 
-## Verification
-- Renderer produces real `%PDF-` files.
-- Page counts and SHA256 are recorded.
-- No live Google integration claimed.
+## Remaining Blockers
+- Schema authorization required before Brands / Templates / Issued_Documents tables can be created.
+- No Apps Script UI or live Drive/Sheets integration for design assets.
+- No licensed Arabic font embedding in CI.
+- No CMYK / PDF/X path.
 
-## Remaining for Full Phase 6
-- Schema approval for design tables.
-- Apps Script Brand/Template services writing to Sheets.
-- Drive asset upload and pinning.
-- Issue ledger (Issue_Operations / Issued_Documents).
-- UI for selection and preview.
-- Font embedding with licensed Arabic fonts.
-- CMYK / PDF/X path for PRINT_READY.
+## Status
+| Dimension | Assessment |
+|-----------|------------|
+| Implemented | PDF engine + snapshot builder + tests |
+| Integrated | With domain data via snapshot JSON only |
+| Verified | 15 local tests pass; no live Google verification |
