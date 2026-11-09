@@ -2,8 +2,13 @@
  * Reads immutable Specifications + APPROVED Specification_Changes only.
  * Never writes. Surfaces product/variant scope conflicts (ADR-040).
  * Includes company-created ADD records in conflict detection.
+ * Sequence_No must be a finite positive integer; invalid sequences quarantine the key.
  */
 var EffectiveSpecificationResolver = (function () {
+  function isValidSequence_(seq) {
+    return typeof seq === "number" && Number.isFinite(seq) && Number.isInteger(seq) && seq > 0;
+  }
+
   function getChangesForKey_(logicalKey) {
     return (SheetsRepository.listAll("Specification_Changes") || [])
       .filter(function (c) { return c.Logical_Specification_Key === logicalKey && c.Change_Status === "APPROVED"; })
@@ -19,8 +24,12 @@ var EffectiveSpecificationResolver = (function () {
     var seenSeq = {};
 
     changes.forEach(function (c) {
-      var seq = Number(c.Sequence_No);
-      if (!seq || seq < 1 || seenSeq[seq]) { quarantined = true; return; }
+      var raw = c.Sequence_No;
+      var seq = Number(raw);
+      if (!isValidSequence_(seq) || seenSeq[seq]) {
+        quarantined = true;
+        return;
+      }
       seenSeq[seq] = true;
       var op = c.Operation;
       if (op === "ADD" && state === "ABSENT") {
@@ -87,7 +96,6 @@ var EffectiveSpecificationResolver = (function () {
       if (reduced.quarantined) validationErrors.push({ code: "LOGICAL_KEY_QUARANTINED", key: logical });
     });
 
-    // Company-created ADD records — include in conflict detection
     var companyCreated = (SheetsRepository.listAll("Specification_Changes") || [])
       .filter(function (c) {
         return c.Product_ID === productId &&
@@ -136,7 +144,6 @@ var EffectiveSpecificationResolver = (function () {
       }
     });
 
-    // Company attributes — include variant-only overrides
     var productAttrs = (SheetsRepository.listAll("Product_Attributes") || []).filter(function (a) { return a.Product_ID === productId; });
     var variantOverrides = variantId
       ? (SheetsRepository.listAll("Variant_Attribute_Overrides") || []).filter(function (o) { return o.Variant_ID === variantId; })
