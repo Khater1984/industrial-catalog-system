@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 import pytest
-from catalog_worker.pdf_renderer import render_pdf, PDFRenderError
+from catalog_worker.pdf_renderer import render_pdf, PDFRenderError, _safe_asset
 from catalog_worker.snapshot_validator import validate_snapshot, SnapshotValidationError
 from catalog_worker.snapshot_builder import build_snapshot
 
@@ -41,3 +41,20 @@ def test_final_conflicts_are_blocked_even_without_opt_in_flag(tmp_path: Path):
         render_pdf(snap, tmp_path / "must-not-exist.pdf")
     with pytest.raises(SnapshotValidationError, match="CONFLICTS_BLOCK_FINAL_ISSUE"):
         validate_snapshot(snap)
+
+
+def test_relative_asset_path_resolves_against_asset_root(tmp_path: Path):
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    font = asset_root / "font.ttf"
+    font.write_bytes(b"test")
+    assert _safe_asset("font.ttf", asset_root) == font.resolve()
+
+
+def test_asset_path_cannot_escape_asset_root(tmp_path: Path):
+    asset_root = tmp_path / "assets"
+    asset_root.mkdir()
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"test")
+    with pytest.raises(PDFRenderError, match="ASSET_PATH_OUTSIDE_ROOT"):
+        _safe_asset("../outside.png", asset_root)
