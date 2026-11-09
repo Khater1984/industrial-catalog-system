@@ -217,7 +217,7 @@ describe("ImageReviewIntake", () => {
       const raw = Buffer.from(JSON.stringify(tampered), "utf8");
       return { getBytes: () => Array.from(raw), getDataAsString: () => raw.toString("utf8") };
     };
-    assert.throws(() => h.intake(), /MANIFEST_CHECKSUM_INVALID/);
+    assert.throws(() => h.intake({ imageManifestSha256: undefined }), /MANIFEST_CHECKSUM_INVALID/);
     assert.equal(h.sheets.Staging_Images.length, 0);
   });
 
