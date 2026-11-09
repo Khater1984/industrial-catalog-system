@@ -161,6 +161,7 @@ function createHarness(options = {}) {
   };
   const driveManifest = makeDriveManifest(imageManifest, [driveImage]);
   if (options.enriched) {
+    imageManifest.enabled = true;
     imageManifest.images[0].drive_file_id = driveImage.drive_file_id;
     imageManifest.images[0].drive_sha256 = driveImage.sha256;
     imageManifest.manifest_sha256 = recordHash(imageManifest, "manifest_sha256");
