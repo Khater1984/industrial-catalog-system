@@ -1,0 +1,124 @@
+<!-- Integrated Design Studio — Brand + Template + Generation + Library -->
+<section class="panel" style="margin-top:18px" id="dsFull">
+  <div class="toolbar"><h3>استوديو التصميم المتكامل</h3></div>
+  <p class="notice">هوية → قالب → اختيار منتجات → snapshot جاهز لمحرك PDF. يقرأ المواصفات من EffectiveSpecificationResolver.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="ds-grid">
+    <div>
+      <h4 style="margin:0 0 10px">الهوية</h4>
+      <select id="dsBrand" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"></select>
+      <div id="dsBrandPreview" class="notice" style="margin-top:8px"></div>
+    </div>
+    <div>
+      <h4 style="margin:0 0 10px">القالب</h4>
+      <select id="dsTemplate" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"><option value="">(بدون قالب)</option></select>
+      <div class="notice" style="margin-top:8px"><button type="button" class="refresh" id="dsNewTpl">قالب جديد</button></div>
+    </div>
+  </div>
+
+  <div class="field" style="margin-top:16px"><label>نوع المستند</label>
+    <select id="dsDocType"><option value="TECHNICAL_DATASHEET">ورقة بيانات فنية</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
+  </div>
+  <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label>
+    <input id="dsProductIds" type="text" placeholder="P001, P002, P003">
+  </div>
+  <div class="field"><label>العنوان</label><input id="dsTitle" type="text" value="Industrial Catalog"></div>
+  <div class="field"><label>حالة المستند</label>
+    <select id="dsStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select>
+  </div>
+  <div class="field"><label><input type="checkbox" id="dsBlockConflict"> منع الإصدار النهائي عند وجود تعارضات</label></div>
+
+  <button class="btn" type="button" id="dsGenerate">توليد Snapshot</button>
+  <div class="status" id="dsStatus" role="status"></div>
+  <pre id="dsOutput" style="display:none;background:#f7f9fb;padding:12px;border-radius:8px;font-size:11px;overflow:auto;max-height:280px;margin-top:10px"></pre>
+  <button class="btn" type="button" id="dsDownload" style="display:none;margin-top:8px;background:#2d6b83">تحميل snapshot.json</button>
+
+  <h4 style="margin:20px 0 10px">مكتبة الإصدارات الأخيرة</h4>
+  <div id="dsIssues" class="notice">جارٍ التحميل...</div>
+</section>
+
+<style>
+@media(max-width:700px){ .ds-grid{ grid-template-columns:1fr !important; } }
+</style>
+
+<script>
+(function(){
+  const el = id => document.getElementById(id);
+  function show(msg, type){ const b=el("dsStatus"); b.textContent=msg; b.className="status show "+type; }
+
+  function loadBrands(){
+    if(typeof google==="undefined") return;
+    google.script.run.withSuccessHandler(brands=>{
+      const sel=el("dsBrand");
+      sel.innerHTML=brands.map(b=>`<option value="${b.name}" ${b.isDefault?"selected":""}>${b.name}${b.isDefault?" (افتراضي)":""}</option>`).join("");
+      updateBrandPreview();
+    }).listBrandsForBrowser();
+  }
+  function loadTemplates(){
+    if(typeof google==="undefined") return;
+    google.script.run.withSuccessHandler(tpls=>{
+      const sel=el("dsTemplate");
+      const cur=sel.value;
+      sel.innerHTML='<option value="">(بدون قالب)</option>'+ (tpls||[]).map(t=>`<option value="${t.name}">${t.name} · ${t.documentType} · v${t.version} · ${t.status}</option>`).join("");
+      if(cur) sel.value=cur;
+    }).listTemplatesForBrowser();
+  }
+  function loadIssues(){
+    if(typeof google==="undefined"){ el("dsIssues").textContent="(تجريبي)"; return; }
+    google.script.run.withSuccessHandler(list=>{
+      const r=el("dsIssues");
+      if(!list||!list.length){ r.textContent="لا توجد إصدارات."; return; }
+      r.innerHTML=list.slice(0,10).map(i=>`<div style="margin:4px 0">${i.title} · ${i.documentType} · ${i.itemCount} عنصر · ${i.conflictCount} تعارض · ${i.createdAt.slice(0,16)}</div>`).join("");
+    }).listIssuesForBrowser();
+  }
+  function updateBrandPreview(){
+    const name=el("dsBrand").value;
+    if(typeof google==="undefined") return;
+    google.script.run.withSuccessHandler(brands=>{
+      const b=brands.find(x=>x.name===name);
+      if(!b) return;
+      el("dsBrandPreview").innerHTML=`<span style="color:${b.primary}">■</span> ${b.primary} · ${b.paperSize} ${b.orientation} · شعار: ${b.logoPreference}`;
+    }).listBrandsForBrowser();
+  }
+
+  loadBrands(); loadTemplates(); loadIssues();
+  el("dsBrand").addEventListener("change", updateBrandPreview);
+
+  el("dsNewTpl").addEventListener("click", ()=>{
+    const name=prompt("اسم القالب:");
+    if(!name) return;
+    const t={ name:name, documentType:el("dsDocType").value, status:"DRAFT", includeIndex:true, groupByFamily:false, showProvenance:false, excludeUnpublished:true, blockOnConflict:false, defaultBrandName:el("dsBrand").value };
+    google.script.run.withSuccessHandler(()=>{ show("تم إنشاء القالب.","ok"); loadTemplates(); }).withFailureHandler(e=>show(e.message,"err")).saveTemplateFromBrowser(t);
+  });
+
+  let lastSnap=null;
+  el("dsGenerate").addEventListener("click", ()=>{
+    const ids=el("dsProductIds").value.split(",").map(s=>s.trim()).filter(Boolean);
+    if(!ids.length){ show("أدخل معرف منتج واحد على الأقل.","err"); return; }
+    const config={
+      documentType: el("dsDocType").value,
+      productIds: ids,
+      brandName: el("dsBrand").value,
+      templateName: el("dsTemplate").value || null,
+      title: el("dsTitle").value,
+      documentStatus: el("dsStatus").value,
+      blockOnConflict: el("dsBlockConflict").checked
+    };
+    show("جارٍ التوليد...","wait");
+    google.script.run.withSuccessHandler(snap=>{
+      lastSnap=snap;
+      el("dsOutput").textContent=JSON.stringify(snap,null,2);
+      el("dsOutput").style.display="block";
+      el("dsDownload").style.display="block";
+      show(`تم. ${snap.items.length} عنصر · ${snap.conflicts.length} تعارض.` ,"ok");
+      loadIssues();
+    }).withFailureHandler(e=>show(e.message||"خطأ","err")).buildSnapshotFromDomainForBrowser(config);
+  });
+
+  el("dsDownload").addEventListener("click", ()=>{
+    if(!lastSnap) return;
+    const blob=new Blob([JSON.stringify(lastSnap,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="snapshot.json"; a.click();
+  });
+})();
+</script>
