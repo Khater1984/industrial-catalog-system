@@ -1,15 +1,11 @@
 """Deterministic offline PDF renderer for immutable issue snapshots.
 
-Features:
-- Cover + automatic index
-- Family/section grouping for Master Catalog
-- Document revision and issue date
-- Multi-image sequential layout
-- Specification provenance notes
-- ADR-040 conflict warnings
-- Image DPI checks, watermarks, textures, brand palette
-- Arabic reshaping
-- Explicit PRINT_READY block
+Additional features (pre-schema):
+- Image watermark support
+- Texture opacity control
+- Dedicated cover page
+- Optional hard block on FINAL + conflicts
+- Improved header with company name
 """
 from __future__ import annotations
 
@@ -135,7 +131,7 @@ def _spec_table(specs: list[dict[str, Any]], styles: dict[str, ParagraphStyle],
         key = row.get("label_ar") or row.get("label") or row.get("key") or ""
         value = row.get("value_ar") if row.get("value_ar") is not None else row.get("value", "")
         if value is None or value == "":
-            value = "—"  # intentionally empty or missing
+            value = "—"
         unit = row.get("unit") or ""
         cells = [Paragraph(_arabic(key), styles["table_cell"]),
                  Paragraph(_arabic(str(value)), styles["table_cell"]),
@@ -203,6 +199,13 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     if output_class not in {"DIGITAL_PDF", "PRINT_ORIENTED_PDF"}:
         raise PDFRenderError("OUTPUT_CLASS_INVALID")
 
+    # Optional hard block
+    conflicts = snapshot.get("conflicts") or []
+    block_on_conflict = bool(snapshot.get("block_on_conflict", False))
+    document_status = snapshot.get("document_status") or "ORIGINAL"
+    if block_on_conflict and conflicts and document_status == "FINAL":
+        raise PDFRenderError("CONFLICTS_BLOCK_FINAL_ISSUE")
+
     root = Path(asset_root).resolve() if asset_root else None
     paper = snapshot.get("paper") or {}
     page_config = paper.get("page") or {}
@@ -228,17 +231,16 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     accent = _hex_color(palette.get("primary"), "#173F5F")
     ink = _hex_color(palette.get("text"), "#17212B")
     paper_color = _hex_color((paper.get("background") or {}).get("color"), "#FFFFFF")
+    texture_opacity = float((paper.get("background") or {}).get("texture_opacity", 0.35))
     fonts = brand.get("fonts") or {}
     regular_font, bold_font, warnings = _register_fonts(fonts, root)
     min_dpi = int(export.get("minimum_dpi_warning", 150))
     block_dpi = int(export.get("minimum_dpi_block", 72))
 
-    conflicts = snapshot.get("conflicts") or []
     if conflicts:
         warnings.append(f"ADR-040 conflicts present ({len(conflicts)}); both scopes preserved.")
 
     show_provenance = bool(snapshot.get("show_provenance", False))
-    document_status = snapshot.get("document_status") or "ORIGINAL"
     revision = snapshot.get("revision") or ""
     issue_date = snapshot.get("issue_date") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -257,6 +259,8 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
                               fontSize=8.5, leading=11, textColor=colors.white, alignment=TA_RIGHT))
     styles.add(ParagraphStyle(name="table_cell", parent=styles["Normal"], fontName=regular_font,
                               fontSize=8.2, leading=11, textColor=ink, alignment=TA_RIGHT))
+    styles.add(ParagraphStyle(name="CoverTitle", parent=styles["Title"], fontName=bold_font,
+                              fontSize=28, leading=34, textColor=accent, alignment=TA_CENTER, spaceAfter=12))
 
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -264,17 +268,34 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     footer = snapshot.get("footer") or {}
     watermark = snapshot.get("watermark") or {}
     texture = _safe_asset((paper.get("background") or {}).get("texture_path"), root)
+    watermark_image = _safe_asset(watermark.get("image_path"), root) if watermark.get("image_path") else None
 
     def draw_page(canvas: Any, document: Any) -> None:
         canvas.saveState()
         canvas.setFillColor(paper_color)
         canvas.rect(0, 0, page_size[0], page_size[1], stroke=0, fill=1)
         if texture:
+            canvas.saveState()
+            canvas.setFillAlpha(max(0.05, min(1.0, texture_opacity)))
             canvas.drawImage(str(texture), 0, 0, width=page_size[0], height=page_size[1], preserveAspectRatio=False, mask="auto")
+            canvas.restoreState()
         logo = _safe_asset(header.get("logo_path"), root) if header.get("logo_path") else None
         if logo:
             canvas.drawImage(str(logo), right, page_size[1] - 17 * mm, width=28 * mm, height=12 * mm, preserveAspectRatio=True, anchor="e", mask="auto")
-        if watermark.get("text"):
+        company = (snapshot.get("contact") or {}).get("company_name") or ""
+        if company and not logo:
+            canvas.setFont(bold_font, 10)
+            canvas.setFillColor(accent)
+            canvas.drawRightString(page_size[0] - right, page_size[1] - 12 * mm, _arabic(company))
+        # Watermark
+        if watermark_image:
+            canvas.saveState()
+            canvas.setFillAlpha(max(0.03, min(0.4, float(watermark.get("opacity", 0.12)))))
+            w = page_size[0] * 0.45
+            h = w * 0.6
+            canvas.drawImage(str(watermark_image), (page_size[0] - w) / 2, (page_size[1] - h) / 2, width=w, height=h, preserveAspectRatio=True, mask="auto")
+            canvas.restoreState()
+        elif watermark.get("text"):
             canvas.saveState()
             canvas.setFillAlpha(max(0.03, min(0.35, float(watermark.get("opacity", 0.10)))))
             canvas.setFillColor(_hex_color(watermark.get("color"), "#777777"))
@@ -302,6 +323,16 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
 
     story: list[Any] = []
     title = snapshot.get("title") or "Industrial Equipment"
+    include_dedicated_cover = bool(snapshot.get("dedicated_cover", False))
+    if include_dedicated_cover:
+        story.append(Spacer(1, 40 * mm))
+        story.append(Paragraph(_arabic(title), styles["CoverTitle"]))
+        if snapshot.get("subtitle"):
+            story.append(Paragraph(_arabic(snapshot["subtitle"]), styles["SubTitle"]))
+        story.append(Spacer(1, 20 * mm))
+        story.append(Paragraph(_arabic(issue_date), styles["BodyRTL"]))
+        story.append(PageBreak())
+
     story.append(Paragraph(_arabic(title), styles["DocTitle"]))
     subtitle = snapshot.get("subtitle") or ""
     if subtitle:
@@ -314,7 +345,6 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     items = snapshot.get("items")
     if not isinstance(items, list):
         items = [snapshot.get("product") or {}]
-    # Optional filter for publishable only
     if snapshot.get("exclude_unpublished", False):
         items = [it for it in items if it.get("publishable", True)]
     if not items:
@@ -322,7 +352,7 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
 
     include_cover = snapshot.get("include_cover", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"})
     include_index = snapshot.get("include_index", doc_type in {"PRODUCT_CATALOG", "MASTER_CATALOG"} and len(items) > 1)
-    if include_cover and include_index:
+    if include_cover and include_index and not include_dedicated_cover:
         story.extend(_build_index(items, styles))
 
     content_width = page_size[0] - left - right
