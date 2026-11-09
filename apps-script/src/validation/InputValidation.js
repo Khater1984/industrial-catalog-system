@@ -190,5 +190,51 @@ var InputValidation = (function () {
 
     return { images: images, run_id: runId, catalog_id: catalogId };
   }
-  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_, promotionPayload: promotionPayload_, imagesPromotePayload: imagesPromotePayload_ };
+
+  function productCreatePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["nameEn", "nameAr", "description", "brandLabel", "notes", "familyId", "idempotencyKey"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      nameEn: optionalString_(payload.nameEn, "nameEn", 300),
+      nameAr: optionalString_(payload.nameAr, "nameAr", 300),
+      description: optionalString_(payload.description, "description", 4000),
+      brandLabel: optionalString_(payload.brandLabel, "brandLabel", 160),
+      notes: optionalString_(payload.notes, "notes", 4000),
+      familyId: optionalString_(payload.familyId, "familyId", 120),
+      idempotencyKey: optionalString_(payload.idempotencyKey, "idempotencyKey", 120)
+    };
+  }
+
+  function specificationChangePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["operation", "productId", "variantId", "attributeKey", "valueJson", "unitCode", "reason", "targetSpecificationId", "idempotencyKey"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var operation = requiredString_(payload.operation, "operation", 20);
+    if (["ADD", "UPDATE", "DELETE"].indexOf(operation) < 0) throw new Error("VALIDATION_INVALID_FORMAT: operation");
+    return {
+      operation: operation,
+      productId: requiredString_(payload.productId, "productId", 120),
+      variantId: optionalString_(payload.variantId, "variantId", 120),
+      attributeKey: requiredString_(payload.attributeKey, "attributeKey", 160),
+      valueJson: optionalString_(payload.valueJson, "valueJson", 2000),
+      unitCode: optionalString_(payload.unitCode, "unitCode", 40),
+      reason: requiredString_(payload.reason, "reason", 1000),
+      targetSpecificationId: optionalString_(payload.targetSpecificationId, "targetSpecificationId", 120),
+      idempotencyKey: optionalString_(payload.idempotencyKey, "idempotencyKey", 120)
+    };
+  }
+
+  return {
+    catalogPayload: catalogPayload_,
+    uploadMetadata: uploadMetadata_,
+    promotionPayload: promotionPayload_,
+    imagesPromotePayload: imagesPromotePayload_,
+    productCreatePayload: productCreatePayload_,
+    specificationChangePayload: specificationChangePayload_
+  };
 })();
