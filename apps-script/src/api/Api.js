@@ -105,6 +105,9 @@ var Api = (function () {
       if (body.action === "product.getWorkspace") {
         return success_(requestId, ProductService.getWorkspace(p.productId));
       }
+      if (body.action === "product.search") {
+        return success_(requestId, { results: ProductService.search(p.query) });
+      }
       if (body.action === "product.updateCompanyFields") {
         return success_(requestId, ProductService.updateCompany(p.productId, p, actor));
       }
@@ -113,6 +116,18 @@ var Api = (function () {
       }
       if (body.action === "product.reactivate") {
         return success_(requestId, ProductService.reactivate(p.productId, actor));
+      }
+      if (body.action === "family.create") {
+        return success_(requestId, ProductFamilyService.create(p.nameEn, p.nameAr, p.parentId, actor));
+      }
+      if (body.action === "family.updateParent") {
+        return success_(requestId, ProductFamilyService.updateParent(p.familyId, p.newParentId, actor));
+      }
+      if (body.action === "family.archive") {
+        return success_(requestId, ProductFamilyService.archive(p.familyId, actor));
+      }
+      if (body.action === "family.reactivate") {
+        return success_(requestId, ProductFamilyService.reactivate(p.familyId, actor));
       }
       if (body.action === "variant.createCompanyRecord") {
         return success_(requestId, VariantService.create(p.productId, Object.assign({ actor: actor }, p)));
