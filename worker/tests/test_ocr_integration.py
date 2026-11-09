@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 from catalog_worker.processor import process_catalog_job
+from catalog_worker.ocr import OcrError
 
 
 def _sha256(path: Path) -> str:
@@ -64,7 +66,10 @@ def test_blank_pdf_renders_and_passes_real_image_to_ocr(tmp_path):
     assert "path" in captured
     assert not captured["path"].exists()  # cleaned up
     assert result["pages"][0]["extraction_method"] == "ocr"
-    assert "OCR from rendered page" in result["pages"][0].get("text_char_count", 0) or True
+    page_artifact = tmp_path / "out" / "pages" / "page-00001.json"
+    saved_page = json.loads(page_artifact.read_text(encoding="utf-8"))
+    assert saved_page["extracted_text"] == "OCR from rendered page"
+    assert saved_page["text_char_count"] == len("OCR from rendered page")
 
 
 def test_language_config_reaches_ocr(tmp_path):
@@ -95,7 +100,18 @@ def test_rendering_failure_is_warning_not_crash(tmp_path):
 def test_temp_images_cleaned_even_on_ocr_exception(tmp_path):
     pdf = tmp_path / "blank.pdf"
     _make_blank_pdf(pdf)
-    with patch("catalog_worker.ocr.ocr_page_image", side_effect=RuntimeError("boom")):
+    captured = {}
+
+    def fail_ocr(image_path, languages="eng"):
+        captured["path"] = Path(image_path)
+        assert captured["path"].exists()
+        raise OcrError("OCR_FAILED", "Synthetic OCR failure")
+
+    with patch("catalog_worker.ocr.ocr_page_image", side_effect=fail_ocr):
         result = process_catalog_job(_job(pdf), tmp_path / "out")
-    # Job still completes; temp files must not remain (checked indirectly by no exception)
+
     assert result["run_status"] == "COMPLETED"
+    assert "path" in captured
+    assert not captured["path"].exists()
+    assert result["pages"][0]["processing_status"] == "OCR_FAILED"
+    assert "OCR_FAILED" in result["pages"][0]["warnings"]
