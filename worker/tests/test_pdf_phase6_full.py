@@ -65,3 +65,10 @@ def test_arabic_text_does_not_crash(tmp_path: Path):
     report = render_pdf(snap, out)
     assert report["page_count"] >= 1
     assert out.exists()
+
+
+def test_arabic_shaping_dependencies_are_active():
+    from catalog_worker.pdf_renderer import _arabic
+    shaped = _arabic("مرحبا بالعالم")
+    assert shaped
+    assert shaped != "مرحبا بالعالم"
