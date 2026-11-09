@@ -1,0 +1,135 @@
+<!-- Full Design Studio panel to include in Index.html -->
+<section class="panel" style="margin-top:18px" id="designStudioPanel">
+  <div class="toolbar"><h3>استوديو التصميم وتوليد المستندات</h3></div>
+  <p class="notice">هوية → قالب → منتجات → Snapshot → PDF. المواصفات من EffectiveSpecificationResolver. لا جداول Schema جديدة.</p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="ds-grid">
+    <div>
+      <h4 style="margin:0 0 8px">الهوية</h4>
+      <select id="dsBrand" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"></select>
+      <div id="dsBrandPreview" class="notice" style="margin-top:6px"></div>
+      <button type="button" class="refresh" id="dsEditBrand" style="margin-top:8px">تعديل الهوية</button>
+    </div>
+    <div>
+      <h4 style="margin:0 0 8px">القالب</h4>
+      <select id="dsTemplate" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"><option value="">(بدون)</option></select>
+      <div style="margin-top:8px"><button type="button" class="refresh" id="dsNewTpl">قالب جديد</button> <button type="button" class="refresh" id="dsPublishTpl">نشر</button></div>
+    </div>
+  </div>
+
+  <div id="dsBrandEditor" style="display:none;margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fbfcfd">
+    <h4 style="margin:0 0 10px">محرر الهوية</h4>
+    <div class="field"><label>الاسم</label><input id="beName" type="text"></div>
+    <div class="field"><label>الشركة</label><input id="beCompany" type="text"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="field"><label>أساسي</label><input id="bePrimary" type="color" value="#173F5F"></div>
+      <div class="field"><label>ثانوي</label><input id="beSecondary" type="color" value="#2D6B83"></div>
+      <div class="field"><label>نص</label><input id="beText" type="color" value="#17212B"></div>
+      <div class="field"><label>خلفية</label><input id="beBg" type="color" value="#FFFFFF"></div>
+    </div>
+    <div class="field"><label>الورق</label><select id="bePaper"><option>A4</option><option>A3</option><option>LETTER</option></select></div>
+    <div class="field"><label>الاتجاه</label><select id="beOrient"><option>portrait</option><option>landscape</option></select></div>
+    <div class="field"><label>شعار</label><select id="beLogoPref"><option>COMPANY</option><option>SUPPLIER</option><option>NONE</option></select></div>
+    <div class="field"><label>علامة مائية</label><input id="beWatermark" type="text" placeholder="نص اختياري"></div>
+    <button class="btn" type="button" id="beSave" style="background:#2d6b83">حفظ الهوية</button>
+  </div>
+
+  <div class="field" style="margin-top:14px"><label>نوع المستند</label>
+    <select id="dsDocType"><option value="TECHNICAL_DATASHEET">ورقة بيانات فنية</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
+  </div>
+  <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label><input id="dsProductIds" type="text" placeholder="P001, P002"></div>
+  <div class="field"><label>العنوان</label><input id="dsTitle" type="text" value="Industrial Catalog"></div>
+  <div class="field"><label>الحالة</label><select id="dsStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select></div>
+  <div class="field"><label><input type="checkbox" id="dsBlockConflict"> منع FINAL عند التعارضات</label></div>
+  <div class="field"><label><input type="checkbox" id="dsDedicatedCover"> غلاف مخصص</label></div>
+
+  <button class="btn" type="button" id="dsGenerate">توليد Snapshot</button>
+  <div class="status" id="dsStatus" role="status"></div>
+  <pre id="dsOutput" style="display:none;background:#f7f9fb;padding:12px;border-radius:8px;font-size:11px;overflow:auto;max-height:240px;margin-top:8px"></pre>
+  <button class="btn" type="button" id="dsDownload" style="display:none;margin-top:6px;background:#2d6b83">تحميل snapshot.json</button>
+
+  <h4 style="margin:18px 0 8px">مكتبة الإصدارات</h4>
+  <div id="dsIssues" class="notice">...</div>
+</section>
+
+<style>@media(max-width:700px){.ds-grid{grid-template-columns:1fr!important}}</style>
+
+<script>
+(function(){
+  const el=id=>document.getElementById(id);
+  function show(msg,type){const b=el("dsStatus");b.textContent=msg;b.className="status show "+type;}
+  function loadBrands(){
+    if(typeof google==="undefined")return;
+    google.script.run.withSuccessHandler(brands=>{
+      const sel=el("dsBrand");
+      sel.innerHTML=brands.map(b=>`<option value="${b.name}" ${b.isDefault?"selected":""}>${b.name}${b.isDefault?" (افتراضي)":""}</option>`).join("");
+      updatePreview();
+    }).listBrandsForBrowser();
+  }
+  function loadTemplates(){
+    if(typeof google==="undefined")return;
+    google.script.run.withSuccessHandler(tpls=>{
+      const sel=el("dsTemplate");const cur=sel.value;
+      sel.innerHTML='<option value="">(بدون)</option>'+(tpls||[]).map(t=>`<option value="${t.name}">${t.name} · v${t.version} · ${t.status}</option>`).join("");
+      if(cur)sel.value=cur;
+    }).listTemplatesForBrowser();
+  }
+  function loadIssues(){
+    if(typeof google==="undefined"){el("dsIssues").textContent="(تجريبي)";return;}
+    google.script.run.withSuccessHandler(list=>{
+      const r=el("dsIssues");
+      if(!list||!list.length){r.textContent="لا توجد إصدارات.";return;}
+      r.innerHTML=list.slice(0,8).map(i=>`<div style="margin:3px 0">${i.title} · ${i.documentType} · ${i.itemCount} · ${i.conflictCount} تعارض</div>`).join("");
+    }).listIssuesForBrowser();
+  }
+  function updatePreview(){
+    const name=el("dsBrand").value;
+    if(typeof google==="undefined")return;
+    google.script.run.withSuccessHandler(brands=>{
+      const b=brands.find(x=>x.name===name);if(!b)return;
+      el("dsBrandPreview").innerHTML=`<span style="color:${b.primary}">■</span> ${b.primary} · ${b.paperSize} · ${b.logoPreference}`;
+    }).listBrandsForBrowser();
+  }
+  loadBrands();loadTemplates();loadIssues();
+  el("dsBrand").addEventListener("change",updatePreview);
+  el("dsEditBrand").addEventListener("click",()=>{
+    const ed=el("dsBrandEditor");ed.style.display=ed.style.display==="none"?"block":"none";
+    if(ed.style.display==="block"){
+      google.script.run.withSuccessHandler(brands=>{
+        const b=brands.find(x=>x.name===el("dsBrand").value);if(!b)return;
+        el("beName").value=b.name;el("beCompany").value=b.companyName||"";
+        el("bePrimary").value=b.primary;el("beSecondary").value=b.secondary||b.primary;
+        el("beText").value=b.text;el("beBg").value=b.background;
+        el("bePaper").value=b.paperSize;el("beOrient").value=b.orientation;
+        el("beLogoPref").value=b.logoPreference;el("beWatermark").value=b.watermarkText||"";
+      }).listBrandsForBrowser();
+    }
+  });
+  el("beSave").addEventListener("click",()=>{
+    const p={name:el("beName").value,companyName:el("beCompany").value,primary:el("bePrimary").value,secondary:el("beSecondary").value,text:el("beText").value,background:el("beBg").value,paperSize:el("bePaper").value,orientation:el("beOrient").value,logoPreference:el("beLogoPref").value,watermarkText:el("beWatermark").value};
+    google.script.run.withSuccessHandler(()=>{show("تم حفظ الهوية.","ok");loadBrands();el("dsBrandEditor").style.display="none";}).withFailureHandler(e=>show(e.message,"err")).saveBrandFromBrowser(p);
+  });
+  el("dsNewTpl").addEventListener("click",()=>{
+    const name=prompt("اسم القالب:");if(!name)return;
+    google.script.run.withSuccessHandler(()=>{show("تم.","ok");loadTemplates();}).withFailureHandler(e=>show(e.message,"err")).saveTemplateFromBrowser({name,documentType:el("dsDocType").value,status:"DRAFT",defaultBrandName:el("dsBrand").value});
+  });
+  el("dsPublishTpl").addEventListener("click",()=>{
+    const name=el("dsTemplate").value;if(!name){show("اختر قالبًا.","err");return;}
+    google.script.run.withSuccessHandler(()=>{show("تم النشر.","ok");loadTemplates();}).withFailureHandler(e=>show(e.message,"err")).publishTemplateFromBrowser(name);
+  });
+  let lastSnap=null;
+  el("dsGenerate").addEventListener("click",()=>{
+    const ids=el("dsProductIds").value.split(",").map(s=>s.trim()).filter(Boolean);
+    if(!ids.length){show("أدخل معرف منتج.","err");return;}
+    const config={documentType:el("dsDocType").value,productIds:ids,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsStatus").value,blockOnConflict:el("dsBlockConflict").checked,dedicated_cover:el("dsDedicatedCover").checked};
+    show("جارٍ...","wait");
+    google.script.run.withSuccessHandler(snap=>{
+      lastSnap=snap;el("dsOutput").textContent=JSON.stringify(snap,null,2);el("dsOutput").style.display="block";el("dsDownload").style.display="block";
+      show(`تم. ${snap.items.length} عنصر · ${snap.conflicts.length} تعارض.`,"ok");loadIssues();
+    }).withFailureHandler(e=>show(e.message||"خطأ","err")).buildSnapshotFromDomainForBrowser(config);
+  });
+  el("dsDownload").addEventListener("click",()=>{
+    if(!lastSnap)return;const blob=new Blob([JSON.stringify(lastSnap,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="snapshot.json";a.click();
+  });
+})();
+</script>

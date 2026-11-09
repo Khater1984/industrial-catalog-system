@@ -1,26 +1,28 @@
-# Phase 6 Architecture
+# Phase 6 Architecture (DEV)
 
-## Current (Implemented, DEV-only)
-- **PDF Renderer** (`worker/src/catalog_worker/pdf_renderer.py`): ReportLab-based, deterministic, real PDF output. Supports TDS, Product Catalog, Master Catalog.
-- **Snapshot Builder** (`worker/src/catalog_worker/snapshot_builder.py`): Pure data → snapshot.
-- **Design Studio** (`apps-script/src/domain/DesignStudio.js` + BrandIdentity.html): Brand presets in Script Properties.
-- **Template Studio** (`apps-script/src/domain/TemplateStudio.js` + TemplateStudio.html): Lightweight templates in Script Properties.
+## Layers
+1. **Brand Identity** — Script Properties (`DS_BRANDS`). Independent of data and templates.
+2. **Document Template** — Script Properties (`DS_TEMPLATES`). Layout rules only.
+3. **Business Data** — Existing Products / Variants / EffectiveSpecificationResolver. Immutable source.
+4. **Issue Snapshot** — Immutable JSON produced by `DesignStudio.buildSnapshotFromDomain`.
+5. **PDF Renderer** — Python `pdf_renderer.py` (ReportLab). Consumes snapshot + local assets.
 
-## Separation
-- Brand Identity ≠ Template ≠ Business Data
-- Renderer consumes immutable snapshots only.
-- No source Specifications are mutated during generation.
+## Flow
+```
+UI (Index.html) → DesignStudio.js → EffectiveSpecificationResolver
+                 ↓
+            snapshot.json → catalog-pdf-render → PDF + preflight
+```
 
-## Schema Blocker
-`schema/03-design-and-issued-output.md` is explicitly a **proposal for review; not implementation authorization**.
+## Constraints
+- No new Sheets tables.
+- No live Drive upload of generated PDFs in this phase (local generation).
+- PRINT_READY_PDF remains blocked.
+- ADR-040 conflicts are preserved; FINAL can be blocked.
 
-Full Sheets-backed tables (Brands, Brand_Versions, Templates, Template_Versions, Issued_Documents, Issue_Operations, Design_Assets, etc.) cannot be created without approval.
-
-## What Full Authorization Would Unlock
-- Versioned, immutable brand and template configs stored in Drive + Sheets metadata.
-- Issued_Documents ledger with dependency manifests.
-- Asset registry separate from product images.
-- Historical reproduction from pinned artifacts.
-
-## Current Integration Boundary
-Apps Script prepares snapshots → Worker renders PDF locally. No live Drive PDF upload or Sheets issue ledger in this phase.
+## Files
+- `apps-script/src/domain/DesignStudio.js`
+- `apps-script/DesignStudioPanel.html`
+- `worker/src/catalog_worker/pdf_renderer.py`
+- `worker/src/catalog_worker/snapshot_builder.py`
+- `worker/src/catalog_worker/snapshot_validator.py`
