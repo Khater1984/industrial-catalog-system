@@ -96,6 +96,24 @@ class DriveClient:
         self, parent_id: str, name: str, content: bytes, mime_type: str,
         *, immutable: bool = True,
     ) -> tuple[str, str]:
+        """Upload bytes and preserve the historical two-value return contract."""
+        file_id, digest, _ = self.upload_bytes_with_status(
+            parent_id, name, content, mime_type, immutable=immutable
+        )
+        return file_id, digest
+
+    def upload_bytes_with_status(
+        self, parent_id: str, name: str, content: bytes, mime_type: str,
+        *, immutable: bool = True,
+    ) -> tuple[str, str, str]:
+        """Upload bytes and report whether Drive created or reused the object.
+
+        The status is authoritative for the observed operation: UPLOADED means
+        this call created the object; REUSED means matching bytes already existed
+        or won a concurrent-create race.
+        """
+        if not isinstance(content, bytes):
+            raise DriveError("DRIVE_UPLOAD_CONTENT_INVALID")
         digest = hashlib.sha256(content).hexdigest()
         existing = [f for f in self.list_children(parent_id) if f.get("name") == name]
         if existing:
@@ -105,12 +123,12 @@ class DriveClient:
                 local = io.BytesIO()
                 try:
                     request = self.service.files().get_media(fileId=item["id"], supportsAllDrives=True)
-                    downloader = MediaIoBaseDownload(local, request)
+                    downloader = MediaIoBaseDownload(local, request, chunksize=1024 * 1024)
                     done = False
                     while not done:
                         _, done = downloader.next_chunk(num_retries=self.max_retries)
                     if hashlib.sha256(local.getvalue()).hexdigest() == digest:
-                        return item["id"], digest
+                        return item["id"], digest, "REUSED"
                 except Exception:
                     continue
             raise DriveError("IMMUTABLE_DRIVE_FILE_CONFLICT")
@@ -124,7 +142,7 @@ class DriveClient:
                 media_body=MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type, resumable=True),
                 fields="id,name", supportsAllDrives=True,
             ).execute(num_retries=self.max_retries)
-            return created["id"], digest
+            return created["id"], digest, "UPLOADED"
         except Exception as exc:
             # A concurrent task may have created the content-addressed object.
             try:
@@ -132,12 +150,12 @@ class DriveClient:
                     if item.get("name") == name:
                         local = io.BytesIO()
                         request = self.service.files().get_media(fileId=item["id"], supportsAllDrives=True)
-                        downloader = MediaIoBaseDownload(local, request)
+                        downloader = MediaIoBaseDownload(local, request, chunksize=1024 * 1024)
                         done = False
                         while not done:
                             _, done = downloader.next_chunk(num_retries=self.max_retries)
                         if hashlib.sha256(local.getvalue()).hexdigest() == digest:
-                            return item["id"], digest
+                            return item["id"], digest, "REUSED"
             except Exception:
                 pass
             raise DriveError("DRIVE_UPLOAD_FAILED") from exc
