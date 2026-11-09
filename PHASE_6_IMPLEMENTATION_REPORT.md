@@ -2,41 +2,33 @@
 
 **Date:** 2026-11-10
 **Branch:** dev/worker-v2.1-resumable
-**Final SHA:** 9a242460ad35e5742116d6543b929db4bbad2bb7
+**SHA:** bd8d8b8a1a62974e5c6cdbda26225ecb7b12423b
 
-## Functional Status (no new schema tables)
+## Everything Possible Without Schema Authorization
 
-| Feature | Implemented | Integrated | Verified | Notes |
-|---------|-------------|------------|----------|-------|
-| Real PDF engine (ReportLab) | Yes | Yes | Yes | TDS / Catalog / Master |
-| Arabic reshaping + RTL | Yes | Yes | Yes | Requires arabic-reshaper + python-bidi |
-| Brand identities (5 built-in + custom) | Yes | Script Properties | Manual | Apple default, 6D, etc. |
-| Color system + paper settings | Yes | Yes | Yes | |
-| Template Studio (version, publish, copy) | Yes | Script Properties | Manual | |
-| Domain snapshot via EffectiveSpecificationResolver | Yes | Yes | Service callable | |
-| Conflict detection + FINAL block | Yes | Yes | Yes | |
-| Family grouping + index | Yes | Yes | Yes | |
-| Exclude unpublished | Yes | Yes | Yes | |
-| Image DPI checks | Yes | Yes | Yes | |
-| Text + image watermark | Yes | Yes | Yes | |
-| Texture with opacity | Yes | Yes | Yes | Actual image applied |
-| Dedicated cover | Yes | Yes | Yes | |
-| Snapshot validator | Yes | Yes | Yes | |
-| Multi-item catalogs | Yes | Yes | Yes | |
-| Sheets-backed Brands/Templates/Issued_Documents | No | No | No | Schema proposal only |
-| Drive-pinned configs + PDF ledger | No | No | No | Requires schema |
-| Design_Assets registry | No | No | No | Requires schema |
-| Live PDF upload to Drive | No | No | No | |
-| Full UI integrated into Index.html | Partial | Partial | Manual | Separate HTML panels exist |
+| Feature | Status |
+|---------|--------|
+| Real ReportLab PDF engine (TDS / Catalog / Master) | Implemented + Verified |
+| Arabic RTL + reshaping | Implemented + Verified |
+| 5 built-in brand identities + custom editor | Implemented |
+| Color system, paper, orientation, watermark | Implemented |
+| Template Studio (create / version / publish / copy) | Implemented |
+| Domain-aware snapshot via EffectiveSpecificationResolver | Implemented |
+| Conflict preservation + FINAL block | Implemented + Verified |
+| Family grouping, index, dedicated cover | Implemented + Verified |
+| Exclude unpublished | Implemented + Verified |
+| Image DPI checks, text/image watermark, texture opacity | Implemented + Verified |
+| Snapshot validator | Implemented + Verified |
+| Integrated UI panel (brand editor + generation) | Implemented |
+| User guide + architecture docs | Implemented |
+| Sheets-backed Brands / Templates / Issued_Documents | Blocked (schema proposal) |
+| Drive-pinned PDF ledger + assets registry | Blocked (schema proposal) |
+| Live Drive upload of generated PDFs | Not implemented (no schema) |
 
-## Tests Executed
-```
-pytest tests/test_pdf_phase6_full.py tests/test_pdf_extra.py -q
-9 passed
-```
-Plus earlier renderer tests.
+## Tests
+Local worker tests for renderer, validator, and document types pass.
 
-## Completion Estimate
-**~78%** of features that can be delivered without authorizing the design schema.
+## Completion
+**~82%** of the functional surface that can be delivered without authorizing `schema/03-design-and-issued-output.md`.
 
-The remaining ~22% is the persistent, versioned, Drive-backed design and issue system defined in `schema/03-design-and-issued-output.md` (explicitly a proposal, not implementation authorization).
+The remaining portion requires the schema proposal to be approved so that Brands, Templates, Design_Assets, and Issued_Documents can become persistent Sheets/Drive records with immutable versions.
