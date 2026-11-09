@@ -25,8 +25,10 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "SF Pro / Helvetica",
-      fontBold: "SF Pro Bold",
+      fontRegular: "",
+      fontBold: "",
+      fontRegularPath: "",
+      fontBoldPath: "",
       watermarkText: "",
       watermarkOpacity: 0.08,
       contact: { phone: "", email: "", website: "https://www.apple.com" }
@@ -47,8 +49,10 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "Cairo / Tajawal",
-      fontBold: "Cairo Bold",
+      fontRegular: "",
+      fontBold: "",
+      fontRegularPath: "",
+      fontBoldPath: "",
       watermarkText: "",
       watermarkOpacity: 0.08,
       contact: { phone: "", email: "", website: "" }
@@ -69,8 +73,10 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "Helvetica",
-      fontBold: "Helvetica-Bold",
+      fontRegular: "",
+      fontBold: "",
+      fontRegularPath: "",
+      fontBoldPath: "",
       watermarkText: "",
       watermarkOpacity: 0.08,
       contact: { phone: "", email: "", website: "" }
@@ -171,8 +177,10 @@ var DesignStudio = (function () {
       paperSize: preset.paperSize || "A4",
       orientation: preset.orientation || "portrait",
       logoPreference: preset.logoPreference || "COMPANY",
-      fontRegular: String(preset.fontRegular || "Helvetica").slice(0, 60),
-      fontBold: String(preset.fontBold || "Helvetica-Bold").slice(0, 60),
+      fontRegular: "",
+      fontBold: "",
+      fontRegularPath: String(preset.fontRegularPath || "").slice(0, 500),
+      fontBoldPath: String(preset.fontBoldPath || "").slice(0, 500),
       watermarkText: String(preset.watermarkText || "").slice(0, 60),
       watermarkOpacity: Math.max(0.03, Math.min(0.35, Number(preset.watermarkOpacity) || 0.1)),
       contact: {
@@ -311,8 +319,10 @@ var DesignStudio = (function () {
       if (item.conflicts && item.conflicts.length) allConflicts = allConflicts.concat(item.conflicts);
     });
 
-    var blockOnConflict = (template && template.blockOnConflict) || config.blockOnConflict;
-    if (blockOnConflict && allConflicts.length && config.documentStatus === "FINAL") {
+    var isFinal = String(config.documentStatus || "ORIGINAL").toUpperCase() === "FINAL";
+    // ADR-040 conflicts must never enter a FINAL snapshot. This is a safety invariant,
+    // not an optional template preference or UI checkbox.
+    if (isFinal && allConflicts.length) {
       throw new Error("CONFLICTS_BLOCK_FINAL_ISSUE: " + allConflicts.length);
     }
 
@@ -332,7 +342,7 @@ var DesignStudio = (function () {
           tableHeader: brand.tableHeader,
           border: brand.border
         },
-        fonts: { regular: brand.fontRegular, bold: brand.fontBold },
+        fonts: { regular: brand.fontRegularPath || null, bold: brand.fontBoldPath || null },
         logoPreference: brand.logoPreference
       },
       paper: {
@@ -351,7 +361,8 @@ var DesignStudio = (function () {
       } : {},
       export_profile: { output_class: "DIGITAL_PDF", minimum_dpi_warning: 150, minimum_dpi_block: 72 },
       contact: brand.contact || {},
-      document_status: config.documentStatus || "ORIGINAL",
+      document_status: String(config.documentStatus || "ORIGINAL").toUpperCase(),
+      block_on_conflict: true,
       revision: config.revision || "1.0",
       issue_date: config.issueDate || new Date().toISOString().slice(0, 10),
       show_provenance: template ? !!template.showProvenance : !!config.showProvenance,
