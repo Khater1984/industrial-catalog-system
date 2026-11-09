@@ -29,6 +29,8 @@ This file records decisions and their status. A proposal is not an approved deci
 
 **ADR-019 — Approved for isolated DEV implementation (2026-11-03).** The repository records explicit user approval of Schema V2.1 and its table inventory in `SCHEMA_APPROVAL_CHECKLIST.md` and `DATABASE_SCHEMA.md`. The acceptance baseline contains 48 design-level scenarios (not 40). This approval does not authorize production deployment, live data migration, or unresolved infrastructure choices.
 
+| ADR-040 | Do not apply implicit precedence between product-scope and variant-scope source specifications; preserve both and surface normalized-key conflicts | Approved for DEV implementation (2026-11-09) | Avoid silent data loss or guessed precedence; any future precedence rule requires a separate explicit decision. |
+
 ## Change procedure
 Add a new ADR or update an existing entry only with:
 - Context and problem.
