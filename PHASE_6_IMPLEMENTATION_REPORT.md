@@ -1,34 +1,46 @@
-# Phase 6 Implementation Report
+# Phase 6 Implementation Report — audited remediation
 
-**Date:** 2026-11-10
-**Branch:** dev/worker-v2.1-resumable
-**SHA:** bd8d8b8a1a62974e5c6cdbda26225ecb7b12423b
+**Date:** 2026-11-10  
+**Branch:** `dev/worker-v2.1-resumable`  
+**Audit basis:** code inspection of the branch after remediation commits.  
+**Important:** no new Sheets schema was authorized or created.
 
-## Everything Possible Without Schema Authorization
+## Implemented in code
 
-| Feature | Status |
-|---------|--------|
-| Real ReportLab PDF engine (TDS / Catalog / Master) | Implemented + Verified |
-| Arabic RTL + reshaping | Implemented + Verified |
-| 5 built-in brand identities + custom editor | Implemented |
-| Color system, paper, orientation, watermark | Implemented |
-| Template Studio (create / version / publish / copy) | Implemented |
-| Domain-aware snapshot via EffectiveSpecificationResolver | Implemented |
-| Conflict preservation + FINAL block | Implemented + Verified |
-| Family grouping, index, dedicated cover | Implemented + Verified |
-| Exclude unpublished | Implemented + Verified |
-| Image DPI checks, text/image watermark, texture opacity | Implemented + Verified |
-| Snapshot validator | Implemented + Verified |
-| Integrated UI panel (brand editor + generation) | Implemented |
-| User guide + architecture docs | Implemented |
-| Sheets-backed Brands / Templates / Issued_Documents | Blocked (schema proposal) |
-| Drive-pinned PDF ledger + assets registry | Blocked (schema proposal) |
-| Live Drive upload of generated PDFs | Not implemented (no schema) |
+| Area | Status | Evidence / qualification |
+|---|---|---|
+| ReportLab PDF renderer (TDS / Product Catalog / Master Catalog) | Implemented | Existing renderer remains in place |
+| Arabic shaping + bidi dependencies | Implemented | Added to `requirements.txt`; already declared in `pyproject.toml` |
+| Arabic-capable font fallback | Implemented | Worker image installs `fonts-dejavu-core`; custom font file paths can be supplied |
+| Five built-in identities + Script Properties persistence | Implemented | Apple, 6D, Industrial, Minimal, Supplier |
+| Brand editor embedded in main Index UI | Implemented in source | Panel now embedded in `Index.html`; no live Apps Script browser test performed |
+| Template create/version/publish/copy | Implemented | Script Properties only; not immutable durable storage |
+| Domain snapshot via EffectiveSpecificationResolver | Implemented | Product/variant labels now read from company tables |
+| Explicit product-to-variant selection | Implemented in UI | Mapping syntax `PRODUCT_ID=VARIANT_ID` |
+| ADR-040 FINAL conflict gate | Implemented | Apps Script, snapshot validator, and renderer all block FINAL with conflicts regardless of opt-in flag |
+| Family grouping / index / dedicated cover / exclude inactive products | Implemented in renderer/snapshot | Requires test evidence on the final branch |
+| Image DPI checks / watermark / texture | Implemented in renderer | Approved product image paths are not yet supplied by the snapshot builder |
 
-## Tests
-Local worker tests for renderer, validator, and document types pass.
+## Partial or not implemented
 
-## Completion
-**~82%** of the functional surface that can be delivered without authorizing `schema/03-design-and-issued-output.md`.
+| Area | Status |
+|---|---|
+| Approved Image_Links → local PDF image files | Not implemented; `resolveItem_` still returns an empty `images` array |
+| Real image selection / approval-aware image materialization | Not integrated |
+| Full logo and asset management | Partial |
+| Visual template editor and rendered preview | Not implemented |
+| Permanent Sheets-backed Brands / Templates / Issued_Documents | Blocked pending schema authorization |
+| Durable Drive-backed design assets, PDFs, checksums, immutable issue ledger | Not implemented |
+| Live Drive storage of generated PDFs | Not implemented |
+| Reproducible historical issue generation | Not implemented |
 
-The remaining portion requires the schema proposal to be approved so that Brands, Templates, Design_Assets, and Issued_Documents can become persistent Sheets/Drive records with immutable versions.
+## Verification status
+
+- **Implemented:** code changes are present on the DEV branch.
+- **Integrated:** Design Studio markup is embedded in the source `Index.html`; Apps Script live execution has not been demonstrated.
+- **Verified:** the remediation adds a regression test for unconditional FINAL conflict blocking and a test for Arabic shaping. These tests have **not yet been run against this final branch**; the GitHub connector currently reports no associated workflow runs/status checks for the latest commit.
+- Earlier local test reports do not verify the remediation commits.
+
+## Completion assessment
+
+The previous **82%** claim is withdrawn. It was not supported by a complete verification record and overstated the image/UI integration. A new percentage should be assigned only after the final-branch test suite, PDF visual inspection, and live Apps Script UI validation. Phase 6 is **not approved as complete**.
