@@ -54,11 +54,14 @@ def _hex_color(value: Any, fallback: str) -> colors.Color:
 def _safe_asset(path_value: Any, asset_root: Path | None) -> Path | None:
     if not path_value:
         return None
-    candidate = Path(str(path_value)).expanduser().resolve()
+    raw_path = Path(str(path_value)).expanduser()
     if asset_root is not None:
         root = asset_root.resolve()
+        candidate = (raw_path if raw_path.is_absolute() else root / raw_path).resolve()
         if candidate != root and root not in candidate.parents:
             raise PDFRenderError("ASSET_PATH_OUTSIDE_ROOT")
+    else:
+        candidate = raw_path.resolve()
     if not candidate.is_file():
         raise PDFRenderError("ASSET_FILE_NOT_FOUND")
     return candidate
