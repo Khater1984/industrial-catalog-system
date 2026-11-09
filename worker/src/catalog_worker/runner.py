@@ -13,6 +13,7 @@ import pypdf
 
 from .drive_io import DriveClient
 from .images import ImageExtractionError, extract_embedded_images, image_extraction_enabled
+from .image_drive_sync import ImageDriveSyncError, sync_images_to_drive
 from .resumable import (
     MANIFEST_VERSION, WORKER_VERSION, WorkerError, canonical_json_bytes,
     process_resumable_catalog_job, sha256_bytes,
@@ -299,57 +300,78 @@ def run_from_drive(
                 run_id=run_id,
                 catalog_page_ids=page_ids,
             )
-            uploaded_images = []
-            for image_row in extracted.get("images", []):
-                relative = Path(image_row["artifact_path"])
-                image_path = (run_dir / relative).resolve()
-                if run_dir not in image_path.parents or not image_path.is_file():
-                    raise RunnerError("IMAGE_ARTIFACT_PATH_INVALID")
-                drive_file_id, drive_sha = drive.upload_file(
-                    run_folder_id,
-                    image_path.name,
-                    image_path,
-                    image_row["mime_type"],
-                )
-                uploaded_row = dict(image_row)
-                uploaded_row["drive_file_id"] = drive_file_id
-                uploaded_row["drive_sha256"] = drive_sha
-                uploaded_images.append(uploaded_row)
+            # Use the shared bridge as the single implementation of image
+            # verification, immutable upload, retry reuse and Drive manifest creation.
+            drive_images = sync_images_to_drive(
+                run_dir, drive_client=drive, folder_id=run_folder_id
+            )
+            by_path = {
+                row.get("artifact_path"): row
+                for row in drive_images.get("images", [])
+                if row.get("upload_status") in {"UPLOADED", "REUSED"}
+            }
+            promoted_source_rows = []
+            for source_row in extracted.get("images", []):
+                uploaded_row = dict(source_row)
+                stored_row = by_path.get(source_row.get("artifact_path"))
+                if stored_row:
+                    uploaded_row["drive_file_id"] = stored_row["drive_file_id"]
+                    uploaded_row["drive_sha256"] = stored_row["sha256"]
+                promoted_source_rows.append(uploaded_row)
 
+            # Keep the established image-manifest contract consumed by review
+            # and ImagePromotion, and publish the bridge's separate audit manifest.
             image_manifest = dict(extracted)
-            image_manifest["images"] = uploaded_images
+            image_manifest["images"] = promoted_source_rows
             image_manifest.pop("manifest_sha256", None)
             image_manifest["manifest_sha256"] = sha256_bytes(
                 canonical_json_bytes(image_manifest)
             )
-            image_manifest_bytes = canonical_json_bytes(image_manifest)
             image_manifest_id, image_manifest_sha = drive.upload_bytes(
-                run_folder_id,
-                "image-manifest.json",
-                image_manifest_bytes,
-                "application/json",
+                run_folder_id, "image-manifest.json",
+                canonical_json_bytes(image_manifest), "application/json",
             )
+            drive_manifest_path = run_dir / "drive-image-manifest.json"
+            drive_manifest_id, drive_manifest_sha = drive.upload_file(
+                run_folder_id, "drive-image-manifest.json",
+                drive_manifest_path, "application/json",
+            )
+            drive_status = drive_images["overall_status"]
             manifest["image_extraction"] = {
                 "enabled": True,
-                "status": "COMPLETED",
-                "image_count": len(uploaded_images),
-                "uploaded_count": len(uploaded_images),
+                "status": drive_status,
+                "image_count": drive_images["image_count"],
+                "uploaded_count": drive_images["uploaded_count"],
+                "reused_count": drive_images["reused_count"],
+                "stored_count": drive_images["stored_count"],
+                "failed_count": drive_images["failed_count"],
                 "manifest_file_id": image_manifest_id,
                 "manifest_sha256": image_manifest_sha,
+                "drive_manifest_file_id": drive_manifest_id,
+                "drive_manifest_sha256": drive_manifest_sha,
             }
-        except ImageExtractionError as exc:
-            # Deterministic extraction failures are made explicit in the
-            # terminal result rather than silently reporting a complete run.
+            if drive_status != "COMPLETED":
+                manifest["run_status"] = "FAILED"
+                manifest["error_code"] = "IMAGE_UPLOAD_" + drive_status
+                manifest["error_message"] = (
+                    "Image upload did not complete: "
+                    + str(drive_images["failed_count"]) + " image(s) failed."
+                )
+                manifest["failed_units"] = max(1, int(manifest.get("failed_units", 0)))
+        except (ImageExtractionError, ImageDriveSyncError) as exc:
             manifest["image_extraction"] = {
                 "enabled": True,
                 "status": "FAILED",
                 "image_count": 0,
                 "uploaded_count": 0,
+                "reused_count": 0,
+                "stored_count": 0,
+                "failed_count": 1,
                 "error_code": exc.code,
                 "error_message": exc.message[:1000],
             }
             manifest["run_status"] = "FAILED"
-            manifest["error_code"] = "IMAGE_EXTRACTION_FAILED"
+            manifest["error_code"] = "IMAGE_EXTRACTION_OR_UPLOAD_FAILED"
             manifest["error_message"] = exc.message[:1000]
             manifest["failed_units"] = max(1, int(manifest.get("failed_units", 0)))
     else:
