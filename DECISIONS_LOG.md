@@ -46,10 +46,10 @@ The user approved continuing the design correction work. The following are **pro
 |---|---|---|---|
 | ADR-022 | Separate canonical Products/Variants from Product_Source_Records/Variant_Source_Records | Approved for DEV schema implementation (2026-11-03) | Preserve multiple catalog/revision appearances without overwriting provenance or auto-merging identities. |
 | ADR-023 | Use a per-logical-key append-only specification event stream with monotonic Sequence_No and deterministic reducer | Approved for DEV schema implementation (2026-11-03) | Remove ambiguity from ADD/UPDATE/DELETE ordering; source assertions remain immutable. |
-| ADR-024 | Freeze binary asset records and add explicit immutable Paper_Versions | Proposed | Make published designs and historical PDFs reproducible. |
-| ADR-025 | Add Logical_Job_ID, Parent_Run_ID, Attempt_Number, many-to-many review links, and hash-bound approvals | Proposed | Make retries and review/promotion safe and auditable. |
-| ADR-026 | Require polymorphic target validation, hash manifests, integrity scans, and report-first recovery | Proposed | Compensate for Google Sheets' lack of native FK/transactions/immutable append-only guarantees. |
-| ADR-027 | Add non-secret System_Config registry and define a Sheets volume/backup gate | Proposed | Keep configuration controlled and prevent unmeasured scale assumptions. |
+| ADR-024 | Freeze binary asset records and add explicit immutable Paper_Versions | Approved for DEV schema implementation (2026-11-03) | Make published designs and historical PDFs reproducible. |
+| ADR-025 | Add Logical_Job_ID, Parent_Run_ID, Attempt_Number, many-to-many review links, and hash-bound approvals | Approved for DEV schema implementation (2026-11-03) | Make retries and review/promotion safe and auditable. |
+| ADR-026 | Require polymorphic target validation, hash manifests, integrity scans, and report-first recovery | Approved for DEV schema implementation (2026-11-03) | Compensate for Google Sheets' lack of native FK/transactions/immutable append-only guarantees. |
+| ADR-027 | Add non-secret System_Config registry and define a Sheets volume/backup gate | Approved for DEV schema implementation (2026-11-03) | Keep configuration controlled and prevent unmeasured scale assumptions. |
 
 These ADRs describe the approved V2.1 DEV schema baseline only. They do not authorize production resources, production data migration, or implementation of infrastructure choices still listed as open.
 
@@ -57,21 +57,21 @@ These ADRs describe the approved V2.1 DEV schema baseline only. They do not auth
 
 | ID | Proposed decision | Status | Rationale |
 |---|---|---|---|
-| ADR-028 | Keep Catalog_Pages immutable and track processing in Run_Units | Proposed | Prevent retries/new extraction versions from overwriting page artifacts or status. |
-| ADR-029 | Separate Image_Assets originals from immutable Image_Renditions | Proposed | Preserve originals and pin exact preview/high-quality renditions. |
-| ADR-030 | Introduce shared immutable Design_Assets registry | Proposed | Give brand, font, paper texture, and watermark assets stable IDs and checksums. |
-| ADR-031 | Add Promotion_Operations and Promotion_Mappings | Proposed | Recover partial multi-sheet promotion without blind replay or duplicate records. |
-| ADR-032 | Add Issue_Operations and Issued_Document_Items | Proposed | Recover issue transactions and query membership of multi-product PDFs. |
-| ADR-033 | Bind review decisions to ordered staging-set manifests and hashes | Proposed | Support multiple staging records per review and stale approval invalidation. |
-| ADR-034 | Add canonical Product_Name_EN and Model_Name_EN company labels | Proposed | Separate internal display labels from exact supplier wording. |
+| ADR-028 | Keep Catalog_Pages immutable and track processing in Run_Units | Approved for DEV schema implementation (2026-11-03) | Prevent retries/new extraction versions from overwriting page artifacts or status. |
+| ADR-029 | Separate Image_Assets originals from immutable Image_Renditions | Approved for DEV schema implementation (2026-11-03) | Preserve originals and pin exact preview/high-quality renditions. |
+| ADR-030 | Introduce shared immutable Design_Assets registry | Approved for DEV schema implementation (2026-11-03) | Give brand, font, paper texture, and watermark assets stable IDs and checksums. |
+| ADR-031 | Add Promotion_Operations and Promotion_Mappings | Approved for DEV schema implementation (2026-11-03) | Recover partial multi-sheet promotion without blind replay or duplicate records. |
+| ADR-032 | Add Issue_Operations and Issued_Document_Items | Approved for DEV schema implementation (2026-11-03) | Recover issue transactions and query membership of multi-product PDFs. |
+| ADR-033 | Bind review decisions to ordered staging-set manifests and hashes | Approved for DEV schema implementation (2026-11-03) | Support multiple staging records per review and stale approval invalidation. |
+| ADR-034 | Add canonical Product_Name_EN and Model_Name_EN company labels | Approved for DEV schema implementation (2026-11-03) | Separate internal display labels from exact supplier wording. |
 
 These proposals are documented in the domain schema and technical design files. They are approved as the V2.1 DEV schema/design baseline under the 2026-11-03 approval record. Their implementation remains bounded by the documented contracts and v1 exclusions; production rollout and infrastructure-dependent behavior remain separately gated.
 
 
-| ADR-035 | Exclude canonical Product/Variant merge and reparent workflows from the initial release | Proposed | Avoid exposing MERGED states without a fully tested child-mapping, rollback, and historical-reference protocol. |
-| ADR-036 | Separate immutable Catalog_Pages from per-run Run_Units checkpoints and worker leases | Proposed | Preserve page identity and extraction artifacts across retries and parser versions. |
-| ADR-037 | Separate issue-request idempotency key from content input fingerprint | Proposed | Allow an intentional new issue of identical content while making retries of one request idempotent. |
+| ADR-035 | Exclude canonical Product/Variant merge and reparent workflows from the initial release | Approved for DEV schema implementation (2026-11-03) | Avoid exposing MERGED states without a fully tested child-mapping, rollback, and historical-reference protocol. |
+| ADR-036 | Separate immutable Catalog_Pages from per-run Run_Units checkpoints and worker leases | Approved for DEV schema implementation (2026-11-03) | Preserve page identity and extraction artifacts across retries and parser versions. |
+| ADR-037 | Separate issue-request idempotency key from content input fingerprint | Approved for DEV schema implementation (2026-11-03) | Allow an intentional new issue of identical content while making retries of one request idempotent. |
 
-| ADR-038 | Maintain one centralized enum registry alongside domain schemas | Proposed | Keep stored tokens consistent across Apps Script, frontend, worker, and acceptance tests. |
+| ADR-038 | Maintain one centralized enum registry alongside domain schemas | Approved for DEV schema implementation (2026-11-03) | Keep stored tokens consistent across Apps Script, frontend, worker, and acceptance tests. |
 
-| ADR-039 | Treat PRINT_READY_PDF as a printer-validated output class, not a DPI preset | Proposed | Require pinned printer specs, ICC profile asset, trim/bleed rules, and conformance verification before using the label. |
+| ADR-039 | Treat PRINT_READY_PDF as a printer-validated output class, not a DPI preset | Approved for DEV schema implementation (2026-11-03) | Require pinned printer specs, ICC profile asset, trim/bleed rules, and conformance verification before using the label. |
