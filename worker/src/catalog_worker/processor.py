@@ -1,6 +1,7 @@
 """Deterministic, resumable page-by-page PDF text extraction with optional image extraction and OCR fallback.
 
-Embedded text is preferred. OCR (Tesseract) is used only when embedded text is insufficient.
+Embedded text is preferred. When insufficient, the page is rendered to a temporary image
+and passed to the existing Tesseract OCR path. Temporary images are always cleaned up.
 """
 from __future__ import annotations
 
@@ -14,11 +15,18 @@ from typing import Any
 
 from pypdf import PdfReader
 
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
 from catalog_worker.images import extract_embedded_images, image_extraction_enabled
 from catalog_worker.ocr import extract_page_text, is_text_usable
 
-WORKER_VERSION = "0.2.2"
+WORKER_VERSION = "0.2.3"
 PROTOCOL_VERSION = "1"
+OCR_RENDER_DPI = 150
 
 
 class WorkerError(Exception):
@@ -96,6 +104,28 @@ def _load_reusable_page(path: Path, expected_input_sha: str) -> dict[str, Any] |
         raise WorkerError("CHECKPOINT_INVALID", f"Invalid page checkpoint: {path.name}") from exc
 
 
+def _render_page_to_temp_image(pdf_path: Path, page_index: int) -> Path | None:
+    """Render one page (0-based index) to a temporary PNG. Caller must delete it."""
+    if not PYMUPDF_AVAILABLE:
+        return None
+    try:
+        doc = fitz.open(str(pdf_path))
+        try:
+            if page_index < 0 or page_index >= doc.page_count:
+                return None
+            page = doc[page_index]
+            pix = page.get_pixmap(dpi=OCR_RENDER_DPI)
+            fd, tmp_name = tempfile.mkstemp(prefix=f"ocr-page-{page_index+1:05d}-", suffix=".png")
+            os.close(fd)
+            tmp_path = Path(tmp_name)
+            pix.save(str(tmp_path))
+            return tmp_path
+        finally:
+            doc.close()
+    except Exception:
+        return None
+
+
 def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str, Any]:
     """Process a local DEV job manifest and return a deterministic result manifest.
 
@@ -147,78 +177,90 @@ def process_catalog_job(job: dict[str, Any], output_dir: str | Path) -> dict[str
     started_at = datetime.now(timezone.utc).isoformat()
 
     for page_index, page in enumerate(reader.pages, start=1):
+        temp_image: Path | None = None
         try:
-            embedded = page.extract_text() or ""
-        except Exception as exc:
-            raise WorkerError("PAGE_TEXT_EXTRACTION_FAILED", f"Could not extract embedded text from page {page_index}.") from exc
+            try:
+                embedded = page.extract_text() or ""
+            except Exception as exc:
+                raise WorkerError("PAGE_TEXT_EXTRACTION_FAILED", f"Could not extract embedded text from page {page_index}.") from exc
 
-        # OCR decision (page image not yet rendered in this path; OCR will fall back gracefully)
-        ocr_decision = extract_page_text(
-            embedded,
-            page_image_path=None,  # full page rendering can be added later
-            languages=ocr_languages,
-        )
-        extracted_text = ocr_decision["extracted_text"]
-        extraction_method = ocr_decision["extraction_method"]
+            page_image_path = None
+            if not is_text_usable(embedded):
+                temp_image = _render_page_to_temp_image(source_path, page_index - 1)
+                page_image_path = temp_image
 
-        text_sha = sha256_bytes(extracted_text.encode("utf-8"))
-        unit_input = {
-            "catalog_id": catalog_id,
-            "source_pdf_sha256": actual_pdf_sha,
-            "page_number": page_index,
-            "page_text_sha256": text_sha,
-            "worker_version": WORKER_VERSION,
-            "extraction_method": extraction_method.upper(),
-        }
-        unit_input_sha = sha256_bytes(canonical_json_bytes(unit_input))
-        unit_key = f"page:{page_index:05d}"
-        unit_id = "unit_" + sha256_bytes(f"{run_id}|CATALOG_PAGE|{unit_key}".encode())[:32]
-        page_path = _page_output_path(out, page_index)
+            ocr_decision = extract_page_text(
+                embedded,
+                page_image_path=page_image_path,
+                languages=ocr_languages,
+            )
+            extracted_text = ocr_decision["extracted_text"]
+            extraction_method = ocr_decision["extraction_method"]
 
-        existing = _load_reusable_page(page_path, unit_input_sha)
-        if existing is not None:
-            page_result = existing
-            reused_count += 1
-        else:
-            page_result = {
-                "protocol_version": PROTOCOL_VERSION,
-                "run_id": run_id,
-                "logical_job_id": logical_job_id,
+            text_sha = sha256_bytes(extracted_text.encode("utf-8"))
+            unit_input = {
                 "catalog_id": catalog_id,
-                "run_unit_id": unit_id,
+                "source_pdf_sha256": actual_pdf_sha,
+                "page_number": page_index,
+                "page_text_sha256": text_sha,
+                "worker_version": WORKER_VERSION,
+                "extraction_method": extraction_method.upper(),
+            }
+            unit_input_sha = sha256_bytes(canonical_json_bytes(unit_input))
+            unit_key = f"page:{page_index:05d}"
+            unit_id = "unit_" + sha256_bytes(f"{run_id}|CATALOG_PAGE|{unit_key}".encode())[:32]
+            page_path = _page_output_path(out, page_index)
+
+            existing = _load_reusable_page(page_path, unit_input_sha)
+            if existing is not None:
+                page_result = existing
+                reused_count += 1
+            else:
+                page_result = {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "run_id": run_id,
+                    "logical_job_id": logical_job_id,
+                    "catalog_id": catalog_id,
+                    "run_unit_id": unit_id,
+                    "unit_type": "CATALOG_PAGE",
+                    "unit_key": unit_key,
+                    "page_number": page_index,
+                    "input_sha256": unit_input_sha,
+                    "source_pdf_sha256": actual_pdf_sha,
+                    "page_text_sha256": text_sha,
+                    "extraction_method": extraction_method,
+                    "extraction_tool_version": f"pypdf/{getattr(__import__('pypdf'), '__version__', 'unknown')}",
+                    "text_char_count": len(extracted_text),
+                    "extracted_text": extracted_text,
+                    "confidence": ocr_decision.get("confidence"),
+                    "processing_status": ocr_decision.get("processing_status", "COMPLETED"),
+                    "warnings": ocr_decision.get("warnings", []),
+                    "unit_status": "COMPLETED",
+                }
+                page_result["output_sha256"] = sha256_bytes(canonical_json_bytes(page_result))
+                atomic_write_json(page_path, page_result)
+                completed_count += 1
+            pages.append({
+                "run_unit_id": page_result["run_unit_id"],
                 "unit_type": "CATALOG_PAGE",
                 "unit_key": unit_key,
                 "page_number": page_index,
-                "input_sha256": unit_input_sha,
-                "source_pdf_sha256": actual_pdf_sha,
-                "page_text_sha256": text_sha,
+                "unit_status": page_result["unit_status"],
+                "input_sha256": page_result["input_sha256"],
+                "output_sha256": page_result["output_sha256"],
+                "artifact_path": str(page_path.relative_to(out)),
+                "text_char_count": page_result["text_char_count"],
                 "extraction_method": extraction_method,
-                "extraction_tool_version": f"pypdf/{getattr(__import__('pypdf'), '__version__', 'unknown')}",
-                "text_char_count": len(extracted_text),
-                "extracted_text": extracted_text,
-                "confidence": ocr_decision.get("confidence"),
-                "processing_status": ocr_decision.get("processing_status", "COMPLETED"),
-                "warnings": ocr_decision.get("warnings", []),
-                "unit_status": "COMPLETED",
-            }
-            page_result["output_sha256"] = sha256_bytes(canonical_json_bytes(page_result))
-            atomic_write_json(page_path, page_result)
-            completed_count += 1
-        pages.append({
-            "run_unit_id": page_result["run_unit_id"],
-            "unit_type": "CATALOG_PAGE",
-            "unit_key": unit_key,
-            "page_number": page_index,
-            "unit_status": page_result["unit_status"],
-            "input_sha256": page_result["input_sha256"],
-            "output_sha256": page_result["output_sha256"],
-            "artifact_path": str(page_path.relative_to(out)),
-            "text_char_count": page_result["text_char_count"],
-            "extraction_method": extraction_method,
-            "confidence": page_result.get("confidence"),
-            "processing_status": page_result.get("processing_status"),
-            "warnings": page_result.get("warnings", []),
-        })
+                "confidence": page_result.get("confidence"),
+                "processing_status": page_result.get("processing_status"),
+                "warnings": page_result.get("warnings", []),
+            })
+        finally:
+            if temp_image is not None:
+                try:
+                    temp_image.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
     image_result = None
     if extract_images:
