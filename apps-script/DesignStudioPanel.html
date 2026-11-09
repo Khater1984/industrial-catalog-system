@@ -37,7 +37,7 @@
   <div class="field" style="margin-top:14px"><label>نوع المستند</label>
     <select id="dsDocType"><option value="TECHNICAL_DATASHEET">ورقة بيانات فنية</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
   </div>
-  <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label><input id="dsProductIds" type="text" placeholder="P001, P002"></div>
+  <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label><input id="dsProductIds" type="text" placeholder="P001, P002"></div>\n  <div class="field"><label>معرفات الموديلات المرتبطة (اختياري: PRODUCT_ID=VARIANT_ID)</label><input id="dsVariantMap" type="text" placeholder="P001=V001, P002=V004"></div>
   <div class="field"><label>العنوان</label><input id="dsTitle" type="text" value="Industrial Catalog"></div>
   <div class="field"><label>الحالة</label><select id="dsDocumentStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select></div>
   <div class="notice" role="note">حماية ADR-040 مفعّلة دائمًا: لن يُنشأ Snapshot بحالة FINAL إذا وُجد تعارض.</div>
@@ -121,7 +121,18 @@
   el("dsGenerate").addEventListener("click",()=>{
     const ids=el("dsProductIds").value.split(",").map(s=>s.trim()).filter(Boolean);
     if(!ids.length){show("أدخل معرف منتج.","err");return;}
-    const config={documentType:el("dsDocType").value,productIds:ids,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsDocumentStatus").value,blockOnConflict:true,dedicated_cover:el("dsDedicatedCover").checked};
+    const variantMap={};
+    const rawVariantMap=el("dsVariantMap").value.trim();
+    if(rawVariantMap){
+      rawVariantMap.split(",").forEach(pair=>{
+        const parts=pair.split("=").map(x=>x.trim());
+        if(parts.length!==2||!parts[0]||!parts[1]) throw new Error("صيغة الموديل غير صحيحة. استخدم PRODUCT_ID=VARIANT_ID.");
+        if(!ids.includes(parts[0])) throw new Error("معرف الموديل مرتبط بمنتج غير موجود في القائمة: "+parts[0]);
+        if(variantMap[parts[0]]) throw new Error("تم إدخال أكثر من موديل للمنتج نفسه: "+parts[0]);
+        variantMap[parts[0]]=parts[1];
+      });
+    }
+    const config={documentType:el("dsDocType").value,productIds:ids,variantMap,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsDocumentStatus").value,blockOnConflict:true,dedicated_cover:el("dsDedicatedCover").checked};
     show("جارٍ...","wait");
     google.script.run.withSuccessHandler(snap=>{
       lastSnap=snap;el("dsOutput").textContent=JSON.stringify(snap,null,2);el("dsOutput").style.display="block";el("dsDownload").style.display="block";
