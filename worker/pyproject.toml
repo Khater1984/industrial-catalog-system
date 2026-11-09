@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "industrial-catalog-worker"
-version = "0.2.2"
-description = "Resumable page-by-page PDF intake worker with optional OCR"
+version = "0.2.3"
+description = "Resumable page-by-page PDF intake worker with optional OCR and page rendering"
 requires-python = ">=3.11"
 dependencies = [
   "pypdf>=5.0,<7.0",
@@ -19,6 +19,7 @@ dependencies = [
   "arabic-reshaper>=3.0,<4.0",
   "python-bidi>=0.6,<1.0",
   "pytesseract>=0.3.13,<0.4",
+  "PyMuPDF>=1.24,<2.0",
 ]
 
 [project.optional-dependencies]

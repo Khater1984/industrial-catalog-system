@@ -1,8 +1,10 @@
-# OCR Module (Local Tesseract)
+# OCR Module (Local Tesseract + Page Rendering)
 
 ## Purpose
 
 OCR is used **only** for pages that have insufficient embedded text (default threshold: 40 characters). Usable embedded text is never replaced.
+
+When OCR is needed, the page is rendered to a temporary PNG (via PyMuPDF) and passed to Tesseract. Temporary files are always cleaned up.
 
 ## Installation
 
@@ -10,8 +12,6 @@ OCR is used **only** for pages that have insufficient embedded text (default thr
 ```bash
 cd worker
 pip install -e ".[test]"
-# or
-pip install pytesseract Pillow
 ```
 
 ### Tesseract binary + language packs
@@ -25,16 +25,15 @@ sudo apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara
 **macOS (Homebrew):**
 ```bash
 brew install tesseract
-brew install tesseract-lang  # includes ara and eng
+brew install tesseract-lang
 ```
 
 **Windows:**  
-Download installer from https://github.com/UB-Mannheim/tesseract/wiki and add to PATH. Install Arabic language data.
+Download from https://github.com/UB-Mannheim/tesseract/wiki and add to PATH. Install Arabic language data.
 
 Verify:
 ```bash
 tesseract --list-langs
-# should show eng and ara
 ```
 
 ## Configuration
@@ -42,20 +41,21 @@ tesseract --list-langs
 - Job field `ocr_languages`: `"eng"` | `"ara"` | `"ara+eng"` (default `"eng"`)
 - Environment: `CATALOG_WORKER_OCR_LANGUAGES=ara+eng`
 - Threshold: `OCR_MIN_USABLE_CHARS` (code default 40)
+- Render DPI: 150 (code constant)
 
 ## Running tests
 
 ```bash
 cd worker
-pytest tests/test_ocr.py -q
+pytest tests/test_ocr.py tests/test_ocr_integration.py -q
 ```
 
-Most tests mock Tesseract. Real OCR tests require the binary and language packs installed locally.
+Integration tests prove that the processor renders a real page image and supplies its path to the OCR function. Most OCR calls are mocked so CI does not require the Tesseract binary.
 
 ## Known limitations
 
-- Page images must be supplied by the caller (current integration renders or uses existing page images when available).
-- Confidence is average word confidence from Tesseract; not a page-level guarantee.
-- No layout analysis or table reconstruction yet.
-- Arabic quality depends on scan resolution and language pack version.
+- Confidence is average word confidence from Tesseract.
+- No layout analysis or table reconstruction.
+- Arabic quality depends on scan resolution and language pack.
 - Does not modify source PDFs.
+- Page rendering requires PyMuPDF.
