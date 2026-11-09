@@ -84,6 +84,17 @@ var Api = (function () {
         });
         return success_(requestId, imgResult);
       }
+      if (body.action === "images.intake") {
+        var intakePayload = body.payload || {};
+        var intakeResult = ImageReviewIntake.intake({
+          imageManifestFileId: intakePayload.imageManifestFileId,
+          imageManifestSha256: intakePayload.imageManifestSha256,
+          driveManifestFileId: intakePayload.driveManifestFileId,
+          driveManifestSha256: intakePayload.driveManifestSha256,
+          actor: APP.ACTOR_ID
+        });
+        return success_(requestId, intakeResult);
+      }
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
       return failure_(requestId, safeCode_(err));
@@ -170,6 +181,18 @@ function promoteImagesFromBrowser(payload) {
     images: validated.images,
     run_id: validated.run_id,
     catalog_id: validated.catalog_id,
+    actor: APP.ACTOR_ID
+  });
+}
+
+/** Owner-only endpoint for image review intake. */
+function intakeImagesFromBrowser(payload) {
+  assertPrimaryUser_();
+  return ImageReviewIntake.intake({
+    imageManifestFileId: payload.imageManifestFileId,
+    imageManifestSha256: payload.imageManifestSha256,
+    driveManifestFileId: payload.driveManifestFileId,
+    driveManifestSha256: payload.driveManifestSha256,
     actor: APP.ACTOR_ID
   });
 }
