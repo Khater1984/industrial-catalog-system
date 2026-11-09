@@ -59,42 +59,95 @@ var Api = (function () {
       if (body.protocol_version && body.protocol_version !== "1") {
         return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
       }
+      var p = body.payload || {};
+      var actor = APP.ACTOR_ID;
+
       if (body.action === "catalog.register") {
-        var payload = InputValidation.catalogPayload(body.payload || {});
+        var payload = InputValidation.catalogPayload(p);
         var registered = CatalogService.register(payload);
         registered.workerDispatch = dispatchRegisteredCatalog_(registered);
         return success_(requestId, registered);
       }
       if (body.action === "staging.promote") {
-        var promoPayload = InputValidation.promotionPayload(body.payload || {});
+        var promoPayload = InputValidation.promotionPayload(p);
         var promoted = StagingPromotion.promoteReviewedStaging({
           stagingSetFileId: promoPayload.stagingSetFileId,
           stagingSetSha256: promoPayload.stagingSetSha256,
-          actor: APP.ACTOR_ID
+          actor: actor
         });
         return success_(requestId, promoted);
       }
       if (body.action === "images.promote") {
-        var imgPayload = InputValidation.imagesPromotePayload(body.payload || {});
+        var imgPayload = InputValidation.imagesPromotePayload(p);
         var imgResult = ImagePromotion.promoteAcceptedImages({
           images: imgPayload.images,
           run_id: imgPayload.run_id,
           catalog_id: imgPayload.catalog_id,
-          actor: APP.ACTOR_ID
+          actor: actor
         });
         return success_(requestId, imgResult);
       }
       if (body.action === "images.intake") {
-        var intakePayload = body.payload || {};
         var intakeResult = ImageReviewIntake.intake({
-          imageManifestFileId: intakePayload.imageManifestFileId,
-          imageManifestSha256: intakePayload.imageManifestSha256,
-          driveManifestFileId: intakePayload.driveManifestFileId,
-          driveManifestSha256: intakePayload.driveManifestSha256,
-          actor: APP.ACTOR_ID
+          imageManifestFileId: p.imageManifestFileId,
+          imageManifestSha256: p.imageManifestSha256,
+          driveManifestFileId: p.driveManifestFileId,
+          driveManifestSha256: p.driveManifestSha256,
+          actor: actor
         });
         return success_(requestId, intakeResult);
       }
+
+      // Product domain
+      if (body.action === "product.createCompanyRecord") {
+        return success_(requestId, ProductService.create(Object.assign({ actor: actor }, p)));
+      }
+      if (body.action === "product.getWorkspace") {
+        return success_(requestId, ProductService.getWorkspace(p.productId));
+      }
+      if (body.action === "product.updateCompanyFields") {
+        return success_(requestId, ProductService.updateCompany(p.productId, p, actor));
+      }
+      if (body.action === "product.archive") {
+        return success_(requestId, ProductService.archive(p.productId, actor));
+      }
+      if (body.action === "product.reactivate") {
+        return success_(requestId, ProductService.reactivate(p.productId, actor));
+      }
+      if (body.action === "variant.createCompanyRecord") {
+        return success_(requestId, VariantService.create(p.productId, Object.assign({ actor: actor }, p)));
+      }
+      if (body.action === "variant.updateCompanyFields") {
+        return success_(requestId, VariantService.updateCompany(p.variantId, p, actor));
+      }
+      if (body.action === "variant.archive") {
+        return success_(requestId, VariantService.archive(p.variantId, actor));
+      }
+      if (body.action === "variant.reactivate") {
+        return success_(requestId, VariantService.reactivate(p.variantId, actor));
+      }
+      if (body.action === "attribute.setProductValue") {
+        return success_(requestId, AttributeService.setProductValue(p.productId, p.attributeId, p.valueJson, actor));
+      }
+      if (body.action === "attribute.setVariantOverride") {
+        return success_(requestId, AttributeService.setVariantOverride(p.variantId, p.attributeId, p.mode, p.valueJson, actor));
+      }
+      if (body.action === "attribute.clearVariantOverride") {
+        return success_(requestId, AttributeService.clearVariantOverride(p.variantId, p.attributeId, actor));
+      }
+      if (body.action === "specification.appendChange") {
+        return success_(requestId, SpecificationService.appendDraft(Object.assign({ actor: actor }, p)));
+      }
+      if (body.action === "specification.approveChange") {
+        return success_(requestId, SpecificationService.approve(p.changeId, actor));
+      }
+      if (body.action === "specification.rejectChange") {
+        return success_(requestId, SpecificationService.reject(p.changeId, actor));
+      }
+      if (body.action === "specification.getEffective") {
+        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(p.productId, p.variantId));
+      }
+
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
       return failure_(requestId, safeCode_(err));
