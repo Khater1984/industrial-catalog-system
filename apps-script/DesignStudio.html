@@ -1,0 +1,82 @@
+<!-- Design Studio Panel — append before footer in Index.html or include via HtmlService -->
+<section class="panel" style="margin-top:18px" id="designStudio">
+  <div class="toolbar"><h3>استوديو التصميم — Design Studio</h3></div>
+  <p class="notice">أعدد هوية بصرية وأنشئ snapshot جاهز لمحرك PDF. يُحفظ في DEV فقط (بدون جداول Schema جديدة).</p>
+
+  <form id="brandForm">
+    <div class="field"><label>اسم الهوية</label><input id="brandName" type="text" maxlength="80" placeholder="Apple / 6D / Custom"></div>
+    <div class="field"><label>اللون الأساسي</label><input id="brandPrimary" type="text" value="#173F5F" maxlength="7"></div>
+    <div class="field"><label>لون النص</label><input id="brandText" type="text" value="#17212B" maxlength="7"></div>
+    <div class="field"><label>حجم الورق</label>
+      <select id="paperSize"><option>A4</option><option>A3</option><option>LETTER</option></select>
+    </div>
+    <div class="field"><label>الاتجاه</label>
+      <select id="orientation"><option value="portrait">عمودي</option><option value="landscape">أفقي</option></select>
+    </div>
+    <button class="btn" type="button" id="savePresetBtn">حفظ الهوية</button>
+  </form>
+  <div id="presetList" class="notice">جارٍ تحميل الهويات...</div>
+
+  <hr style="margin:20px 0;border:0;border-top:1px solid var(--line)">
+
+  <form id="snapshotForm">
+    <div class="field"><label>نوع المستند</label>
+      <select id="docTypeGen"><option value="TECHNICAL_DATASHEET">ورقة بيانات فنية</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
+    </div>
+    <div class="field"><label>العنوان</label><input id="snapTitle" type="text" value="Industrial Catalog"></div>
+    <div class="field"><label>عناصر JSON</label>
+      <textarea id="snapItems" rows="6">[{"name":"Pump A","description":"Synthetic pump","specifications":[{"key":"Power","value":"5.5","unit":"kW"}]}]</textarea>
+    </div>
+    <div class="field"><label>حالة المستند</label>
+      <select id="docStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select>
+    </div>
+    <div class="field"><label>المراجعة</label><input id="snapRevision" type="text" value="1.0"></div>
+    <button class="btn" type="button" id="buildSnapBtn">إنشاء Snapshot</button>
+    <div class="status" id="snapStatus" role="status"></div>
+    <pre id="snapOutput" style="display:none;background:#f7f9fb;padding:12px;border-radius:8px;font-size:11px;overflow:auto;max-height:240px"></pre>
+    <button class="btn" type="button" id="downloadSnapBtn" style="display:none;margin-top:8px;background:#2d6b83">تحميل snapshot.json</button>
+  </form>
+</section>
+
+<script>
+(function(){
+  const el = id => document.getElementById(id);
+  function showSnap(msg, type){ const b=el("snapStatus"); b.textContent=msg; b.className="status show "+type; }
+  function loadPresets(){
+    google.script.run.withSuccessHandler(presets=>{
+      const root=el("presetList");
+      if(!presets||!presets.length){ root.textContent="لا توجد هويات محفوظة."; return; }
+      root.innerHTML=presets.map(p=>`<div style="margin:6px 0">${p.name} · ${p.primary} · ${p.paperSize}</div>`).join("");
+    }).withFailureHandler(()=>{ el("presetList").textContent="تعذر تحميل الهويات."; }).listBrandPresetsForBrowser();
+  }
+  if(typeof google!=="undefined" && google.script) loadPresets();
+  else el("presetList").textContent="(تجريبي خارج Apps Script)";
+
+  el("savePresetBtn").addEventListener("click", ()=>{
+    const preset={ name:el("brandName").value, primary:el("brandPrimary").value, text:el("brandText").value, paperSize:el("paperSize").value, orientation:el("orientation").value };
+    if(typeof google==="undefined"){ showSnap("يتطلب Apps Script","err"); return; }
+    google.script.run.withSuccessHandler(()=>{ showSnap("تم حفظ الهوية.","ok"); loadPresets(); }).withFailureHandler(e=>showSnap(e.message||"خطأ","err")).saveBrandPresetFromBrowser(preset);
+  });
+
+  let lastSnap=null;
+  el("buildSnapBtn").addEventListener("click", ()=>{
+    let items=[];
+    try{ items=JSON.parse(el("snapItems").value||"[]"); }catch(e){ showSnap("JSON غير صالح.","err"); return; }
+    const config={ documentType:el("docTypeGen").value, title:el("snapTitle").value, items:items, primary:el("brandPrimary").value, text:el("brandText").value, paperSize:el("paperSize").value, orientation:el("orientation").value, documentStatus:el("docStatus").value, revision:el("snapRevision").value };
+    if(typeof google==="undefined"){ showSnap("يتطلب Apps Script","err"); return; }
+    google.script.run.withSuccessHandler(snap=>{
+      lastSnap=snap;
+      el("snapOutput").textContent=JSON.stringify(snap,null,2);
+      el("snapOutput").style.display="block";
+      el("downloadSnapBtn").style.display="block";
+      showSnap("تم إنشاء الـ snapshot.","ok");
+    }).withFailureHandler(e=>showSnap(e.message||"خطأ","err")).buildIssueSnapshotFromBrowser(config);
+  });
+
+  el("downloadSnapBtn").addEventListener("click", ()=>{
+    if(!lastSnap) return;
+    const blob=new Blob([JSON.stringify(lastSnap,null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="snapshot.json"; a.click();
+  });
+})();
+</script>
