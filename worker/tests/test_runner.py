@@ -42,14 +42,21 @@ class FakeDrive:
         return self.upload_bytes(parent_id, name, Path(path).read_bytes(), mime_type)
 
     def upload_bytes(self, parent_id, name, content, mime_type, immutable=True):
+        file_id, digest, _ = self.upload_bytes_with_status(
+            parent_id, name, content, mime_type, immutable=immutable
+        )
+        return file_id, digest
+
+    def upload_bytes_with_status(self, parent_id, name, content, mime_type, immutable=True):
+        digest = hashlib.sha256(content).hexdigest()
         for file_id, value in self.files.items():
             if value["name"] == name:
                 assert value["content"] == content
-                return file_id, hashlib.sha256(content).hexdigest()
+                return file_id, digest, "REUSED"
         self.next_id += 1
         file_id = f"drive-file-{self.next_id}"
         self.files[file_id] = {"name": name, "content": content, "mime_type": mime_type}
-        return file_id, hashlib.sha256(content).hexdigest()
+        return file_id, digest, "UPLOADED"
 
 
 def idempotency_key(run_id, logical_job_id, source_sha, attempt=1, parent=None, retry=None):
@@ -185,7 +192,10 @@ def test_drive_runner_extracts_and_uploads_images_when_enabled(tmp_path, monkeyp
     image_state = manifest["image_extraction"]
     assert image_state["enabled"] is True
     assert image_state["status"] == "COMPLETED"
-    assert image_state["image_count"] == image_state["uploaded_count"] == 1
+    assert image_state["image_count"] == 1
+    assert image_state["uploaded_count"] == 1
+    assert image_state["reused_count"] == 0
+    assert image_state["stored_count"] == 1
 
     image_manifest_file = drive.files[image_state["manifest_file_id"]]
     image_manifest = json.loads(image_manifest_file["content"])
@@ -194,6 +204,12 @@ def test_drive_runner_extracts_and_uploads_images_when_enabled(tmp_path, monkeyp
     image_file = drive.files[uploaded_image["drive_file_id"]]
     assert hashlib.sha256(image_file["content"]).hexdigest() == uploaded_image["sha256"]
     assert uploaded_image["drive_sha256"] == uploaded_image["sha256"]
+
+    drive_manifest_file = drive.files[image_state["drive_manifest_file_id"]]
+    drive_manifest = json.loads(drive_manifest_file["content"])
+    assert drive_manifest["overall_status"] == "COMPLETED"
+    assert drive_manifest["images"][0]["drive_file_id"] == uploaded_image["drive_file_id"]
+    assert drive_manifest["images"][0]["upload_status"] == "UPLOADED"
 
 
 def test_drive_runner_records_images_disabled_by_default(tmp_path, monkeypatch):
