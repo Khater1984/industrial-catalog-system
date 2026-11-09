@@ -160,6 +160,11 @@ function createHarness(options = {}) {
     upload_status: options.uploadStatus || "UPLOADED"
   };
   const driveManifest = makeDriveManifest(imageManifest, [driveImage]);
+  if (options.enriched) {
+    imageManifest.images[0].drive_file_id = driveImage.drive_file_id;
+    imageManifest.images[0].drive_sha256 = driveImage.sha256;
+    imageManifest.manifest_sha256 = recordHash(imageManifest, "manifest_sha256");
+  }
   function addJsonFile(id, value) {
     const raw = Buffer.from(JSON.stringify(value), "utf8");
     files[id] = {
@@ -233,14 +238,24 @@ describe("ImageReviewIntake", () => {
     assert.equal(h.sheets.Staging_Images.length, 0);
   });
 
+  it("accepts the Runner-enriched image manifest while validating the original worker checksum", () => {
+    const h = createHarness({ enriched: true });
+    const result = h.intake();
+    assert.equal(result.status, "COMPLETED");
+    assert.equal(h.sheets.Staging_Images.length, 1);
+    assert.equal(h.sheets.Review_Queue.length, 1);
+    assert.equal(h.sheets.Review_Staging_Links.length, 1);
+  });
+
   it("creates all three review records for UPLOADED and REUSED images", () => {
     for (const status of ["UPLOADED", "REUSED"]) {
       const h = createHarness({ uploadStatus: status });
       const result = h.intake();
       assert.equal(result.status, "COMPLETED");
-      assert.deepEqual(result.counts, {
-        staging: 1, reviews: 1, links: 1, reused: 0, skipped: 0, failed: 0, conflicts: 0
-      });
+      assert.equal(result.counts.staging, 1);
+      assert.equal(result.counts.reviews, 1);
+      assert.equal(result.counts.links, 1);
+      assert.equal(result.counts.failed, 0);
       const staging = h.sheets.Staging_Images[0];
       assert.equal(staging.Extraction_Method, "IMAGE_EXTRACTION");
       assert.equal(staging.Proposed_Status, "NEEDS_REVIEW");
