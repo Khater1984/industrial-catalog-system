@@ -18,7 +18,7 @@ UI (Index.html) → DesignStudio.js → EffectiveSpecificationResolver
 - No new Sheets tables.
 - No live Drive upload of generated PDFs in this phase (local generation).
 - PRINT_READY_PDF remains blocked.
-- ADR-040 conflicts are preserved; FINAL can be blocked.
+- ADR-040 conflicts are preserved; FINAL is unconditionally blocked in both Apps Script snapshot creation and the Python validator/renderer.\n- Product and model display data are read from `Product_Company` / `Variant_Company`; model selection is explicit in the UI.\n- Approved image assets are not yet materialized into the local PDF snapshot; image rendering integration remains open.
 
 ## Files
 - `apps-script/src/domain/DesignStudio.js`
