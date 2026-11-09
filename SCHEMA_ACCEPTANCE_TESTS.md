@@ -1,8 +1,8 @@
 # Schema Acceptance Tests — Design-Level Scenarios
 
-**Status:** Proposed acceptance suite; not executable tests and not implementation authorization.
+**Status:** Approved design-level acceptance baseline for V2.1 (48 scenarios); scenarios are not themselves executable tests or production authorization.
 **Purpose:** Convert the first-pass schema review into concrete expected behavior before the schema is frozen.
-**Dependency:** The V2 canonical/source separation is now documented in the domain schema; these scenarios remain design-level until the consolidated schema is approved and executable tests are implemented.
+**Dependency:** Schema V2.1 was approved for isolated DEV implementation on 2026-11-03. These scenarios define expected behavior; each relevant implementation must convert them into automated tests. The suite does not certify runtime integration or production readiness.
 
 ## Test conventions
 - Each scenario uses synthetic data only.
