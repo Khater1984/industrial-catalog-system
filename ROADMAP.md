@@ -1,6 +1,6 @@
 # Delivery Roadmap
 
-**Current phase:** 0 — Architecture/schema consolidation and technical design.
+**Current phase:** 2 — Data foundation (DEV verification in progress). Phase 0 schema/design approval is recorded as complete for the V2.1 DEV baseline.
 **Delivery style:** Small increments with acceptance checks; no big-bang implementation.
 
 ## Phase 0 — Architecture approval
@@ -12,10 +12,10 @@ Deliverables:
 - Define synthetic fixtures and representative supplier catalogs for private benchmarking.
 
 Exit criteria:
-- Cross-document consistency audit passes with no unresolved blocking contradictions.
-- Acceptance suite covers identity, provenance, deterministic specs, inheritance, review, retries, promotion recovery, assets, and issue recovery.
-- Security, worker integration, backup/restore, and scale gates are documented.
-- User explicitly approves the consolidated architecture and schema.
+- Cross-document consistency audit passes with no unresolved blocking contradictions. The 2026-11-03 static audit recorded 52/52 table definitions and inventory entries, 96/96 FK target names, and no duplicate columns or broken local links.
+- The 48-scenario design-level acceptance baseline covers identity, provenance, deterministic specs, inheritance, review, retries, promotion recovery, assets, and issue recovery; implementation tests remain required per feature.
+- Security, worker integration, backup/restore, and scale gates are documented; unresolved infrastructure decisions remain separate pre-deployment gates.
+- User approval of the V2.1 schema/table inventory is recorded on 2026-11-03 in SCHEMA_APPROVAL_CHECKLIST.md and DATABASE_SCHEMA.md.
 
 ## Phase 1 — Repository and engineering foundation
 Deliverables:
@@ -42,6 +42,8 @@ Exit criteria:
 - Create/read/update flows pass tests on a disposable test spreadsheet.
 - Referential integrity checks detect invalid relationships.
 - No production data modified.
+
+**Parallel DEV rule:** After the V2.1 schema approval, Phase 3 domain logic may be developed in an isolated DEV source/test slice while Phase 2 runtime verification is being completed. Such work must not provision production resources or be labelled runtime-verified. Phase 3 is not considered complete, and no live deployment is permitted, until Phase 2 exit criteria pass.
 
 ## Phase 3 — Product management
 Deliverables:
@@ -126,4 +128,4 @@ Each phase has:
 - Explicit user acceptance before moving to the next major phase.
 
 ## Immediate next action
-Complete the consolidated schema/API/worker/security consistency audit and acceptance suite. Only after explicit approval, create isolated DEV resources and a minimal vertical-slice prototype; do not create production Sheets or migrate legacy data at this stage.
+Build the Product/Variant management and effective-data domain engine against the approved V2.1 schema using synthetic fixtures and automated tests on DEV. In parallel, complete Phase 2 disposable-Spreadsheet verification before any runtime deployment. Do not create production Sheets or migrate legacy data.
