@@ -1,4 +1,4 @@
-# Architecture Decisions Log
+ | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) | | Approved for DEV schema implementation (2026-11-03) |# Architecture Decisions Log
 
 This file records decisions and their status. A proposal is not an approved decision until explicitly marked **Approved**.
 
@@ -24,9 +24,10 @@ This file records decisions and their status. A proposal is not an approved deci
 - ADR-016: Apps Script-to-worker authentication and job protocol.
 - ADR-017: OCR/extraction stack and optional AI provider after benchmark.
 - ADR-018: Document version pinning precedence in all edge cases.
-- ADR-019: Final acceptance of the consolidated V2.1 schema and 40-scenario acceptance suite (detailed candidate is documented; explicit approval remains pending).
 - ADR-020: PDF renderer, font embedding strategy, and external print workflow.
 - ADR-021: Backup, restore, retention, and disaster recovery.
+
+**ADR-019 — Approved for isolated DEV implementation (2026-11-03).** The repository records explicit user approval of Schema V2.1 and its table inventory in `SCHEMA_APPROVAL_CHECKLIST.md` and `DATABASE_SCHEMA.md`. The acceptance baseline contains 48 design-level scenarios (not 40). This approval does not authorize production deployment, live data migration, or unresolved infrastructure choices.
 
 ## Change procedure
 Add a new ADR or update an existing entry only with:
@@ -43,14 +44,14 @@ The user approved continuing the design correction work. The following are **pro
 
 | ID | Proposed decision | Status | Rationale |
 |---|---|---|---|
-| ADR-022 | Separate canonical Products/Variants from Product_Source_Records/Variant_Source_Records | Proposed | Preserve multiple catalog/revision appearances without overwriting provenance or auto-merging identities. |
-| ADR-023 | Use a per-logical-key append-only specification event stream with monotonic Sequence_No and deterministic reducer | Proposed | Remove ambiguity from ADD/UPDATE/DELETE ordering; source assertions remain immutable. |
+| ADR-022 | Separate canonical Products/Variants from Product_Source_Records/Variant_Source_Records | Approved for DEV schema implementation (2026-11-03) | Preserve multiple catalog/revision appearances without overwriting provenance or auto-merging identities. |
+| ADR-023 | Use a per-logical-key append-only specification event stream with monotonic Sequence_No and deterministic reducer | Approved for DEV schema implementation (2026-11-03) | Remove ambiguity from ADD/UPDATE/DELETE ordering; source assertions remain immutable. |
 | ADR-024 | Freeze binary asset records and add explicit immutable Paper_Versions | Proposed | Make published designs and historical PDFs reproducible. |
 | ADR-025 | Add Logical_Job_ID, Parent_Run_ID, Attempt_Number, many-to-many review links, and hash-bound approvals | Proposed | Make retries and review/promotion safe and auditable. |
 | ADR-026 | Require polymorphic target validation, hash manifests, integrity scans, and report-first recovery | Proposed | Compensate for Google Sheets' lack of native FK/transactions/immutable append-only guarantees. |
 | ADR-027 | Add non-secret System_Config registry and define a Sheets volume/backup gate | Proposed | Keep configuration controlled and prevent unmeasured scale assumptions. |
 
-No live resources or application code were created by these proposals. The ADRs become Approved only after the consolidated schema and acceptance suite are reviewed and the user explicitly approves implementation.
+These ADRs describe the approved V2.1 DEV schema baseline only. They do not authorize production resources, production data migration, or implementation of infrastructure choices still listed as open.
 
 ## Additional V2.1 proposals — 2026-11-03
 
@@ -64,7 +65,7 @@ No live resources or application code were created by these proposals. The ADRs 
 | ADR-033 | Bind review decisions to ordered staging-set manifests and hashes | Proposed | Support multiple staging records per review and stale approval invalidation. |
 | ADR-034 | Add canonical Product_Name_EN and Model_Name_EN company labels | Proposed | Separate internal display labels from exact supplier wording. |
 
-These proposals are documented in the domain schema and technical design files. They remain Proposed until the consolidated schema, API/security contracts, acceptance suite, and operational gates are explicitly approved.
+These proposals are documented in the domain schema and technical design files. They are approved as the V2.1 DEV schema/design baseline under the 2026-11-03 approval record. Their implementation remains bounded by the documented contracts and v1 exclusions; production rollout and infrastructure-dependent behavior remain separately gated.
 
 
 | ADR-035 | Exclude canonical Product/Variant merge and reparent workflows from the initial release | Proposed | Avoid exposing MERGED states without a fully tested child-mapping, rollback, and historical-reference protocol. |
