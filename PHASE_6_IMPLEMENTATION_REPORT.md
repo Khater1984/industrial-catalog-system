@@ -2,38 +2,36 @@
 
 **Date:** 2026-11-09
 **Branch:** dev/worker-v2.1-resumable
+**Final SHA:** (latest commit)
 
-## Summary
-The PDF renderer is now feature-complete for offline deterministic generation of Technical Data Sheets, Product Catalogs, and Master Catalogs. Design Studio and Template Studio with Sheets persistence remain blocked by the unapproved design schema.
+## What Is Implemented
+| Component | Status |
+|-----------|--------|
+| PDF Renderer (real PDF) | Implemented + tested |
+| Snapshot Builder | Implemented |
+| Brand Identity UI + service | Implemented (Script Properties) |
+| Template Studio UI + service | Implemented (Script Properties) |
+| Family grouping, index, revision, provenance | Implemented |
+| Arabic reshaping | Implemented (deps required) |
+| Preflight report | Implemented |
+| PRINT_READY block | Implemented |
 
-## Renderer Features Completed
-- Cover page + automatic index
-- Family/section grouping for Master Catalog
-- Document revision, issue date, and status in footer
-- Multi-image sequential layout with DPI checks
-- Specification provenance column (optional)
-- ADR-040 conflict notes in preflight
-- Exclude unpublished items filter
-- Arabic reshaping
-- Brand palette, paper sizes (A4/A3/Letter), orientation, watermarks, textures
-- Explicit PRINT_READY_PDF block
-- Snapshot builder with full options
+## What Is Not Implemented (Schema Blocked)
+- Sheets tables: Brands, Brand_Versions, Templates, Template_Versions, Papers, Issued_Documents, Issue_Operations, Design_Assets
+- Immutable published versions
+- Drive-backed config and PDF storage with checksum pinning
+- Live issue ledger and reproduction
+- Full asset management (fonts, logos, textures as Design_Assets)
 
 ## Tests
-```
-19 passed
-```
+Local worker tests: 19+ passed (renderer + builder + enhancements).
 
-## Remaining (Schema Blocked)
-- Sheets-backed Brands, Templates, Issued_Documents
-- Apps Script UI
-- Live Drive asset pinning and PDF upload
-- Licensed font embedding in CI
-- CMYK / PDF/X path
-
-## Status
+## Status Classification
 | Dimension | Assessment |
 |-----------|------------|
-| Implemented | Full offline PDF engine |
-| Integrated | Via snapshot JSON only |
-| Verified | 19 local tests pass |
+| Implemented | Renderer + lightweight Design/Template Studio |
+| Integrated | Snapshot JSON only; no live Sheets/Drive |
+| Verified | Local synthetic tests only |
+
+## Completion Estimate
+**~50%** of Phase 6 functional surface. The remaining 50% requires schema authorization for the design/issue tables.

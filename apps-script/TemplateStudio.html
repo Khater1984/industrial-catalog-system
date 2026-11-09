@@ -1,0 +1,42 @@
+<!-- Template Studio panel -->
+<section class="panel" style="margin-top:18px" id="templateStudio">
+  <div class="toolbar"><h3>استوديو القوالب</h3></div>
+  <p class="notice">قوالب مستقلة عن الهوية والبيانات. تُحفظ في DEV (غير معتمدة في Schema).</p>
+
+  <form id="tplForm">
+    <div class="field"><label>اسم القالب *</label><input id="tplName" type="text" maxlength="80" required></div>
+    <div class="field"><label>نوع المستند</label>
+      <select id="tplType"><option value="TECHNICAL_DATASHEET">ورقة بيانات</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
+    </div>
+    <div class="field"><label>وصف</label><input id="tplDesc" type="text" maxlength="300"></div>
+    <div class="field"><label><input type="checkbox" id="tplIndex" checked> تضمين فهرس</label></div>
+    <div class="field"><label><input type="checkbox" id="tplFamily"> تجميع حسب العائلة</label></div>
+    <div class="field"><label><input type="checkbox" id="tplProv"> إظهار مصدر المواصفات</label></div>
+    <div class="field"><label><input type="checkbox" id="tplHide"> إخفاء غير المنشور</label></div>
+    <div class="field"><label>الهوية الافتراضية</label><input id="tplBrand" type="text" maxlength="80" placeholder="اسم هوية محفوظة"></div>
+    <button class="btn" type="button" id="saveTplBtn">حفظ القالب</button>
+    <div class="status" id="tplStatus"></div>
+  </form>
+  <div id="tplList" class="notice" style="margin-top:12px">جارٍ التحميل...</div>
+</section>
+<script>
+(function(){
+  const el=id=>document.getElementById(id);
+  function show(m,t){const b=el("tplStatus");b.textContent=m;b.className="status show "+t;}
+  function load(){
+    if(typeof google==="undefined"){el("tplList").textContent="(تجريبي)";return;}
+    google.script.run.withSuccessHandler(list=>{
+      const r=el("tplList");
+      if(!list||!list.length){r.textContent="لا توجد قوالب.";return;}
+      r.innerHTML=list.map(t=>`<div style="margin:6px 0;padding:6px;border:1px solid var(--line);border-radius:6px"><strong>${t.name}</strong> · ${t.documentType} · v${t.version}</div>`).join("");
+    }).withFailureHandler(()=>{el("tplList").textContent="تعذر التحميل.";}).listTemplatesForBrowser();
+  }
+  load();
+  el("saveTplBtn").addEventListener("click",()=>{
+    const t={name:el("tplName").value.trim(),documentType:el("tplType").value,description:el("tplDesc").value,includeIndex:el("tplIndex").checked,groupByFamily:el("tplFamily").checked,showProvenance:el("tplProv").checked,excludeUnpublished:el("tplHide").checked,defaultBrandName:el("tplBrand").value};
+    if(!t.name){show("الاسم مطلوب","err");return;}
+    if(typeof google==="undefined"){show("يتطلب Apps Script","err");return;}
+    google.script.run.withSuccessHandler(()=>{show("تم الحفظ.","ok");load();}).withFailureHandler(e=>show(e.message||"خطأ","err")).saveTemplateFromBrowser(t);
+  });
+})();
+</script>
