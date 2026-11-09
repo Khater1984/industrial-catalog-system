@@ -1,38 +1,180 @@
-/** Design Studio — brand identity + issue snapshot preparation (DEV).
- * Brand presets stored in Script Properties. No new schema tables.
+/** Integrated Design Studio (DEV).
+ * Brand identities + templates + domain-aware snapshot generation.
+ * Uses Script Properties only. No new Sheets tables.
+ * Reads EffectiveSpecificationResolver for real product data.
  */
 var DesignStudio = (function () {
-  var PRESET_KEY = "DESIGN_STUDIO_PRESETS";
+  var BRAND_KEY = "DS_BRANDS";
+  var TEMPLATE_KEY = "DS_TEMPLATES";
+  var ISSUE_KEY = "DS_ISSUES";
 
-  function getPresets_() {
-    var raw = PropertiesService.getScriptProperties().getProperty(PRESET_KEY);
+  var BUILTIN_BRANDS = [
+    {
+      name: "Apple",
+      identityType: "BUILTIN",
+      isDefault: true,
+      companyName: "Apple",
+      primary: "#000000",
+      secondary: "#555555",
+      accent: "#0071E3",
+      text: "#1D1D1F",
+      background: "#FFFFFF",
+      headerColor: "#000000",
+      tableHeader: "#1D1D1F",
+      border: "#E5E5E7",
+      paperSize: "A4",
+      orientation: "portrait",
+      logoPreference: "COMPANY",
+      fontRegular: "SF Pro / Helvetica",
+      fontBold: "SF Pro Bold",
+      watermarkText: "",
+      watermarkOpacity: 0.08,
+      contact: { phone: "", email: "", website: "https://www.apple.com" }
+    },
+    {
+      name: "6D",
+      identityType: "BUILTIN",
+      isDefault: false,
+      companyName: "6D",
+      primary: "#0A2540",
+      secondary: "#1A6B8A",
+      accent: "#00C2B8",
+      text: "#17212B",
+      background: "#FFFFFF",
+      headerColor: "#0A2540",
+      tableHeader: "#0A2540",
+      border: "#D9E0E7",
+      paperSize: "A4",
+      orientation: "portrait",
+      logoPreference: "COMPANY",
+      fontRegular: "Cairo / Tajawal",
+      fontBold: "Cairo Bold",
+      watermarkText: "",
+      watermarkOpacity: 0.08,
+      contact: { phone: "", email: "", website: "" }
+    },
+    {
+      name: "Industrial",
+      identityType: "BUILTIN",
+      isDefault: false,
+      companyName: "Industrial Catalog",
+      primary: "#173F5F",
+      secondary: "#2D6B83",
+      accent: "#E8A838",
+      text: "#17212B",
+      background: "#FFFFFF",
+      headerColor: "#173F5F",
+      tableHeader: "#173F5F",
+      border: "#D9E0E7",
+      paperSize: "A4",
+      orientation: "portrait",
+      logoPreference: "COMPANY",
+      fontRegular: "Helvetica",
+      fontBold: "Helvetica-Bold",
+      watermarkText: "",
+      watermarkOpacity: 0.08,
+      contact: { phone: "", email: "", website: "" }
+    },
+    {
+      name: "Minimal",
+      identityType: "BUILTIN",
+      isDefault: false,
+      companyName: "",
+      primary: "#222222",
+      secondary: "#666666",
+      accent: "#222222",
+      text: "#111111",
+      background: "#FFFFFF",
+      headerColor: "#222222",
+      tableHeader: "#333333",
+      border: "#CCCCCC",
+      paperSize: "A4",
+      orientation: "portrait",
+      logoPreference: "NONE",
+      fontRegular: "Helvetica",
+      fontBold: "Helvetica-Bold",
+      watermarkText: "",
+      watermarkOpacity: 0.05,
+      contact: { phone: "", email: "", website: "" }
+    },
+    {
+      name: "Supplier",
+      identityType: "BUILTIN",
+      isDefault: false,
+      companyName: "",
+      primary: "#173F5F",
+      secondary: "#2D6B83",
+      accent: "#173F5F",
+      text: "#17212B",
+      background: "#FFFFFF",
+      headerColor: "#173F5F",
+      tableHeader: "#173F5F",
+      border: "#D9E0E7",
+      paperSize: "A4",
+      orientation: "portrait",
+      logoPreference: "SUPPLIER",
+      fontRegular: "Helvetica",
+      fontBold: "Helvetica-Bold",
+      watermarkText: "",
+      watermarkOpacity: 0.08,
+      contact: { phone: "", email: "", website: "" }
+    }
+  ];
+
+  function load_(key) {
+    var raw = PropertiesService.getScriptProperties().getProperty(key);
     if (!raw) return [];
     try { return JSON.parse(raw); } catch (e) { return []; }
   }
-
-  function savePresets_(presets) {
-    PropertiesService.getScriptProperties().setProperty(PRESET_KEY, JSON.stringify(presets));
+  function save_(key, data) {
+    PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(data));
   }
 
-  function listBrandPresets() {
-    return getPresets_();
+  function ensureBuiltins_() {
+    var brands = load_(BRAND_KEY);
+    var changed = false;
+    BUILTIN_BRANDS.forEach(function (b) {
+      if (!brands.some(function (x) { return x.name === b.name; })) {
+        brands.push(Object.assign({}, b, { updatedAt: new Date().toISOString() }));
+        changed = true;
+      }
+    });
+    if (changed) save_(BRAND_KEY, brands);
+    return brands;
   }
 
-  function saveBrandPreset(preset) {
+  function listBrands() {
+    return ensureBuiltins_();
+  }
+
+  function getBrand(name) {
+    return ensureBuiltins_().find(function (b) { return b.name === name; }) || null;
+  }
+
+  function saveBrand(preset) {
     if (!preset || !preset.name) throw new Error("VALIDATION_REQUIRED: name");
-    var presets = getPresets_();
-    var existing = presets.findIndex(function (p) { return p.name === preset.name; });
+    var brands = ensureBuiltins_();
+    var idx = brands.findIndex(function (b) { return b.name === preset.name; });
     var record = {
       name: String(preset.name).slice(0, 80),
+      identityType: "COMPANY",
+      isDefault: false,
       companyName: String(preset.companyName || "").slice(0, 120),
       primary: preset.primary || "#173F5F",
-      secondary: preset.secondary || "#2d6b83",
+      secondary: preset.secondary || "#2D6B83",
+      accent: preset.accent || preset.primary || "#173F5F",
       text: preset.text || "#17212B",
       background: preset.background || "#FFFFFF",
+      headerColor: preset.headerColor || preset.primary || "#173F5F",
+      tableHeader: preset.tableHeader || preset.primary || "#173F5F",
+      border: preset.border || "#D9E0E7",
       paperSize: preset.paperSize || "A4",
       orientation: preset.orientation || "portrait",
+      logoPreference: preset.logoPreference || "COMPANY",
+      fontRegular: String(preset.fontRegular || "Helvetica").slice(0, 60),
+      fontBold: String(preset.fontBold || "Helvetica-Bold").slice(0, 60),
       watermarkText: String(preset.watermarkText || "").slice(0, 60),
-      watermarkOpacity: Number(preset.watermarkOpacity) || 0.1,
+      watermarkOpacity: Math.max(0.03, Math.min(0.35, Number(preset.watermarkOpacity) || 0.1)),
       contact: {
         phone: String(preset.phone || "").slice(0, 40),
         email: String(preset.email || "").slice(0, 80),
@@ -40,88 +182,227 @@ var DesignStudio = (function () {
       },
       updatedAt: new Date().toISOString()
     };
-    if (existing >= 0) presets[existing] = record;
-    else presets.push(record);
-    savePresets_(presets);
+    if (idx >= 0) brands[idx] = record;
+    else brands.push(record);
+    save_(BRAND_KEY, brands);
     return record;
   }
 
-  function buildIssueSnapshot(config) {
-    if (!config || !config.documentType) throw new Error("VALIDATION_REQUIRED: documentType");
-    if (!["TECHNICAL_DATASHEET", "PRODUCT_CATALOG", "MASTER_CATALOG"].includes(config.documentType)) {
+  // --- Templates with version history ---
+  function listTemplates() {
+    return load_(TEMPLATE_KEY);
+  }
+
+  function saveTemplate(t) {
+    if (!t || !t.name) throw new Error("VALIDATION_REQUIRED: name");
+    if (!["TECHNICAL_DATASHEET", "PRODUCT_CATALOG", "MASTER_CATALOG"].includes(t.documentType)) {
       throw new Error("DOCUMENT_TYPE_UNSUPPORTED");
     }
-    var items = Array.isArray(config.items) ? config.items : [];
-    if (!items.length) throw new Error("ISSUE_SCOPE_EMPTY");
-    var brand = config.brand || {};
+    var items = load_(TEMPLATE_KEY);
+    var existing = items.find(function (x) { return x.name === t.name; });
+    var version = existing ? (existing.version || 1) + 1 : 1;
+    // Keep history of previous published version
+    var history = existing && existing.history ? existing.history.slice() : [];
+    if (existing && existing.status === "PUBLISHED") {
+      history.push({ version: existing.version, snapshot: Object.assign({}, existing), archivedAt: new Date().toISOString() });
+    }
+    var record = {
+      name: String(t.name).slice(0, 80),
+      documentType: t.documentType,
+      description: String(t.description || "").slice(0, 300),
+      status: t.status || "DRAFT",
+      includeIndex: t.includeIndex !== false,
+      groupByFamily: !!t.groupByFamily,
+      showProvenance: !!t.showProvenance,
+      excludeUnpublished: !!t.excludeUnpublished,
+      blockOnConflict: !!t.blockOnConflict,
+      defaultBrandName: String(t.defaultBrandName || "Apple").slice(0, 80),
+      version: version,
+      history: history.slice(-5),
+      updatedAt: new Date().toISOString()
+    };
+    if (existing) {
+      var idx = items.findIndex(function (x) { return x.name === t.name; });
+      items[idx] = record;
+    } else {
+      items.push(record);
+    }
+    save_(TEMPLATE_KEY, items);
+    return record;
+  }
+
+  function publishTemplate(name) {
+    var items = load_(TEMPLATE_KEY);
+    var idx = items.findIndex(function (x) { return x.name === name; });
+    if (idx < 0) throw new Error("TEMPLATE_NOT_FOUND");
+    items[idx].status = "PUBLISHED";
+    items[idx].publishedAt = new Date().toISOString();
+    save_(TEMPLATE_KEY, items);
+    return items[idx];
+  }
+
+  function copyTemplate(sourceName, newName) {
+    var src = load_(TEMPLATE_KEY).find(function (x) { return x.name === sourceName; });
+    if (!src) throw new Error("TEMPLATE_NOT_FOUND");
+    return saveTemplate(Object.assign({}, src, { name: newName, status: "DRAFT" }));
+  }
+
+  // --- Domain-aware snapshot ---
+  function resolveItem_(productId, variantId) {
+    var product = SheetsRepository.getBy("Products", "Product_ID", productId);
+    if (!product) throw new Error("PRODUCT_NOT_FOUND: " + productId);
+    var resolved = EffectiveSpecificationResolver.resolveEffectiveSpecifications(productId, variantId || null);
+    var specs = (resolved.source_specifications || []).map(function (s) {
+      return {
+        key: s.attribute_key,
+        label: s.attribute_key,
+        value: s.effective_value,
+        unit: s.unit || "",
+        provenance: s.provenance,
+        scope: s.scope
+      };
+    });
+    (resolved.company_attributes || []).forEach(function (a) {
+      if (a.effective_value != null) {
+        specs.push({
+          key: a.attribute_id,
+          label: a.attribute_id,
+          value: a.effective_value,
+          unit: "",
+          provenance: a.mode || "COMPANY",
+          scope: "ATTRIBUTE"
+        });
+      }
+    });
     return {
+      productId: productId,
+      variantId: variantId || null,
+      name: product.Product_Name_EN || product.Product_Name_AR || productId,
+      name_ar: product.Product_Name_AR || "",
+      description: product.Description_EN || product.Description_AR || "",
+      family: product.Family_Name || product.Product_Family || "",
+      model_number: variantId || "",
+      specifications: specs,
+      images: [], // caller may attach approved image paths
+      publishable: product.Lifecycle_Status !== "ARCHIVED" && product.Publish_Status !== "HIDDEN",
+      conflicts: resolved.conflicts || [],
+      validation_errors: resolved.validation_errors || []
+    };
+  }
+
+  function buildSnapshotFromDomain(config) {
+    if (!config || !config.documentType) throw new Error("VALIDATION_REQUIRED: documentType");
+    var productIds = config.productIds || [];
+    if (!productIds.length) throw new Error("ISSUE_SCOPE_EMPTY");
+
+    var brand = config.brandName ? getBrand(config.brandName) : getBrand("Apple");
+    if (!brand) brand = BUILTIN_BRANDS[0];
+
+    var template = config.templateName
+      ? load_(TEMPLATE_KEY).find(function (t) { return t.name === config.templateName; })
+      : null;
+
+    var items = [];
+    var allConflicts = [];
+    productIds.forEach(function (pid) {
+      var variantId = config.variantMap && config.variantMap[pid] ? config.variantMap[pid] : null;
+      var item = resolveItem_(pid, variantId);
+      items.push(item);
+      if (item.conflicts && item.conflicts.length) allConflicts = allConflicts.concat(item.conflicts);
+    });
+
+    var blockOnConflict = (template && template.blockOnConflict) || config.blockOnConflict;
+    if (blockOnConflict && allConflicts.length && config.documentStatus === "FINAL") {
+      throw new Error("CONFLICTS_BLOCK_FINAL_ISSUE: " + allConflicts.length);
+    }
+
+    var snap = {
       snapshot_version: "1",
       document_type: config.documentType,
-      title: config.title || "Industrial Catalog",
+      title: config.title || brand.companyName || "Industrial Catalog",
       subtitle: config.subtitle || "",
-      items: items.map(function (it) {
-        return {
-          name: it.name || "",
-          name_ar: it.name_ar || "",
-          model_number: it.model_number || "",
-          description: it.description || "",
-          family: it.family || "",
-          specifications: Array.isArray(it.specifications) ? it.specifications : [],
-          images: Array.isArray(it.images) ? it.images : [],
-          publishable: it.publishable !== false
-        };
-      }),
+      items: items,
       brand: {
         palette: {
-          primary: brand.primary || config.primary || "#173F5F",
-          secondary: brand.secondary || config.secondary || "#2d6b83",
-          text: brand.text || config.text || "#17212B"
-        }
+          primary: brand.primary,
+          secondary: brand.secondary,
+          accent: brand.accent,
+          text: brand.text,
+          header: brand.headerColor,
+          tableHeader: brand.tableHeader,
+          border: brand.border
+        },
+        fonts: { regular: brand.fontRegular, bold: brand.fontBold },
+        logoPreference: brand.logoPreference
       },
       paper: {
         page: {
-          size: config.paperSize || "A4",
-          orientation: config.orientation || "portrait",
+          size: brand.paperSize || "A4",
+          orientation: brand.orientation || "portrait",
           margins_mm: { top: 18, right: 12, bottom: 16, left: 12 }
         },
-        background: { color: brand.background || config.background || "#FFFFFF" }
+        background: { color: brand.background }
       },
-      watermark: config.watermarkText ? {
-        text: config.watermarkText,
-        opacity: config.watermarkOpacity || 0.1,
+      watermark: brand.watermarkText ? {
+        text: brand.watermarkText,
+        opacity: brand.watermarkOpacity,
         color: "#777777",
         rotation_degrees: -35
       } : {},
       export_profile: { output_class: "DIGITAL_PDF", minimum_dpi_warning: 150, minimum_dpi_block: 72 },
-      contact: config.contact || {},
+      contact: brand.contact || {},
       document_status: config.documentStatus || "ORIGINAL",
-      revision: config.revision || "",
+      revision: config.revision || "1.0",
       issue_date: config.issueDate || new Date().toISOString().slice(0, 10),
-      show_provenance: !!config.showProvenance,
-      group_by_family: !!config.groupByFamily,
-      include_index: config.includeIndex !== false,
-      conflicts: Array.isArray(config.conflicts) ? config.conflicts : []
+      show_provenance: template ? !!template.showProvenance : !!config.showProvenance,
+      group_by_family: template ? !!template.groupByFamily : !!config.groupByFamily,
+      include_index: template ? template.includeIndex !== false : config.includeIndex !== false,
+      exclude_unpublished: template ? !!template.excludeUnpublished : !!config.excludeUnpublished,
+      conflicts: allConflicts,
+      generatedAt: new Date().toISOString(),
+      brandName: brand.name,
+      templateName: template ? template.name : null
     };
+
+    // Store in simple issue library
+    var issues = load_(ISSUE_KEY);
+    issues.unshift({
+      id: Utilities.getUuid(),
+      documentType: snap.document_type,
+      title: snap.title,
+      brandName: snap.brandName,
+      templateName: snap.templateName,
+      itemCount: items.length,
+      conflictCount: allConflicts.length,
+      createdAt: snap.generatedAt
+    });
+    save_(ISSUE_KEY, issues.slice(0, 50));
+
+    return snap;
+  }
+
+  function listIssues() {
+    return load_(ISSUE_KEY);
   }
 
   return {
-    listBrandPresets: listBrandPresets,
-    saveBrandPreset: saveBrandPreset,
-    buildIssueSnapshot: buildIssueSnapshot
+    listBrands: listBrands,
+    getBrand: getBrand,
+    saveBrand: saveBrand,
+    listTemplates: listTemplates,
+    saveTemplate: saveTemplate,
+    publishTemplate: publishTemplate,
+    copyTemplate: copyTemplate,
+    buildSnapshotFromDomain: buildSnapshotFromDomain,
+    listIssues: listIssues
   };
 })();
 
-function listBrandPresetsForBrowser() {
-  assertPrimaryUser_();
-  return DesignStudio.listBrandPresets();
-}
-
-function saveBrandPresetFromBrowser(preset) {
-  assertPrimaryUser_();
-  return DesignStudio.saveBrandPreset(preset);
-}
-
-function buildIssueSnapshotFromBrowser(config) {
-  assertPrimaryUser_();
-  return DesignStudio.buildIssueSnapshot(config);
-}
+function listBrandsForBrowser() { assertPrimaryUser_(); return DesignStudio.listBrands(); }
+function saveBrandFromBrowser(p) { assertPrimaryUser_(); return DesignStudio.saveBrand(p); }
+function listTemplatesForBrowser() { assertPrimaryUser_(); return DesignStudio.listTemplates(); }
+function saveTemplateFromBrowser(t) { assertPrimaryUser_(); return DesignStudio.saveTemplate(t); }
+function publishTemplateFromBrowser(name) { assertPrimaryUser_(); return DesignStudio.publishTemplate(name); }
+function copyTemplateFromBrowser(src, dest) { assertPrimaryUser_(); return DesignStudio.copyTemplate(src, dest); }
+function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); return DesignStudio.buildSnapshotFromDomain(config); }
+function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
