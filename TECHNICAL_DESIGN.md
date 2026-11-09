@@ -112,9 +112,11 @@ Failure may lead to FAILED or IN_DOUBT. Only COMPLETED operations can produce an
 ## 7. Effective-data resolution
 
 - Source Specifications are immutable and linked to one exact source record.
-- Approved Specification_Changes are folded by Logical_Specification_Key and Sequence_No.
-- Invalid sequences quarantine the logical key from output.
-- Product attributes are defaults. Variant override VALUE replaces; INTENTIONALLY_EMPTY suppresses; no row inherits.
+- Approved Specification_Changes are folded independently by Logical_Specification_Key and Sequence_No. DRAFT/REJECTED events do not participate; an approved event must have a unique positive sequence allocated under lock.
+- Invalid sequences or semantic transitions quarantine the affected logical key from output.
+- Product attributes are defaults. Variant override VALUE replaces; INTENTIONALLY_EMPTY suppresses; no row inherits. Removing the override restores inheritance.
+- Product-scope and variant-scope source assertions remain distinct. The resolver must not assume that a variant assertion overrides a product assertion: when both normalize to the same attribute key, preserve both with provenance and emit a conflict for review. This is the approved DEV rule (ADR-040); no implicit precedence is applied.
+- The unified resolver returns source-derived effective specifications and company-managed typed attributes as distinct provenance classes. It must not silently collapse a company attribute into a supplier assertion merely because display labels match.
 - Documents: product INCLUDE is inherited; variant EXCLUDE removes only inherited association; direct variant INCLUDE remains. Direct variant pin/order wins, else product pin/order, else current version.
 - Images: variant-approved image selection precedes product-approved selection; catalog and datasheet approvals are independent. No unapproved fallback unless user explicitly accepts a documented exception.
 
