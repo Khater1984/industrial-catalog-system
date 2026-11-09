@@ -333,14 +333,21 @@ var DesignStudio = (function () {
 
     var items = [];
     var allConflicts = [];
+    var allValidationErrors = [];
     productIds.forEach(function (pid) {
       var variantId = config.variantMap && config.variantMap[pid] ? config.variantMap[pid] : null;
       var item = resolveItem_(pid, variantId);
       items.push(item);
       if (item.conflicts && item.conflicts.length) allConflicts = allConflicts.concat(item.conflicts);
+      if (item.validation_errors && item.validation_errors.length) {
+        allValidationErrors = allValidationErrors.concat(item.validation_errors);
+      }
     });
 
     var isFinal = String(config.documentStatus || "ORIGINAL").toUpperCase() === "FINAL";
+    if (isFinal && allValidationErrors.length) {
+      throw new Error("SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL: " + allValidationErrors.length);
+    }
     // ADR-040 conflicts must never enter a FINAL snapshot. This is a safety invariant,
     // not an optional template preference or UI checkbox.
     if (isFinal && allConflicts.length) {
