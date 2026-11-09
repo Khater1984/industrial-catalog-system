@@ -248,6 +248,11 @@ def render_pdf(snapshot: dict[str, Any], output_path: str | Path, *, asset_root:
     # cannot disable this invariant.
     if conflicts and document_status == "FINAL":
         raise PDFRenderError("CONFLICTS_BLOCK_FINAL_ISSUE")
+    if document_status == "FINAL" and any(
+        isinstance(item, dict) and item.get("validation_errors")
+        for item in (snapshot.get("items") or [])
+    ):
+        raise PDFRenderError("SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL")
 
     root = Path(asset_root).resolve() if asset_root else None
     paper = snapshot.get("paper") or {}
