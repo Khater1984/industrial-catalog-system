@@ -98,69 +98,71 @@ var Api = (function () {
         return success_(requestId, intakeResult);
       }
 
-      // Product domain
+      // Product domain — all validated at boundary
       if (body.action === "product.createCompanyRecord") {
-        return success_(requestId, ProductService.create(Object.assign({ actor: actor }, p)));
+        var pc = InputValidation.productCreatePayload(p);
+        return success_(requestId, ProductService.create(Object.assign({ actor: actor }, pc)));
       }
       if (body.action === "product.getWorkspace") {
-        return success_(requestId, ProductService.getWorkspace(p.productId));
+        var gw = InputValidation.idOnlyPayload(p, "productId");
+        return success_(requestId, ProductService.getWorkspace(gw.productId));
       }
       if (body.action === "product.search") {
-        return success_(requestId, { results: ProductService.search(p.query) });
+        return success_(requestId, { results: ProductService.search(p.query || "") });
       }
       if (body.action === "product.updateCompanyFields") {
-        return success_(requestId, ProductService.updateCompany(p.productId, p, actor));
+        var pu = InputValidation.productUpdatePayload(p);
+        return success_(requestId, ProductService.updateCompany(pu.productId, pu, actor));
       }
-      if (body.action === "product.archive") {
-        return success_(requestId, ProductService.archive(p.productId, actor));
+      if (body.action === "product.archive" || body.action === "product.reactivate") {
+        var pid = InputValidation.idOnlyPayload(p, "productId");
+        var fn = body.action === "product.archive" ? ProductService.archive : ProductService.reactivate;
+        return success_(requestId, fn(pid.productId, actor));
       }
-      if (body.action === "product.reactivate") {
-        return success_(requestId, ProductService.reactivate(p.productId, actor));
-      }
-      if (body.action === "family.create") {
-        return success_(requestId, ProductFamilyService.create(p.nameEn, p.nameAr, p.parentId, actor));
-      }
-      if (body.action === "family.updateParent") {
-        return success_(requestId, ProductFamilyService.updateParent(p.familyId, p.newParentId, actor));
-      }
-      if (body.action === "family.archive") {
-        return success_(requestId, ProductFamilyService.archive(p.familyId, actor));
-      }
-      if (body.action === "family.reactivate") {
-        return success_(requestId, ProductFamilyService.reactivate(p.familyId, actor));
+      if (body.action === "family.create" || body.action === "family.updateParent" || body.action === "family.archive" || body.action === "family.reactivate") {
+        var fp = InputValidation.familyPayload(p);
+        if (body.action === "family.create") return success_(requestId, ProductFamilyService.create(fp.nameEn, fp.nameAr, fp.parentId, actor));
+        if (body.action === "family.updateParent") return success_(requestId, ProductFamilyService.updateParent(fp.familyId, fp.newParentId, actor));
+        if (body.action === "family.archive") return success_(requestId, ProductFamilyService.archive(fp.familyId, actor));
+        return success_(requestId, ProductFamilyService.reactivate(fp.familyId, actor));
       }
       if (body.action === "variant.createCompanyRecord") {
-        return success_(requestId, VariantService.create(p.productId, Object.assign({ actor: actor }, p)));
+        var vc = InputValidation.variantCreatePayload(p);
+        return success_(requestId, VariantService.create(vc.productId, Object.assign({ actor: actor }, vc)));
       }
       if (body.action === "variant.updateCompanyFields") {
-        return success_(requestId, VariantService.updateCompany(p.variantId, p, actor));
+        var vu = InputValidation.idOnlyPayload(p, "variantId");
+        return success_(requestId, VariantService.updateCompany(vu.variantId, p, actor));
       }
-      if (body.action === "variant.archive") {
-        return success_(requestId, VariantService.archive(p.variantId, actor));
-      }
-      if (body.action === "variant.reactivate") {
-        return success_(requestId, VariantService.reactivate(p.variantId, actor));
+      if (body.action === "variant.archive" || body.action === "variant.reactivate") {
+        var vid = InputValidation.idOnlyPayload(p, "variantId");
+        var vfn = body.action === "variant.archive" ? VariantService.archive : VariantService.reactivate;
+        return success_(requestId, vfn(vid.variantId, actor));
       }
       if (body.action === "attribute.setProductValue") {
-        return success_(requestId, AttributeService.setProductValue(p.productId, p.attributeId, p.valueJson, actor));
+        var ap = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.setProductValue(ap.productId, ap.attributeId, ap.valueJson, actor));
       }
       if (body.action === "attribute.setVariantOverride") {
-        return success_(requestId, AttributeService.setVariantOverride(p.variantId, p.attributeId, p.mode, p.valueJson, actor));
+        var ao = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.setVariantOverride(ao.variantId, ao.attributeId, ao.mode, ao.valueJson, actor));
       }
       if (body.action === "attribute.clearVariantOverride") {
-        return success_(requestId, AttributeService.clearVariantOverride(p.variantId, p.attributeId, actor));
+        var ac = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.clearVariantOverride(ac.variantId, ac.attributeId, actor));
       }
       if (body.action === "specification.appendChange") {
-        return success_(requestId, SpecificationService.appendDraft(Object.assign({ actor: actor }, p)));
+        var sc = InputValidation.specificationChangePayload(p);
+        return success_(requestId, SpecificationService.appendDraft(Object.assign({ actor: actor }, sc)));
       }
-      if (body.action === "specification.approveChange") {
-        return success_(requestId, SpecificationService.approve(p.changeId, actor));
-      }
-      if (body.action === "specification.rejectChange") {
-        return success_(requestId, SpecificationService.reject(p.changeId, actor));
+      if (body.action === "specification.approveChange" || body.action === "specification.rejectChange") {
+        var sid = InputValidation.idOnlyPayload(p, "changeId");
+        var sfn = body.action === "specification.approveChange" ? SpecificationService.approve : SpecificationService.reject;
+        return success_(requestId, sfn(sid.changeId, actor));
       }
       if (body.action === "specification.getEffective") {
-        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(p.productId, p.variantId));
+        var se = InputValidation.idOnlyPayload(p, "productId");
+        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(se.productId, p.variantId || null));
       }
 
       return failure_(requestId, "UNSUPPORTED_ACTION");
