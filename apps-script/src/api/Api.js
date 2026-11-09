@@ -108,7 +108,8 @@ var Api = (function () {
         return success_(requestId, ProductService.getWorkspace(gw.productId));
       }
       if (body.action === "product.search") {
-        return success_(requestId, { results: ProductService.search(p.query || "") });
+        var ps = InputValidation.productSearchPayload(p);
+        return success_(requestId, { results: ProductService.search(ps.query) });
       }
       if (body.action === "product.updateCompanyFields") {
         var pu = InputValidation.productUpdatePayload(p);
@@ -131,8 +132,8 @@ var Api = (function () {
         return success_(requestId, VariantService.create(vc.productId, Object.assign({ actor: actor }, vc)));
       }
       if (body.action === "variant.updateCompanyFields") {
-        var vu = InputValidation.idOnlyPayload(p, "variantId");
-        return success_(requestId, VariantService.updateCompany(vu.variantId, p, actor));
+        var vu = InputValidation.variantUpdatePayload(p);
+        return success_(requestId, VariantService.updateCompany(vu.variantId, vu, actor));
       }
       if (body.action === "variant.archive" || body.action === "variant.reactivate") {
         var vid = InputValidation.idOnlyPayload(p, "variantId");
@@ -161,8 +162,8 @@ var Api = (function () {
         return success_(requestId, sfn(sid.changeId, actor));
       }
       if (body.action === "specification.getEffective") {
-        var se = InputValidation.idOnlyPayload(p, "productId");
-        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(se.productId, p.variantId || null));
+        var se = InputValidation.effectiveSpecPayload(p);
+        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(se.productId, se.variantId || null));
       }
 
       return failure_(requestId, "UNSUPPORTED_ACTION");
