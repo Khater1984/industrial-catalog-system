@@ -108,7 +108,7 @@ var ImageReviewIntake = (function () {
     // The worker Drive manifest references the original extraction manifest.
     // Runner enriches the separately published image manifest with Drive IDs;
     // reconstruct the pre-enrichment manifest before comparing the source hash.
-    var sourceCopy = withoutKey_(imageData, "manifest_sha256");
+    var sourceCopy = withoutKey_(withoutKey_(imageData, "manifest_sha256"), "enabled");
     sourceCopy.images = imageData.images.map(function (image) {
       return withoutKey_(withoutKey_(image, "drive_file_id"), "drive_sha256");
     });
