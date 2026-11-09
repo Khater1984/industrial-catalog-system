@@ -1,8 +1,8 @@
 # Schema V2.1 Change Proposal — Identity, Determinism & Integrity
 
-**Status:** Proposed revision following approval to continue design corrections; not yet final schema approval or implementation authorization.
+**Status:** Approved V2.1 schema baseline for isolated DEV implementation on 2026-11-03; not production authorization.
 **Date:** 2026-11-03
-**Scope:** Resolve SR-001 through SR-014 where the current domain documents need a single normative rule. This proposal supersedes conflicting first-pass wording when the schema is next consolidated.
+**Scope:** Resolve SR-001 through SR-014 where the current domain documents need a single normative rule. This approved proposal is normative where it clarifies or supersedes conflicting first-pass wording in the domain schema. It does not authorize production deployment or waive runtime/security/operations gates.
 
 ## 1. Canonical identity and supplier source assertions (SR-001, SR-003)
 
