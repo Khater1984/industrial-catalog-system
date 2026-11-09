@@ -2,14 +2,16 @@
 
 ## Purpose
 
-Uploads verified local image artifacts (from `images.py`) to Google Drive and produces a separate `drive-image-manifest.json`.
+Uploads verified local image artifacts from `images.py` to Google Drive. The bridge produces a separate checksummed `drive-image-manifest.json` and is used by the Drive-backed runner when image extraction is enabled.
 
-This is a bridge only. It does **not** write to Sheets, create `Image_Assets` rows, or link images to products. Human review + `ImagePromotion.js` remain responsible for promotion.
+This bridge does **not** write to Sheets, create `Image_Assets` rows, or associate images with products. Human review and `ImagePromotion.js` remain responsible for promotion.
 
-## Input
+## Input and validation
 
-- Directory containing `image-manifest.json` produced by `images.py`.
-- Artifact files referenced by relative `artifact_path` values.
+- Directory containing the version 1 `image-manifest.json` produced by `images.py`.
+- The manifest must contain matching `image_count`, `images`, `catalog_id`, `run_id`, and a valid SHA-256 checksum.
+- Each artifact path must be a safe relative POSIX path contained within the extraction directory. Absolute paths, Windows drive paths, backslashes, traversal components, and symlink escapes are rejected.
+- The bridge recalculates SHA-256 and verifies the actual byte count when the source manifest supplies it.
 
 ## Configuration
 
@@ -17,31 +19,44 @@ This is a bridge only. It does **not** write to Sheets, create `Image_Assets` ro
 export CATALOG_WORKER_IMAGE_DRIVE_FOLDER_ID=your-drive-folder-id
 ```
 
-Uses the existing `DriveClient` (Application Default Credentials).
+Uses the existing `DriveClient` and Application Default Credentials. The service identity must have access to the configured folder.
+
+## Upload and retry behavior
+
+- Images use content-addressed filenames: `{sha256}{extension}`.
+- `DriveClient.upload_bytes_with_status` returns `UPLOADED` for a newly created object and `REUSED` when matching immutable content already exists, including a concurrent-create recovery.
+- Existing `upload_bytes` callers retain their original two-value return contract.
+- The bridge verifies the returned SHA-256 and file ID before recording success.
+- Partial batches preserve per-image successes and failures. They are never reported as `COMPLETED`.
+- The bridge writes its output manifest atomically and never modifies source PDFs or image artifacts.
 
 ## Output
 
-`drive-image-manifest.json` containing:
+`drive-image-manifest.json` includes:
 
-- Verified SHA-256
-- Drive file ID
-- Original metadata (name, MIME, dimensions, alpha, page info)
-- Per-image `upload_status` (`UPLOADED` / `FAILED`)
-- Overall status: `COMPLETED` | `PARTIAL` | `FAILED`
-- Manifest checksum
+- Source manifest checksum, catalog/run IDs, and Drive folder ID.
+- Drive file ID, content hash, filename, MIME type, dimensions, alpha flag, size, page metadata, and artifact path for each successful image.
+- Per-image status: `UPLOADED`, `REUSED`, or `FAILED`.
+- Counts: `uploaded_count`, `reused_count`, `stored_count`, and `failed_count`.
+- Overall status: `COMPLETED`, `PARTIAL`, or `FAILED`.
+- Output manifest checksum.
 
-## Behavior
+## Runner integration
 
-- Recalculates SHA-256 from actual bytes and rejects mismatches.
-- Rejects path traversal and missing files.
-- Uses immutable content-addressed filenames (`{sha256}{ext}`).
-- Reuses existing Drive files when content matches (via DriveClient).
-- Partial failures preserve successful uploads.
-- Original local artifacts are never modified.
+When `CATALOG_WORKER_EXTRACT_IMAGES=1`, `runner.py` extracts images and invokes this bridge before publishing the terminal run manifest. It publishes both:
 
-## Usage
+- `image-manifest.json` with Drive file IDs retained for the existing human-review / promotion contract.
+- `drive-image-manifest.json` as the separate upload audit record.
+
+If any image fails to upload, the run is not marked `COMPLETED`.
+
+## Local usage
 
 ```python
 from catalog_worker.image_drive_sync import sync_images_to_drive
+
 result = sync_images_to_drive("/path/to/extraction")
+assert result["overall_status"] == "COMPLETED"
 ```
+
+Unit tests use mocked Drive clients and do not require real credentials or modify a real Drive folder.
