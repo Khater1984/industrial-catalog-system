@@ -114,20 +114,34 @@ var ImageReviewIntake = (function () {
     });
     require_(driveData.source_manifest_sha256 === sha_(canonicalJson_(sourceCopy)), "SOURCE_MANIFEST_SHA_MISMATCH");
     var counts = { UPLOADED: 0, REUSED: 0, FAILED: 0 };
+    var sourceKeys = {};
+    imageData.images.forEach(function (item) {
+      require_(item && SHA_RE.test(String(item.sha256 || "")), "IMAGE_RECORD_SHA_INVALID");
+      requireText_(item.artifact_path, "IMAGE_RECORD_PATH_INVALID", 500);
+      var sourceKey = item.sha256 + "|" + item.artifact_path;
+      require_(!sourceKeys[sourceKey], "IMAGE_RECORD_DUPLICATE");
+      sourceKeys[sourceKey] = true;
+    });
+    require_(driveData.images.length === imageData.images.length, "DRIVE_IMAGE_SET_COUNT_MISMATCH");
     var seen = {};
     driveData.images.forEach(function (item) {
       require_(item && typeof item === "object", "DRIVE_IMAGE_RECORD_INVALID");
       var status = item.upload_status;
       require_(Object.prototype.hasOwnProperty.call(counts, status), "DRIVE_UPLOAD_STATUS_INVALID");
       counts[status] += 1;
-      if (status === "FAILED") return;
       require_(SHA_RE.test(String(item.sha256 || "")), "DRIVE_IMAGE_SHA_INVALID");
       requireText_(item.artifact_path, "DRIVE_IMAGE_PATH_INVALID", 500);
-      require_(idValid_(item.drive_file_id), "DRIVE_FILE_ID_INVALID");
-      require_(item.catalog_id === imageData.catalog_id && item.run_id === imageData.run_id, "DRIVE_IMAGE_IDENTITY_MISMATCH");
       var key = item.sha256 + "|" + item.artifact_path;
+      require_(Object.prototype.hasOwnProperty.call(sourceKeys, key), "DRIVE_IMAGE_UNMATCHED");
       require_(!seen[key], "DRIVE_IMAGE_DUPLICATE");
       seen[key] = true;
+      if (status !== "FAILED") {
+        require_(idValid_(item.drive_file_id), "DRIVE_FILE_ID_INVALID");
+        require_(item.catalog_id === imageData.catalog_id && item.run_id === imageData.run_id, "DRIVE_IMAGE_IDENTITY_MISMATCH");
+      }
+    });
+    Object.keys(sourceKeys).forEach(function (key) {
+      require_(seen[key], "DRIVE_IMAGE_MISSING");
     });
     require_(driveData.uploaded_count === counts.UPLOADED &&
       driveData.reused_count === counts.REUSED &&
@@ -276,7 +290,7 @@ var ImageReviewIntake = (function () {
           // Review status and assignment may be changed by a human after creation;
           // retries verify identity fields without resetting that human decision.
           var reviewCreated = ensureRecord_("Review_Queue", "Review_Queue_ID", review,
-            ["Review_Type", "Priority"], "REVIEW_QUEUE_CONFLICT");
+            ["Review_Type", "Priority", "Proposed_Action", "Created_By"], "REVIEW_QUEUE_CONFLICT");
           if (reviewCreated) counts.reviews += 1;
 
           var linkId = stableId_("rsl", reviewId + "|" + stagingId);
