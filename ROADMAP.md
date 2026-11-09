@@ -90,20 +90,24 @@ Exit criteria:
 - Benchmark reports accuracy by field and catalog type.
 
 ## Phase 6 — Design Studio and PDF generation
+**Status (2026-11-09):** Foundation implemented. PDF renderer exists and is tested. Full Design Studio blocked by unapproved design schema.
+
 Deliverables:
-- Brand identity and versioning.
-- Template and versioning.
-- Paper/background and watermark controls.
-- Product catalog and technical datasheet templates.
-- HTML preview and actual PDF preview.
-- Preflight, image DPI checks, overflow checks, font checks.
-- PDF snapshot and runtime fingerprint.
+- Brand identity and versioning. (Blocked — schema proposal only)
+- Template and versioning. (Blocked — schema proposal only)
+- Paper/background and watermark controls. (Partial — renderer supports; no Sheets store)
+- Product catalog and technical datasheet templates. (Renderer supports all three types)
+- HTML preview and actual PDF preview. (PDF only; no HTML preview)
+- Preflight, image DPI checks, overflow checks, font checks. (Preflight + DPI present)
+- PDF snapshot and runtime fingerprint. (Implemented)
 
 Exit criteria:
-- Published design versions cannot be edited in place.
-- Issued PDF remains unchanged after later source/design changes.
-- Output checks are recorded and reproducible to the documented level.
-- Print-ready label is withheld unless external print requirements are met.
+- Published design versions cannot be edited in place. (Not applicable until schema approved)
+- Issued PDF remains unchanged after later source/design changes. (Renderer is deterministic from snapshot)
+- Output checks are recorded and reproducible to the documented level. (Preflight report with SHA256)
+- Print-ready label is withheld unless external print requirements are met. (Explicitly blocked)
+
+See PHASE_6_ARCHITECTURE.md and PHASE_6_IMPLEMENTATION_REPORT.md.
 
 ## Phase 7 — Integration, hardening, and release
 Deliverables:
@@ -128,4 +132,4 @@ Each phase has:
 - Explicit user acceptance before moving to the next major phase.
 
 ## Immediate next action
-Build the Product/Variant management and effective-data domain engine against the approved V2.1 schema using synthetic fixtures and automated tests on DEV. In parallel, complete Phase 2 disposable-Spreadsheet verification before any runtime deployment. Do not create production Sheets or migrate legacy data.
+Approve the design schema (schema/03-design-and-issued-output.md) to unblock Sheets-backed Brand/Template/Issue tables, then implement Apps Script services on top of the existing PDF renderer. Continue Phase 2 disposable-Spreadsheet verification. Do not create production Sheets or migrate legacy data.
