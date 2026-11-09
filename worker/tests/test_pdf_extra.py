@@ -58,3 +58,10 @@ def test_asset_path_cannot_escape_asset_root(tmp_path: Path):
     outside.write_bytes(b"test")
     with pytest.raises(PDFRenderError, match="ASSET_PATH_OUTSIDE_ROOT"):
         _safe_asset("../outside.png", asset_root)
+
+
+def test_final_snapshot_rejects_specification_validation_errors():
+    snap = build_snapshot("TECHNICAL_DATASHEET", "T", [{"name": "X", "description": "d"}], document_status="FINAL")
+    snap["items"][0]["validation_errors"] = [{"code": "LOGICAL_KEY_QUARANTINED"}]
+    with pytest.raises(SnapshotValidationError, match="SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL"):
+        validate_snapshot(snap)
