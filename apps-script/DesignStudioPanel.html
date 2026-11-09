@@ -124,13 +124,15 @@
     const variantMap={};
     const rawVariantMap=el("dsVariantMap").value.trim();
     if(rawVariantMap){
-      rawVariantMap.split(",").forEach(pair=>{
-        const parts=pair.split("=").map(x=>x.trim());
-        if(parts.length!==2||!parts[0]||!parts[1]) throw new Error("صيغة الموديل غير صحيحة. استخدم PRODUCT_ID=VARIANT_ID.");
-        if(!ids.includes(parts[0])) throw new Error("معرف الموديل مرتبط بمنتج غير موجود في القائمة: "+parts[0]);
-        if(variantMap[parts[0]]) throw new Error("تم إدخال أكثر من موديل للمنتج نفسه: "+parts[0]);
-        variantMap[parts[0]]=parts[1];
-      });
+      try {
+        rawVariantMap.split(",").forEach(pair=>{
+          const parts=pair.split("=").map(x=>x.trim());
+          if(parts.length!==2||!parts[0]||!parts[1]) throw new Error("صيغة الموديل غير صحيحة. استخدم PRODUCT_ID=VARIANT_ID.");
+          if(!ids.includes(parts[0])) throw new Error("معرف الموديل مرتبط بمنتج غير موجود في القائمة: "+parts[0]);
+          if(variantMap[parts[0]]) throw new Error("تم إدخال أكثر من موديل للمنتج نفسه: "+parts[0]);
+          variantMap[parts[0]]=parts[1];
+        });
+      } catch(err) { show(err.message,"err"); return; }
     }
     const config={documentType:el("dsDocType").value,productIds:ids,variantMap,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsDocumentStatus").value,blockOnConflict:true,dedicated_cover:el("dsDedicatedCover").checked};
     show("جارٍ...","wait");
