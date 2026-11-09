@@ -157,7 +157,7 @@ Keep `Catalogs` as one immutable registered file/revision per exact source PDF. 
 Add these fields to `Specification_Changes`:
 
 - `Logical_Specification_Key` (TEXT(180), required): source-backed key is `SRC:<Specification_ID>`; company-added key is `ADD:<Specification_Change_ID of the first ADD>`.
-- `Sequence_No` (INTEGER, required): server-assigned strictly increasing integer within one Logical_Specification_Key, allocated under a script lock.
+- `Sequence_No` (INTEGER, conditional): blank for DRAFT/REJECTED events; a positive server-assigned strictly increasing integer is required when an event becomes APPROVED, allocated under a script lock within one Logical_Specification_Key.
 - `Specification_Change_ID` remains immutable and unique.
 - `Operation`: ADD, UPDATE, DELETE.
 - `Target_Specification_ID`: required for source-backed UPDATE/DELETE; blank for ADD and for updates/deletes of company-added logical targets.
