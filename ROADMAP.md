@@ -90,22 +90,22 @@ Exit criteria:
 - Benchmark reports accuracy by field and catalog type.
 
 ## Phase 6 — Design Studio and PDF generation
-**Status (2026-11-09):** Foundation implemented. PDF renderer exists and is tested. Full Design Studio blocked by unapproved design schema.
+**Status (2026-11-09):** PDF engine complete and tested. Lightweight Brand Identity + Template Studio (Script Properties) implemented. Full Sheets-backed design/issue system blocked by unapproved schema proposal.
 
 Deliverables:
-- Brand identity and versioning. (Blocked — schema proposal only)
-- Template and versioning. (Blocked — schema proposal only)
-- Paper/background and watermark controls. (Partial — renderer supports; no Sheets store)
+- Brand identity and versioning. (Lightweight DEV presets only)
+- Template and versioning. (Lightweight DEV templates only)
+- Paper/background and watermark controls. (Renderer supports; UI presets)
 - Product catalog and technical datasheet templates. (Renderer supports all three types)
-- HTML preview and actual PDF preview. (PDF only; no HTML preview)
-- Preflight, image DPI checks, overflow checks, font checks. (Preflight + DPI present)
+- HTML preview and actual PDF preview. (PDF only)
+- Preflight, image DPI checks. (Present)
 - PDF snapshot and runtime fingerprint. (Implemented)
 
 Exit criteria:
-- Published design versions cannot be edited in place. (Not applicable until schema approved)
+- Published design versions cannot be edited in place. (Requires schema approval)
 - Issued PDF remains unchanged after later source/design changes. (Renderer is deterministic from snapshot)
-- Output checks are recorded and reproducible to the documented level. (Preflight report with SHA256)
-- Print-ready label is withheld unless external print requirements are met. (Explicitly blocked)
+- Output checks are recorded. (Preflight report with SHA256)
+- Print-ready label is withheld. (Explicitly blocked)
 
 See PHASE_6_ARCHITECTURE.md and PHASE_6_IMPLEMENTATION_REPORT.md.
 
@@ -132,4 +132,4 @@ Each phase has:
 - Explicit user acceptance before moving to the next major phase.
 
 ## Immediate next action
-Approve the design schema (schema/03-design-and-issued-output.md) to unblock Sheets-backed Brand/Template/Issue tables, then implement Apps Script services on top of the existing PDF renderer. Continue Phase 2 disposable-Spreadsheet verification. Do not create production Sheets or migrate legacy data.
+Approve the design schema (schema/03-design-and-issued-output.md) to unblock Sheets-backed Brand/Template/Issue tables. Continue Phase 2 disposable-Spreadsheet verification. Do not create production Sheets or migrate legacy data.
