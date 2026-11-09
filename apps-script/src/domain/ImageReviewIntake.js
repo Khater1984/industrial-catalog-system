@@ -89,7 +89,11 @@ var ImageReviewIntake = (function () {
       require_(Array.isArray(data.images), "IMAGE_MANIFEST_IMAGES_INVALID");
       require_(data.image_count === data.images.length, "IMAGE_MANIFEST_COUNT_MISMATCH");
       data.images.forEach(function (image) {
-        verifyRecordHash_(image, "output_sha256", "IMAGE_RECORD_CHECKSUM_INVALID");
+        require_(image && Object.prototype.toString.call(image) === "[object Object]", "IMAGE_RECORD_INVALID");
+        // Runner adds Drive pointers after extraction. The per-image worker
+        // checksum intentionally covers the immutable extraction record only.
+        var sourceImage = withoutKey_(withoutKey_(image, "drive_file_id"), "drive_sha256");
+        verifyRecordHash_(sourceImage, "output_sha256", "IMAGE_RECORD_CHECKSUM_INVALID");
       });
     } else {
       require_(Array.isArray(data.images), "DRIVE_MANIFEST_IMAGES_INVALID");
@@ -101,7 +105,14 @@ var ImageReviewIntake = (function () {
   function verifyDriveManifest_(imageData, driveData) {
     require_(driveData.catalog_id === imageData.catalog_id, "CATALOG_ID_MISMATCH");
     require_(driveData.run_id === imageData.run_id, "RUN_ID_MISMATCH");
-    require_(driveData.source_manifest_sha256 === imageData.manifest_sha256, "SOURCE_MANIFEST_SHA_MISMATCH");
+    // The worker Drive manifest references the original extraction manifest.
+    // Runner enriches the separately published image manifest with Drive IDs;
+    // reconstruct the pre-enrichment manifest before comparing the source hash.
+    var sourceCopy = withoutKey_(imageData, "manifest_sha256");
+    sourceCopy.images = imageData.images.map(function (image) {
+      return withoutKey_(withoutKey_(image, "drive_file_id"), "drive_sha256");
+    });
+    require_(driveData.source_manifest_sha256 === sha_(canonicalJson_(sourceCopy)), "SOURCE_MANIFEST_SHA_MISMATCH");
     var counts = { UPLOADED: 0, REUSED: 0, FAILED: 0 };
     var seen = {};
     driveData.images.forEach(function (item) {
@@ -235,6 +246,8 @@ var ImageReviewIntake = (function () {
         try {
           require_(driveImage.drive_file_id, "DRIVE_FILE_ID_MISSING");
           require_(driveImage.sha256 === img.sha256, "DRIVE_IMAGE_SHA_MISMATCH");
+          if (img.drive_file_id) require_(img.drive_file_id === driveImage.drive_file_id, "DRIVE_FILE_ID_CONFLICT");
+          if (img.drive_sha256) require_(img.drive_sha256 === driveImage.sha256, "DRIVE_SHA_CONFLICT");
           require_(driveImage.artifact_path === img.artifact_path, "DRIVE_IMAGE_PATH_MISMATCH");
           var size = requireInteger_(img.file_size_bytes, "IMAGE_FILE_SIZE_INVALID", 1);
           require_(driveImage.file_size_bytes === size, "DRIVE_MANIFEST_FILE_SIZE_MISMATCH");
