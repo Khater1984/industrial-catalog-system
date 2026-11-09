@@ -72,6 +72,20 @@ def test_drive_upload_uses_configured_bounded_retries():
     assert service.files_api.create_args["body"]["appProperties"]["sha256"] == digest
 
 
+def test_drive_upload_with_status_reports_new_upload():
+    service = FakeService()
+    client = DriveClient(service=service, max_retries=1)
+    content = b"new-image"
+
+    file_id, digest, status = client.upload_bytes_with_status(
+        "folder-123", "image.png", content, "image/png"
+    )
+
+    assert file_id == "uploaded-123"
+    assert digest == hashlib.sha256(content).hexdigest()
+    assert status == "UPLOADED"
+
+
 def test_retry_count_is_read_from_environment(monkeypatch):
     monkeypatch.setenv("WORKER_DRIVE_MAX_RETRIES", "6")
     assert DriveClient(service=FakeService()).max_retries == 6
