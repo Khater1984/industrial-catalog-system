@@ -3,6 +3,29 @@
 **Status:** Proposed logical contracts; endpoint names and transport are not yet frozen.  
 **Security:** No credentials or production URLs belong in this document.
 
+## Product / Variant Domain Operations (DEV slice)
+
+The following logical operations are implemented in the isolated DEV branch for the Product/Variant domain engine:
+
+- `product.createCompanyRecord`
+- `product.getWorkspace`
+- `product.updateCompanyFields`
+- `product.archive` / `product.reactivate`
+- `variant.createCompanyRecord`
+- `variant.updateCompanyFields`
+- `variant.archive` / `variant.reactivate`
+- `attribute.setProductValue`
+- `attribute.setVariantOverride`
+- `attribute.clearVariantOverride`
+- `specification.appendChange`
+- `specification.approveChange`
+- `specification.rejectChange`
+- `specification.getEffective`
+
+Payloads are validated server-side. Mutations require owner authorization. Idempotency keys are supported where applicable. `Variants.Product_ID` is immutable. Source `Specifications` are never mutated. Effective values are resolved deterministically from immutable source assertions plus approved `Specification_Changes`, with product/variant scope conflicts surfaced (ADR-040).
+
+---
+
 ## 1. Contract principles
 
 - The browser calls the Apps Script application API; it does not write Sheets or Drive directly.
