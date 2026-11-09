@@ -30,7 +30,13 @@ var ProductService = (function () {
     require_(options && options.actor, "PRODUCT_ACTOR_REQUIRED");
     var productId = stableId_("prd", options.idempotencyKey || Utilities.getUuid());
     var existing = SheetsRepository.getBy("Products", "Product_ID", productId);
-    if (existing) return { productId: productId, reused: true };
+    if (existing) {
+      var company = SheetsRepository.getBy("Product_Company", "Product_ID", productId) || {};
+      if (options.nameEn && company.Product_Name_EN && company.Product_Name_EN !== text_(options.nameEn, 300)) {
+        throw new Error("IDEMPOTENCY_PAYLOAD_MISMATCH");
+      }
+      return { productId: productId, reused: true };
+    }
     SheetsRepository.append("Products", {
       Product_ID: productId,
       Lifecycle_Status: "ACTIVE",
@@ -59,6 +65,21 @@ var ProductService = (function () {
     var company = SheetsRepository.getBy("Product_Company", "Product_ID", productId) || {};
     var variants = (SheetsRepository.listAll("Variants") || []).filter(function (v) { return v.Product_ID === productId; });
     return { product: product, company: company, variants: variants };
+  }
+
+  function search(query) {
+    var q = (query || "").toLowerCase().trim();
+    if (!q) return [];
+    var companies = SheetsRepository.listAll("Product_Company") || [];
+    var products = SheetsRepository.listAll("Products") || [];
+    var byId = {};
+    products.forEach(function (p) { byId[p.Product_ID] = p; });
+    return companies.filter(function (c) {
+      var name = ((c.Product_Name_EN || "") + " " + (c.Product_Name_AR || "")).toLowerCase();
+      return name.indexOf(q) >= 0;
+    }).map(function (c) {
+      return { productId: c.Product_ID, nameEn: c.Product_Name_EN, nameAr: c.Product_Name_AR, status: (byId[c.Product_ID] || {}).Lifecycle_Status };
+    }).slice(0, 50);
   }
 
   function updateCompany(productId, fields, actor) {
@@ -94,5 +115,5 @@ var ProductService = (function () {
     return { ok: true };
   }
 
-  return { create: create, getWorkspace: getWorkspace, updateCompany: updateCompany, archive: archive, reactivate: reactivate };
+  return { create: create, getWorkspace: getWorkspace, search: search, updateCompany: updateCompany, archive: archive, reactivate: reactivate };
 })();
