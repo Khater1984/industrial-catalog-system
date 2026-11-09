@@ -39,3 +39,5 @@ def test_final_conflicts_are_blocked_even_without_opt_in_flag(tmp_path: Path):
     snap.pop("block_on_conflict", None)
     with pytest.raises(PDFRenderError, match="CONFLICTS_BLOCK_FINAL_ISSUE"):
         render_pdf(snap, tmp_path / "must-not-exist.pdf")
+    with pytest.raises(SnapshotValidationError, match="CONFLICTS_BLOCK_FINAL_ISSUE"):
+        validate_snapshot(snap)
