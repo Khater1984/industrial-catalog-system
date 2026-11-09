@@ -30,7 +30,7 @@
     <div class="field"><label>الورق</label><select id="bePaper"><option>A4</option><option>A3</option><option>LETTER</option></select></div>
     <div class="field"><label>الاتجاه</label><select id="beOrient"><option>portrait</option><option>landscape</option></select></div>
     <div class="field"><label>شعار</label><select id="beLogoPref"><option>COMPANY</option><option>SUPPLIER</option><option>NONE</option></select></div>
-    <div class="field"><label>علامة مائية</label><input id="beWatermark" type="text" placeholder="نص اختياري"></div>
+    <div class="field"><label>علامة مائية</label><input id="beWatermark" type="text" placeholder="نص اختياري"></div>\n    <div class="field"><label>مسار ملف الخط العادي داخل بيئة العامل</label><input id="beFontRegularPath" type="text" placeholder="assets/fonts/NotoSansArabic-Regular.ttf"></div>\n    <div class="field"><label>مسار ملف الخط العريض داخل بيئة العامل</label><input id="beFontBoldPath" type="text" placeholder="assets/fonts/NotoSansArabic-Bold.ttf"></div>
     <button class="btn" type="button" id="beSave" style="background:#2d6b83">حفظ الهوية</button>
   </div>
 
@@ -39,12 +39,12 @@
   </div>
   <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label><input id="dsProductIds" type="text" placeholder="P001, P002"></div>
   <div class="field"><label>العنوان</label><input id="dsTitle" type="text" value="Industrial Catalog"></div>
-  <div class="field"><label>الحالة</label><select id="dsStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select></div>
-  <div class="field"><label><input type="checkbox" id="dsBlockConflict"> منع FINAL عند التعارضات</label></div>
+  <div class="field"><label>الحالة</label><select id="dsDocumentStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select></div>
+  <div class="notice" role="note">حماية ADR-040 مفعّلة دائمًا: لن يُنشأ Snapshot بحالة FINAL إذا وُجد تعارض.</div>
   <div class="field"><label><input type="checkbox" id="dsDedicatedCover"> غلاف مخصص</label></div>
 
   <button class="btn" type="button" id="dsGenerate">توليد Snapshot</button>
-  <div class="status" id="dsStatus" role="status"></div>
+  <div class="status" id="dsGenerationStatus" role="status"></div>
   <pre id="dsOutput" style="display:none;background:#f7f9fb;padding:12px;border-radius:8px;font-size:11px;overflow:auto;max-height:240px;margin-top:8px"></pre>
   <button class="btn" type="button" id="dsDownload" style="display:none;margin-top:6px;background:#2d6b83">تحميل snapshot.json</button>
 
@@ -57,7 +57,7 @@
 <script>
 (function(){
   const el=id=>document.getElementById(id);
-  function show(msg,type){const b=el("dsStatus");b.textContent=msg;b.className="status show "+type;}
+  function show(msg,type){const b=el("dsGenerationStatus");b.textContent=msg;b.className="status show "+type;}
   function loadBrands(){
     if(typeof google==="undefined")return;
     google.script.run.withSuccessHandler(brands=>{
@@ -101,12 +101,12 @@
         el("bePrimary").value=b.primary;el("beSecondary").value=b.secondary||b.primary;
         el("beText").value=b.text;el("beBg").value=b.background;
         el("bePaper").value=b.paperSize;el("beOrient").value=b.orientation;
-        el("beLogoPref").value=b.logoPreference;el("beWatermark").value=b.watermarkText||"";
+        el("beLogoPref").value=b.logoPreference;el("beWatermark").value=b.watermarkText||"";\n        el("beFontRegularPath").value=b.fontRegularPath||"";el("beFontBoldPath").value=b.fontBoldPath||"";
       }).listBrandsForBrowser();
     }
   });
   el("beSave").addEventListener("click",()=>{
-    const p={name:el("beName").value,companyName:el("beCompany").value,primary:el("bePrimary").value,secondary:el("beSecondary").value,text:el("beText").value,background:el("beBg").value,paperSize:el("bePaper").value,orientation:el("beOrient").value,logoPreference:el("beLogoPref").value,watermarkText:el("beWatermark").value};
+    const p={name:el("beName").value,companyName:el("beCompany").value,primary:el("bePrimary").value,secondary:el("beSecondary").value,text:el("beText").value,background:el("beBg").value,paperSize:el("bePaper").value,orientation:el("beOrient").value,logoPreference:el("beLogoPref").value,watermarkText:el("beWatermark").value,fontRegularPath:el("beFontRegularPath").value,fontBoldPath:el("beFontBoldPath").value};
     google.script.run.withSuccessHandler(()=>{show("تم حفظ الهوية.","ok");loadBrands();el("dsBrandEditor").style.display="none";}).withFailureHandler(e=>show(e.message,"err")).saveBrandFromBrowser(p);
   });
   el("dsNewTpl").addEventListener("click",()=>{
@@ -121,7 +121,7 @@
   el("dsGenerate").addEventListener("click",()=>{
     const ids=el("dsProductIds").value.split(",").map(s=>s.trim()).filter(Boolean);
     if(!ids.length){show("أدخل معرف منتج.","err");return;}
-    const config={documentType:el("dsDocType").value,productIds:ids,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsStatus").value,blockOnConflict:el("dsBlockConflict").checked,dedicated_cover:el("dsDedicatedCover").checked};
+    const config={documentType:el("dsDocType").value,productIds:ids,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsDocumentStatus").value,blockOnConflict:true,dedicated_cover:el("dsDedicatedCover").checked};
     show("جارٍ...","wait");
     google.script.run.withSuccessHandler(snap=>{
       lastSnap=snap;el("dsOutput").textContent=JSON.stringify(snap,null,2);el("dsOutput").style.display="block";el("dsDownload").style.display="block";
