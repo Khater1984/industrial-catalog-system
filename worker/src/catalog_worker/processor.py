@@ -118,8 +118,12 @@ def _render_page_to_temp_image(pdf_path: Path, page_index: int) -> Path | None:
             fd, tmp_name = tempfile.mkstemp(prefix=f"ocr-page-{page_index+1:05d}-", suffix=".png")
             os.close(fd)
             tmp_path = Path(tmp_name)
-            pix.save(str(tmp_path))
-            return tmp_path
+            try:
+                pix.save(str(tmp_path))
+                return tmp_path
+            except Exception:
+                tmp_path.unlink(missing_ok=True)
+                raise
         finally:
             doc.close()
     except Exception:
