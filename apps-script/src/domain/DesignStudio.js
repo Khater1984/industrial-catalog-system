@@ -1,5 +1,5 @@
-/** Design Studio — prepares immutable issue snapshots for the PDF renderer.
- * Stores brand presets in Script Properties (DEV only). No new schema tables.
+/** Design Studio — brand identity + issue snapshot preparation (DEV).
+ * Brand presets stored in Script Properties. No new schema tables.
  */
 var DesignStudio = (function () {
   var PRESET_KEY = "DESIGN_STUDIO_PRESETS";
@@ -24,10 +24,20 @@ var DesignStudio = (function () {
     var existing = presets.findIndex(function (p) { return p.name === preset.name; });
     var record = {
       name: String(preset.name).slice(0, 80),
+      companyName: String(preset.companyName || "").slice(0, 120),
       primary: preset.primary || "#173F5F",
+      secondary: preset.secondary || "#2d6b83",
       text: preset.text || "#17212B",
+      background: preset.background || "#FFFFFF",
       paperSize: preset.paperSize || "A4",
       orientation: preset.orientation || "portrait",
+      watermarkText: String(preset.watermarkText || "").slice(0, 60),
+      watermarkOpacity: Number(preset.watermarkOpacity) || 0.1,
+      contact: {
+        phone: String(preset.phone || "").slice(0, 40),
+        email: String(preset.email || "").slice(0, 80),
+        website: String(preset.website || "").slice(0, 120)
+      },
       updatedAt: new Date().toISOString()
     };
     if (existing >= 0) presets[existing] = record;
@@ -43,6 +53,7 @@ var DesignStudio = (function () {
     }
     var items = Array.isArray(config.items) ? config.items : [];
     if (!items.length) throw new Error("ISSUE_SCOPE_EMPTY");
+    var brand = config.brand || {};
     return {
       snapshot_version: "1",
       document_type: config.documentType,
@@ -62,8 +73,9 @@ var DesignStudio = (function () {
       }),
       brand: {
         palette: {
-          primary: config.primary || "#173F5F",
-          text: config.text || "#17212B"
+          primary: brand.primary || config.primary || "#173F5F",
+          secondary: brand.secondary || config.secondary || "#2d6b83",
+          text: brand.text || config.text || "#17212B"
         }
       },
       paper: {
@@ -72,8 +84,14 @@ var DesignStudio = (function () {
           orientation: config.orientation || "portrait",
           margins_mm: { top: 18, right: 12, bottom: 16, left: 12 }
         },
-        background: { color: "#FFFFFF" }
+        background: { color: brand.background || config.background || "#FFFFFF" }
       },
+      watermark: config.watermarkText ? {
+        text: config.watermarkText,
+        opacity: config.watermarkOpacity || 0.1,
+        color: "#777777",
+        rotation_degrees: -35
+      } : {},
       export_profile: { output_class: "DIGITAL_PDF", minimum_dpi_warning: 150, minimum_dpi_block: 72 },
       contact: config.contact || {},
       document_status: config.documentStatus || "ORIGINAL",

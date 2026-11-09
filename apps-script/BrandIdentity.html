@@ -1,0 +1,103 @@
+<!-- Brand Identity Designer — include in Index.html or open separately -->
+<section class="panel" style="margin-top:18px" id="brandIdentity">
+  <div class="toolbar"><h3>تصميم الهوية البصرية</h3></div>
+  <p class="notice">أنشئ وأدر هويات بصرية (ألوان، ورق، علامة مائية، تواصل). تُحفظ في DEV فقط.</p>
+
+  <form id="identityForm">
+    <div class="field"><label>اسم الهوية *</label><input id="idName" type="text" maxlength="80" required placeholder="Apple / 6D / Custom"></div>
+    <div class="field"><label>اسم الشركة</label><input id="idCompany" type="text" maxlength="120" placeholder="اسم الشركة الظاهر"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label>اللون الأساسي</label><input id="idPrimary" type="color" value="#173F5F"></div>
+      <div class="field"><label>اللون الثانوي</label><input id="idSecondary" type="color" value="#2d6b83"></div>
+      <div class="field"><label>لون النص</label><input id="idText" type="color" value="#17212B"></div>
+      <div class="field"><label>خلفية الورق</label><input id="idBackground" type="color" value="#FFFFFF"></div>
+    </div>
+
+    <div class="field"><label>حجم الورق</label>
+      <select id="idPaper"><option>A4</option><option>A3</option><option>LETTER</option></select>
+    </div>
+    <div class="field"><label>الاتجاه</label>
+      <select id="idOrient"><option value="portrait">عمودي</option><option value="landscape">أفقي</option></select>
+    </div>
+
+    <div class="field"><label>نص العلامة المائية</label><input id="idWatermark" type="text" maxlength="60" placeholder="مثال: مسودة / Draft"></div>
+    <div class="field"><label>شفافية العلامة (0.03–0.35)</label><input id="idWmOpacity" type="text" value="0.10"></div>
+
+    <div class="field"><label>هاتف</label><input id="idPhone" type="text" maxlength="40" placeholder="+966..."></div>
+    <div class="field"><label>بريد</label><input id="idEmail" type="text" maxlength="80" placeholder="info@..."></div>
+    <div class="field"><label>موقع</label><input id="idWebsite" type="text" maxlength="120" placeholder="https://..."></div>
+
+    <button class="btn" type="button" id="saveIdentityBtn">حفظ الهوية</button>
+    <div class="status" id="idStatus" role="status"></div>
+  </form>
+
+  <div id="identityPreview" style="margin-top:16px;padding:16px;border-radius:12px;border:1px solid var(--line);background:#fff">
+    <strong>معاينة الهوية</strong>
+    <div id="previewBox" style="margin-top:10px;padding:14px;border-radius:8px;min-height:80px">
+      <div style="font-size:18px;font-weight:700" id="previewTitle">عنوان المستند</div>
+      <div style="font-size:13px;margin-top:6px" id="previewSub">نص تجريبي للهوية البصرية</div>
+    </div>
+  </div>
+
+  <div id="identityList" class="notice" style="margin-top:14px">جارٍ تحميل الهويات...</div>
+</section>
+
+<script>
+(function(){
+  const el = id => document.getElementById(id);
+  function show(msg, type){ const b=el("idStatus"); b.textContent=msg; b.className="status show "+type; }
+
+  function updatePreview(){
+    const box = el("previewBox");
+    const primary = el("idPrimary").value;
+    const text = el("idText").value;
+    const bg = el("idBackground").value;
+    box.style.background = bg;
+    box.style.color = text;
+    box.style.borderRight = "4px solid " + primary;
+    el("previewTitle").style.color = primary;
+  }
+  ["idPrimary","idSecondary","idText","idBackground"].forEach(id => {
+    const node = el(id);
+    if(node) node.addEventListener("input", updatePreview);
+  });
+  updatePreview();
+
+  function loadList(){
+    if(typeof google === "undefined" || !google.script){ el("identityList").textContent="(تجريبي)"; return; }
+    google.script.run.withSuccessHandler(list=>{
+      const root = el("identityList");
+      if(!list || !list.length){ root.textContent="لا توجد هويات محفوظة."; return; }
+      root.innerHTML = list.map(p => `<div style="margin:6px 0;padding:6px;border:1px solid var(--line);border-radius:6px">
+        <strong>${p.name}</strong> · ${p.companyName||""}<br>
+        <span style="color:${p.primary}">■</span> ${p.primary} · ${p.paperSize} ${p.orientation}
+      </div>`).join("");
+    }).withFailureHandler(()=>{ el("identityList").textContent="تعذر التحميل."; }).listBrandPresetsForBrowser();
+  }
+  loadList();
+
+  el("saveIdentityBtn").addEventListener("click", ()=>{
+    const preset = {
+      name: el("idName").value.trim(),
+      companyName: el("idCompany").value,
+      primary: el("idPrimary").value,
+      secondary: el("idSecondary").value,
+      text: el("idText").value,
+      background: el("idBackground").value,
+      paperSize: el("idPaper").value,
+      orientation: el("idOrient").value,
+      watermarkText: el("idWatermark").value,
+      watermarkOpacity: parseFloat(el("idWmOpacity").value) || 0.1,
+      phone: el("idPhone").value,
+      email: el("idEmail").value,
+      website: el("idWebsite").value
+    };
+    if(!preset.name){ show("اسم الهوية مطلوب.","err"); return; }
+    if(typeof google === "undefined"){ show("يتطلب Apps Script","err"); return; }
+    google.script.run.withSuccessHandler(()=>{ show("تم حفظ الهوية.","ok"); loadList(); })
+      .withFailureHandler(e=>show(e.message||"خطأ","err"))
+      .saveBrandPresetFromBrowser(preset);
+  });
+})();
+</script>
