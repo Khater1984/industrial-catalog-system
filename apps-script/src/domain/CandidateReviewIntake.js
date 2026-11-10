@@ -113,11 +113,49 @@ var CandidateReviewIntake = (function () {
       "CANDIDATE_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
     return stagingId;
   }
+  function createPageEvidenceAnchor_(page, artifact, manifest, counts) {
+    var candidates = artifact.product_candidates || {};
+    var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
+    var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
+    var evidence = variants.concat(specs).map(function (item) {
+      return text_(item.source_quote, 1000) ||
+        [item.proposed_model_number, item.proposed_model_name, item.attribute_key_raw, item.value_raw, item.unit_raw]
+          .filter(Boolean).join(" ");
+    }).filter(Boolean).join("\n").slice(0, 4000);
+    var sourceKey = "candidate-v1|" + sha_(manifest.run_id + "|" + page.catalog_page_id + "|page-evidence|" + evidence).slice(0, 48);
+    var stagingId = stableId_("stgprd", sourceKey);
+    var createdAt = now_();
+    var method = String(artifact.extraction_method || "").toUpperCase();
+    require_(["EMBEDDED_TEXT", "OCR", "TABLE_PARSER", "MANUAL"].indexOf(method) >= 0, "CANDIDATE_EXTRACTION_METHOD_INVALID");
+    var stablePayload = {
+      Staging_ID: stagingId, Run_ID: manifest.run_id, Catalog_ID: manifest.catalog_id,
+      Catalog_Page_ID: page.catalog_page_id, Raw_Extract_File_ID: page.artifact_file_id,
+      Extracted_Text: evidence || "Page contains model/specification candidates without a resolved product name.",
+      Extraction_Method: method,
+      Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
+      Source_Key_Algorithm_Version: "candidate-intake-v1",
+      Proposed_Status: "NEEDS_REVIEW", Proposed_Product_Name_EN: "UNASSIGNED",
+      Identity_Match_Method: "UNRESOLVED", Source_Record_Key: sourceKey
+    };
+    var record = Object.assign({}, stablePayload, {
+      Staging_Record_Hash: sha_(canonicalJson_(stablePayload)),
+      Created_At: createdAt, Updated_At: createdAt
+    });
+    if (ensure_("Staging_Products", "Staging_ID", record,
+      ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Extracted_Text",
+       "Extraction_Method", "Source_Key_Algorithm_Version", "Proposed_Product_Name_EN", "Source_Record_Key"],
+      "STAGING_PAGE_EVIDENCE_CONFLICT")) counts.staging_products += 1;
+    counts.page_evidence_anchors += 1;
+    return stagingId;
+  }
   function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts) {
     var candidates = artifact.product_candidates || {};
     var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
     var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
     if (!variants.length && !specs.length && !unassignedProductNames) return;
+    if (!(productStagingIds || []).length && (variants.length || specs.length)) {
+      productStagingIds.push(createPageEvidenceAnchor_(page, artifact, manifest, counts));
+    }
     var reviewId = stableId_("revamb", manifest.run_id + "|" + page.catalog_page_id);
     var createdAt = now_();
     var review = {
@@ -160,7 +198,7 @@ var CandidateReviewIntake = (function () {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      var counts = { pages: 0, staging_products: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
+      var counts = { pages: 0, staging_products: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0, page_evidence_anchors: 0 };
       manifest.pages.forEach(function (page) {
         var file = DriveApp.getFileById(page.artifact_file_id);
         var blob = file.getBlob(), bytes = blob.getBytes();
