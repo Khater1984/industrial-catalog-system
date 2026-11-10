@@ -110,6 +110,11 @@ var ImagePromotion = (function () {
       linkStatus: "ACTIVE"
     });
     if (decision.is_primary === true) ImageManagement.setPrimary(link.linkId, options.actor || APP.ACTOR_ID);
+    SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, {
+      Proposed_Status: "PROMOTED",
+      Quality_Status: "ACCEPTABLE",
+      Updated_At: now_()
+    });
     return { status: "COMPLETED", reviewQueueId: review.Review_Queue_ID, stagingId: staging.Staging_ID, imageId: imageId, link: link };
   }
   return { promoteReviewedImage: promoteReviewedImage };
