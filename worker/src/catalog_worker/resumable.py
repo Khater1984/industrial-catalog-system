@@ -533,6 +533,11 @@ def process_resumable_catalog_job(
                         "extraction_method": old.get("extraction_method", "EMBEDDED_TEXT"),
                         "extraction_tool_version": toolchain, "text_char_count": old["text_char_count"],
                         "extracted_text": old["extracted_text"],
+                        "ocr_confidence": old.get("ocr_confidence"),
+                        "processing_status": old.get("processing_status", "COMPLETED"),
+                        "warnings": old.get("warnings", []),
+                        "product_candidates": old.get("product_candidates", {"products": [], "variants": [], "specifications": []}),
+                        "candidate_counts": old.get("candidate_counts", {"products": 0, "variants": 0, "specifications": 0}),
                         "reused_from_run_unit_id": old["run_unit_id"],
                     }
                     reused += 1
