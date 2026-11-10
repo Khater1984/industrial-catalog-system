@@ -7,7 +7,8 @@ var ImagePromotion = (function () {
   function fail_(code) { throw new Error(code); }
   function require_(ok, code) { if (!ok) fail_(code); }
   function now_() { return new Date().toISOString(); }
-  function sha_(bytes) {
+  function sha_(value) {
+    var bytes = typeof value === "string" ? Utilities.newBlob(value, "text/plain").getBytes() : value;
     return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
       var n = b < 0 ? b + 256 : b, h = n.toString(16);
       return h.length === 1 ? "0" + h : h;
