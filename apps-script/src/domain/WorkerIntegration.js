@@ -1,4 +1,4 @@
-/** Cloud Run dispatch plus owner-executed Drive result polling. */
+/** GitHub Actions dispatch plus owner-executed Drive result polling. */
 var WorkerIntegration = (function () {
   var CONTRACT_VERSION = "1";
   function property_(name) {
@@ -40,7 +40,7 @@ var WorkerIntegration = (function () {
   function dispatchCatalogRun(catalogId, runId) {
     var token = property_("GITHUB_ACTIONS_TOKEN");
     if (!token) return { configured: false, accepted: false, reason: "GITHUB_ACTIONS_TOKEN_NOT_CONFIGURED" };
-    var workflowRef = property_("GITHUB_WORKFLOW_REF") || "main";
+    var workflowRef = property_("GITHUB_WORKFLOW_REF") || "dev/worker-v2.1-resumable";
     if (!/^[A-Za-z0-9._\\/-]{1,120}$/.test(workflowRef) || workflowRef.indexOf("..") >= 0) {
       throw new Error("GITHUB_WORKFLOW_REF_INVALID");
     }
