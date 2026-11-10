@@ -83,9 +83,10 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="catalog-worker-") as temporary:
         root = Path(temporary)
-        drive = DriveClient()
+        drive: DriveClient | None = None
         job: dict[str, Any] | None = None
         try:
+            drive = DriveClient()
             job = _load_job(drive, args.job_file_id, root)
             result = runner.run_from_drive(
                 job_file_id=args.job_file_id,
@@ -102,7 +103,7 @@ def main() -> int:
         except Exception as exc:
             # Do not print exception text: API/library errors can contain sensitive details.
             print("WORKER_EXECUTION_FAILED", file=sys.stderr)
-            if job is not None:
+            if job is not None and drive is not None:
                 try:
                     result = _publish_terminal_failure(drive, job, exc, root)
                     if result:
