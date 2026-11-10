@@ -43,7 +43,7 @@ Uses the existing `DriveClient` and Application Default Credentials. The service
 
 ## Runner integration
 
-When `CATALOG_WORKER_EXTRACT_IMAGES=1`, `runner.py` extracts images and invokes this bridge before publishing the terminal run manifest. It publishes both:
+The Cloud Run Docker image sets `CATALOG_WORKER_EXTRACT_IMAGES=1`, so deployed catalog jobs extract and upload embedded images by default. Local runs remain opt-in: set the same environment variable or pass `enabled=True` to the extraction API. `runner.py` invokes this bridge before publishing the terminal run manifest. It publishes both:
 
 - `image-manifest.json` with Drive file IDs retained for the existing human-review / promotion contract.
 - `drive-image-manifest.json` as the separate upload audit record.
