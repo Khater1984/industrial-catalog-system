@@ -55,7 +55,7 @@ var ImagePromotion = (function () {
       "IMAGE_SOURCE_MANIFEST_CHECKSUM_INVALID");
     require_(manifest.catalog_id === staging.Catalog_ID && manifest.run_id === staging.Run_ID, "IMAGE_SOURCE_MANIFEST_SCOPE_MISMATCH");
     var matches = manifest.images.filter(function (img) {
-      return img && img.sha256 === digest && img.artifact_path;
+      return img && img.sha256 === digest && img.artifact_path === metadata.artifact_path;
     });
     require_(matches.length === 1, "IMAGE_SOURCE_RECORD_NOT_UNIQUE");
     var source = matches[0];
@@ -69,6 +69,7 @@ var ImagePromotion = (function () {
     require_(Number(source.file_size_bytes) === size && source.mime_type === mime, "IMAGE_SOURCE_FILE_METADATA_MISMATCH");
     require_(source.sha256 === digest, "IMAGE_SOURCE_DIGEST_MISMATCH");
     require_(metadata.image_output_sha256 === source.output_sha256, "IMAGE_SOURCE_STAGING_CHECKSUM_MISMATCH");
+    require_(metadata.artifact_path === source.artifact_path, "IMAGE_SOURCE_ARTIFACT_PATH_MISMATCH");
     require_(metadata.has_alpha === source.has_alpha, "IMAGE_SOURCE_ALPHA_MISMATCH");
     return source;
   }
