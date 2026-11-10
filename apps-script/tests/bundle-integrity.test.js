@@ -27,6 +27,7 @@ test("deployment bundle contains every active domain module", () => {
     "domain/StagingPromotion.js",
     "domain/ImagePromotion.js",
     "domain/ImageReviewIntake.js",
+    "domain/ReviewWorkspace.js",
     "domain/DocumentService.js",
     "domain/BackupService.js",
     "domain/DesignService.js",
@@ -42,6 +43,8 @@ test("deployment bundle contains every active domain module", () => {
 test("browser-called Apps Script functions are present in deployment bundle", () => {
   const requiredFunctions = [
     "getCatalogDashboard",
+    "getReviewWorkspaceForBrowser",
+    "updateReviewQueueStatusFromBrowser",
     "uploadCatalogFromBrowser",
     "promoteStagingFromBrowser",
     "createDocumentFromBrowser",
