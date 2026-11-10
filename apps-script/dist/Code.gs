@@ -2868,7 +2868,6 @@ function installWorkerPoller() {
 
 
 // ===== domain/StagingPromotion.js =====
-
 /** Promotes accepted staging records into V2.1 Sheets tables.
 
 Source specification rows are append-only. Reviewer edits are recorded in
@@ -3009,6 +3008,7 @@ var StagingPromotion = (function () {
       var counts = { products: 0, variants: 0, specifications: 0, changes: 0, rejected: 0, skipped: 0 };
       var productIds = {};
       var variantIds = {};
+      var variantParentIds = {};
       var productSourceIds = {};
       var productDecisionIds = {};
 
@@ -3061,6 +3061,7 @@ var StagingPromotion = (function () {
         var existingSource = existingBy_("Variant_Source_Records", "Source_Record_Key", sourceKey);
         if (existingSource) {
           variantIds[variant.staging_id] = existingSource.Variant_ID;
+          variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
           counts.skipped += 1;
           return;
         }
@@ -3090,13 +3091,16 @@ var StagingPromotion = (function () {
         mapping_(operationId, "VARIANT", variant.staging_id, "VARIANT_SOURCE_RECORD", sourceId, "VARIANT", variantId, decision.Match_Decision_ID, variant);
         audit_(actor, "PROMOTE", "VARIANT", variantId, "Accepted staging variant", runId, variant);
         variantIds[variant.staging_id] = variantId;
+        variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
       });
 
       staging.specifications.forEach(function (spec) {
         if (!accepted_(spec)) { counts.rejected += 1; return; }
         var productId = productIds[spec.parent_staging_product_id];
         var variantId = variantIds[spec.parent_staging_variant_id];
-        if (!productId || !variantId) { counts.skipped += 1; return; }
+        require_(spec.scope === "VARIANT", "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
+        require_(productId && variantId, "PROMOTION_SPEC_PARENT_MISSING");
+        require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
         var original = text_(sourceValue_(spec), 2000);
         var assertionKey = text_(variantId + "|" + spec.attribute_key_raw, 160);
         if (original) {
@@ -3173,7 +3177,6 @@ var StagingPromotion = (function () {
 
   return { promoteReviewedStaging: promoteReviewedStaging };
 })();
-
 
 // ===== domain/ImagePromotion.js =====
 
@@ -4823,9 +4826,19 @@ var ReviewWorkspace = (function () {
       }
       var productIds = unique_(products, "PRODUCT");
       var variantIds = unique_(variants, "VARIANT");
-      variants.forEach(function (v) { if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING"); });
+      var variantsByStagingId = {};
+      variants.forEach(function (v) {
+        if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
+        variantsByStagingId[v.staging_id] = v;
+      });
       specifications.forEach(function (s) {
-        if (!productIds[s.parent_staging_product_id] || !variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_PARENT_MISSING");
+        if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
+        if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
+        if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
+        var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
+        if (!parentVariant || parentVariant.parent_staging_product_id !== s.parent_staging_product_id) {
+          fail_("REVIEW_SPECIFICATION_PARENT_MISMATCH");
+        }
       });
       var stagingSet = {
         run_id: id, catalog_id: catalogId, source_key_algorithm_version: "source-key-v1",
@@ -4849,7 +4862,6 @@ var ReviewWorkspace = (function () {
     buildStagingSetForRun: buildStagingSetForRun
   };
 })();
-
 
 // ===== api/Api.js =====
 var Api = (function () {
