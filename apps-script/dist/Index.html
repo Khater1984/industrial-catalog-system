@@ -521,17 +521,53 @@
       if(item.type==="PRODUCT_MATCH"&&["OPEN","IN_REVIEW"].includes(item.status)){
         const productEvidence=primaryProductEvidence;
         const productName=document.createElement("input");productName.type="text";productName.maxLength=300;productName.className="review-notes";
-        productName.placeholder="اسم المنتج بالإنجليزية كما تريد اعتماده";productName.value=(productEvidence&&productEvidence.productName)||"";
+        productName.placeholder="اسم المنتج كما ورد في المصدر بالإنجليزية";productName.value=(productEvidence&&productEvidence.productName)||"";
         card.appendChild(productName);
-        const approve=reviewNode("button","حفظ قرارات المنتج والموديلات والمواصفات","review-action-btn primary");approve.type="button";
+        const identityPanel=reviewNode("div",null,"review-evidence");
+        identityPanel.appendChild(reviewNode("strong","تحديد هوية المنتج الأساسية"));
+        const identityMode=document.createElement("select");identityMode.className="review-filter";
+        [["","اختر قرار الهوية"],["CREATE_NEW","إنشاء منتج أساسي جديد"],["MATCH_EXISTING","ربط بمنتج أساسي موجود"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;identityMode.appendChild(o);});
+        identityPanel.appendChild(identityMode);
+        const matchPanel=reviewNode("div",null,"review-actions");matchPanel.hidden=true;
+        const matchSearch=document.createElement("input");matchSearch.type="search";matchSearch.className="review-notes";matchSearch.placeholder="ابحث بالاسم العربي أو الإنجليزي (حرفان على الأقل)";
+        const searchButton=reviewNode("button","بحث عن منتج أساسي","review-action-btn");searchButton.type="button";
+        const canonicalSelect=document.createElement("select");canonicalSelect.className="review-filter";
+        const emptyCanonical=document.createElement("option");emptyCanonical.value="";emptyCanonical.textContent="اختر المنتج الأساسي المطابق";canonicalSelect.appendChild(emptyCanonical);
+        matchPanel.appendChild(matchSearch);matchPanel.appendChild(searchButton);matchPanel.appendChild(canonicalSelect);
+        identityPanel.appendChild(matchPanel);
+        const rationale=document.createElement("textarea");rationale.className="review-notes";rationale.rows=2;rationale.maxLength=1000;rationale.placeholder="سبب قرار الهوية (إلزامي عند الربط بمنتج موجود)";
+        identityPanel.appendChild(rationale);
+        identityMode.addEventListener("change",()=>{matchPanel.hidden=identityMode.value!=="MATCH_EXISTING";});
+        searchButton.addEventListener("click",()=>{
+          const query=matchSearch.value.trim();
+          if(query.length<2){alert("اكتب حرفين على الأقل للبحث.");return;}
+          searchButton.disabled=true;
+          google.script.run.withSuccessHandler(results=>{
+            while(canonicalSelect.options.length>1)canonicalSelect.remove(1);
+            (results||[]).forEach(item=>{
+              const option=document.createElement("option");option.value=item.productId;
+              option.textContent=[item.nameEn,item.nameAr,item.productId].filter(Boolean).join(" · ");
+              canonicalSelect.appendChild(option);
+            });
+            searchButton.disabled=false;
+            if(!results||!results.length)alert("لم يتم العثور على منتج أساسي نشط بهذا النص.");
+          }).withFailureHandler(err=>{
+            searchButton.disabled=false;alert("تعذر البحث عن المنتج: "+(err&&err.message||"خطأ غير معروف"));
+          }).searchCanonicalProductsForReviewFromBrowser(query);
+        });
+        card.appendChild(identityPanel);
+        const approve=reviewNode("button","حفظ قرارات الهوية والموديلات والمواصفات","review-action-btn primary");approve.type="button";
         approve.addEventListener("click",()=>{
+          if(!identityMode.value){alert("اختر إنشاء منتج جديد أو الربط بمنتج موجود.");return;}
+          if(identityMode.value==="MATCH_EXISTING"&&!canonicalSelect.value){alert("اختر المنتج الأساسي المطابق من نتائج البحث.");return;}
+          if(identityMode.value==="MATCH_EXISTING"&&!rationale.value.trim()){alert("اكتب سبب ربط المرشح بالمنتج الأساسي الموجود.");return;}
           const variants=variantControls.filter(x=>x.decision.value).map(x=>({stagingId:x.ev.stagingId,reviewStatus:x.decision.value,parentProductStagingId:primaryProductEvidence.stagingId}));
           const specifications=specControls.filter(x=>x.decision.value).map(x=>({stagingId:x.ev.stagingId,reviewStatus:x.decision.value,parentProductStagingId:primaryProductEvidence.stagingId,scope:x.decision.value==="ACCEPTED"?x.scope.value:"",parentVariantStagingId:x.decision.value==="ACCEPTED"&&x.scope.value==="VARIANT"?x.parentVariant.value.trim():"",valueRaw:x.value.value,unitRaw:x.unit.value,editReason:x.reason.value}));
           if(variantControls.some(x=>!x.decision.value)||specControls.some(x=>!x.decision.value)){alert("يجب تحديد قبول أو رفض كل موديل ومواصفة ظاهرة قبل الحفظ.");return;}
           if(specifications.some(x=>x.reviewStatus==="ACCEPTED"&&!x.scope)){alert("حدد نطاق كل مواصفة مقبولة.");return;}
           if(specifications.some(x=>x.reviewStatus==="ACCEPTED"&&x.scope==="VARIANT"&&!variants.some(v=>v.stagingId===x.parentVariantStagingId&&v.reviewStatus==="ACCEPTED"))){alert("اختر موديلًا مقبولًا للمواصفة، ولا يمكن ربطها بموديل مرفوض أو غير محسوم.");return;}
           if(specControls.some(c=>c.decision.value==="ACCEPTED"&&(c.value.value.trim()!==String(c.ev.value||"").trim()||c.unit.value.trim()!==String(c.ev.unit||"").trim())&&!c.reason.value.trim())){alert("أدخل سبب التعديل عند تغيير قيمة المواصفة أو وحدتها.");return;}
-          approveReviewProduct(item.id,productName.value,notes.value,approve,variants,specifications);
+          approveReviewProduct(item.id,productName.value,notes.value,approve,variants,specifications,identityMode.value,canonicalSelect.value,rationale.value);
         });
         decisionActions.appendChild(approve);
       }
@@ -559,16 +595,16 @@
       parent.appendChild(reviewNode("pre",artifact.pageText));
     }
   }
-  function approveReviewProduct(reviewId,productName,notes,button,variants,specifications) {
-    if(!productName.trim()){alert("أدخل اسم المنتج بالإنجليزية أولاً.");return;}
-    if(!confirm("سيُحفظ قرار المنتج والموديلات والمواصفات في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
+  function approveReviewProduct(reviewId,productName,notes,button,variants,specifications,identityResolution,canonicalProductId,matchRationale) {
+    if(!productName.trim()){alert("أدخل اسم المنتج الوارد في المصدر بالإنجليزية أولاً.");return;}
+    if(!confirm("سيُحفظ قرار هوية المنتج والموديلات والمواصفات في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
     button.disabled=true;
     google.script.run.withSuccessHandler(result=>{
       const box=el("reviewStatus");box.textContent="تم اعتماد مرشح المنتج وحفظ قرار المراجعة. لم يتم ترحيل المنتج إلى البيانات الأساسية.";box.className="status show ok";
       loadReviewQueue();
     }).withFailureHandler(err=>{
       button.disabled=false;const box=el("reviewStatus");box.textContent="تعذر اعتماد المرشح: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
-    }).approveProductReviewFromBrowser({reviewId:reviewId,productName:productName,notes:notes,variants:variants||[],specifications:specifications||[]});
+    }).approveProductReviewFromBrowser({reviewId:reviewId,productName:productName,notes:notes,identityResolution:identityResolution,canonicalProductId:canonicalProductId,matchRationale:matchRationale,variants:variants||[],specifications:specifications||[]});
   }
   function buildReviewStagingSet(runId,button) {
     if(!confirm("سيجمع النظام قرارات المنتجات المعتمدة لهذه العملية في ملف Staging Set. لن يتم ترحيل أي بيانات إلى الجداول الأساسية. متابعة؟"))return;
