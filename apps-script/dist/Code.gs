@@ -4912,3 +4912,9 @@ function updateReviewStatusFromBrowser(payload) {
   return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
 }
 
+/** Compatibility name used by the current review dashboard UI. */
+function getReviewInboxFromBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
