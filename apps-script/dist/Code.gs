@@ -4740,6 +4740,86 @@ var ReviewWorkspace = (function () {
     var file = folder.createFile(name, content, MimeType.JSON);
     return { file: file, content: content, sha256: sha_(content), reused: false };
   }
+  function array_(value, code) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > 200) fail_(code);
+    return value;
+  }
+  function buildCandidateDecisions_(options, reviewId, primary, links) {
+    var allowed = {};
+    links.forEach(function (link) {
+      if (link.Review_Role === "EVIDENCE") allowed[String(link.Staging_ID)] = true;
+    });
+    var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
+    var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
+    var expectedVariants = {}, expectedSpecifications = {};
+    links.forEach(function (link) {
+      if (link.Review_Role !== "EVIDENCE") return;
+      if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
+      if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
+    });
+    var seen = {};
+    function claim_(id, kind) {
+      id = text_(id, 160);
+      if (!id || !allowed[id]) fail_("REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE");
+      if (seen[id]) fail_("REVIEW_CANDIDATE_DUPLICATE");
+      seen[id] = true;
+      var table = kind === "VARIANT" ? "Staging_Variants" : "Staging_Specifications";
+      var row = SheetsRepository.getBy(table, "Staging_ID", id);
+      if (!row || row.Run_ID !== primary.Run_ID || row.Catalog_ID !== primary.Catalog_ID) fail_("REVIEW_CANDIDATE_CONTEXT_MISMATCH");
+      return row;
+    }
+    var variants = variantInputs.map(function (input) {
+      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_VARIANT_DECISION_INVALID");
+      var row = claim_(input.stagingId, "VARIANT");
+      var parent = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
+      if (input.reviewStatus === "ACCEPTED" && parent !== primary.Staging_ID) fail_("REVIEW_VARIANT_PARENT_INVALID");
+      if (input.reviewStatus === "ACCEPTED" && !text_(row.Proposed_Model_Number, 160)) fail_("REVIEW_VARIANT_MODEL_NUMBER_REQUIRED");
+      return {
+        staging_id: row.Staging_ID, parent_staging_product_id: parent,
+        proposed_model_number: text_(row.Proposed_Model_Number, 160),
+        proposed_model_name: text_(row.Proposed_Model_Name, 250),
+        source_quote: text_(row.Extracted_Text, 4000),
+        review_status: input.reviewStatus
+      };
+    });
+    var acceptedVariants = {};
+    variants.forEach(function (v) { if (v.review_status === "ACCEPTED") acceptedVariants[v.staging_id] = true; });
+    var specifications = specInputs.map(function (input) {
+      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_SPECIFICATION_DECISION_INVALID");
+      var row = claim_(input.stagingId, "SPECIFICATION");
+      var parentProduct = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
+      var scope = input.reviewStatus === "ACCEPTED" ? text_(input.scope, 20).toUpperCase() : "";
+      var parentVariant = input.reviewStatus === "ACCEPTED" ? text_(input.parentVariantStagingId, 160) : "";
+      if (input.reviewStatus === "ACCEPTED" && parentProduct !== primary.Staging_ID) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_INVALID");
+      if (input.reviewStatus === "ACCEPTED" && ["PRODUCT", "VARIANT"].indexOf(scope) < 0) fail_("REVIEW_SPECIFICATION_SCOPE_REQUIRED");
+      if (scope === "PRODUCT" && parentVariant) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+      if (scope === "VARIANT" && (!parentVariant || !acceptedVariants[parentVariant])) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_INVALID");
+      var originalValue = text_(row.Value_Raw, 1000);
+      var originalUnit = text_(row.Unit_Raw, 80);
+      var finalValue = input.reviewStatus === "ACCEPTED" && input.valueRaw !== undefined
+        ? text_(input.valueRaw, 1000) : originalValue;
+      if (input.reviewStatus === "ACCEPTED" && !finalValue) fail_("REVIEW_SPECIFICATION_VALUE_REQUIRED");
+      var reason = text_(input.editReason || "", 500);
+      var unit = input.reviewStatus === "ACCEPTED" && input.unitRaw !== undefined
+        ? text_(input.unitRaw, 80) : originalUnit;
+      if ((finalValue !== originalValue || unit !== originalUnit) && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
+      return {
+        staging_id: row.Staging_ID, parent_staging_product_id: parentProduct,
+        parent_staging_variant_id: parentVariant, scope: scope,
+        attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
+        original_value_raw: originalValue, value_raw: finalValue,
+        original_unit_raw: text_(row.Unit_Raw, 80), unit_raw: unit,
+        edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
+        source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
+      };
+    });
+    if (variants.length !== Object.keys(expectedVariants).length ||
+        specifications.length !== Object.keys(expectedSpecifications).length) {
+      fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
+    }
+    return { variants: variants, specifications: specifications };
+  }
   function updateStatus(options, actor) {
     if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
     var next = String(options.status || "");
@@ -4787,6 +4867,10 @@ var ReviewWorkspace = (function () {
       if (links.length !== 1) fail_("REVIEW_PRIMARY_STAGING_LINK_INVALID");
       var staging = SheetsRepository.getBy("Staging_Products", "Staging_ID", links[0].Staging_ID);
       if (!staging) fail_("REVIEW_STAGING_PRODUCT_NOT_FOUND");
+      var reviewLinks = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
+        return link.Review_Queue_ID === options.reviewId;
+      });
+      var candidateDecisions = buildCandidateDecisions_(options, options.reviewId, staging, reviewLinks);
       var payload = {
         schema_version: 1,
         run_id: staging.Run_ID,
@@ -4800,8 +4884,8 @@ var ReviewWorkspace = (function () {
           review_status: "ACCEPTED",
           staging_record_hash: staging.Staging_Record_Hash
         }],
-        variants: [],
-        specifications: []
+        variants: candidateDecisions.variants,
+        specifications: candidateDecisions.specifications
       };
       var saved = immutableJsonFile_(runFolder_(staging.Run_ID), "review-decision-" + options.reviewId + ".json", payload);
       var now = new Date().toISOString();
@@ -4890,6 +4974,7 @@ var ReviewWorkspace = (function () {
     buildStagingSetForRun: buildStagingSetForRun
   };
 })();
+
 
 // ===== api/Api.js =====
 var Api = (function () {
