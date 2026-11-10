@@ -89,7 +89,7 @@
         <div class="stat"><b id="reviewOpenCount">—</b><span>مفتوحة</span></div>
         <div class="stat"><b id="reviewInProgressCount">—</b><span>قيد المراجعة</span></div>
         <div class="stat"><b id="reviewDeferredCount">—</b><span>مؤجلة</span></div>
-        <div class="stat"><b id="reviewTotalCount">—</b><span>آخر 100 مهمة</span></div>
+        <div class="stat"><b id="reviewTotalCount">—</b><span>حتى 250 مهمة</span></div>
       </div>
       <div class="notice">أزرار استلام المهمة أو تأجيلها أو رفضها تغيّر حالة مهمة المراجعة وملاحظاتها فقط. لا تعني اعتماد المنتج أو الموديل أو المواصفات، ولا تنقل أي سجل إلى البيانات الأساسية.</div>
       <div id="reviewQueueList"><div class="empty">جارٍ تحميل قائمة المراجعة...</div></div>
@@ -454,32 +454,32 @@
       head.appendChild(titleWrap);
       head.appendChild(reviewNode("span",item.status||"—","pill "+(item.status==="OPEN"?"queued":"")));
       card.appendChild(head);
-      if(item.action)card.appendChild(reviewNode("p",item.action,"notice"));
+      if(item.proposedAction)card.appendChild(reviewNode("p",item.proposedAction,"notice"));
       const actions=reviewNode("div",null,"review-actions");
       reviewLink(actions,item.sourcePdfUrl,"فتح كتالوج PDF");
-      if(item.pageArtifact&&item.pageArtifact.fileUrl)reviewLink(actions,item.pageArtifact.fileUrl,"فتح ملف الصفحة المستخرج");
+      if(item.pageArtifactUrl)reviewLink(actions,item.pageArtifactUrl,"فتح ملف الصفحة المستخرج");
       card.appendChild(actions);
       const details=document.createElement("details");details.className="review-evidence";
       details.appendChild(reviewNode("summary","عرض المرشحات والأدلة"));
-      const evidence=item.links||[];
+      const evidence=item.evidence||[];
       evidence.forEach(ev=>{
         const row=reviewNode("div",null,"review-row");
-        row.appendChild(reviewNode("strong",(ev.table||"عنصر") +" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
+        row.appendChild(reviewNode("strong",(ev.type||"عنصر") +" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
         const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
         row.appendChild(reviewNode("div",parts.join(" · "),"review-meta"));
         if(ev.quote)row.appendChild(reviewNode("div",ev.quote,"review-meta"));
-        if(ev.fileUrl){const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.fileUrl,"فتح الملف المرتبط");row.appendChild(evLinks);}
+        if(ev.sourceArtifactUrl||ev.imageFileUrl){const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.sourceArtifactUrl,"فتح دليل المصدر");reviewLink(evLinks,ev.imageFileUrl,"فتح الصورة");row.appendChild(evLinks);}
         if(ev.artifact)renderArtifactEvidence(row,ev.artifact);
         details.appendChild(row);
       });
-      if(item.pageArtifact)renderArtifactEvidence(details,item.pageArtifact);
-      if(!evidence.length&&!item.pageArtifact)details.appendChild(reviewNode("p","لا تتوفر تفاصيل مرتبطة بهذا العنصر في الجداول الحالية.","notice"));
+      if(item.artifact)renderArtifactEvidence(details,item.artifact);
+      if(!evidence.length&&!item.artifact)details.appendChild(reviewNode("p","لا تتوفر تفاصيل مرتبطة بهذا العنصر في الجداول الحالية.","notice"));
       card.appendChild(details);
-      const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.notes||"";card.appendChild(notes);
+      const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.decisionNotes||"";card.appendChild(notes);
       const decisionActions=reviewNode("div",null,"review-actions");
       function addDecisionAction(label,nextStatus,style){
         const button=reviewNode("button",label,"review-action-btn"+(style?" "+style:""));button.type="button";
-        button.addEventListener("click",()=>updateReviewQueueStatus(item.id,nextStatus,notes.value,button));
+        button.addEventListener("click",()=>updateReviewQueueStatus(item.reviewId,nextStatus,notes.value,button));
         decisionActions.appendChild(button);
       }
       if(item.status==="OPEN"||item.status==="DEFERRED")addDecisionAction("استلام للمراجعة","IN_REVIEW","primary");
@@ -490,8 +490,8 @@
     });
   }
   function renderArtifactEvidence(parent,artifact) {
-    if(artifact.warning){parent.appendChild(reviewNode("p","تعذر قراءة ملف الصفحة من Drive.","notice"));return;}
-    if(artifact.fileUrl){const fileLinks=reviewNode("div",null,"review-actions");reviewLink(fileLinks,artifact.fileUrl,"فتح دليل الاستخراج");parent.appendChild(fileLinks);}
+    if(artifact.error){parent.appendChild(reviewNode("p","تعذر قراءة ملف الصفحة من Drive.","notice"));return;}
+    
     [["products","أسماء المنتجات"],["variants","الموديلات"],["specifications","المواصفات"]].forEach(([key,label])=>{
       const values=artifact[key]||[];if(!values.length)return;
       parent.appendChild(reviewNode("h5",label+" ("+values.length+")"));
@@ -500,9 +500,9 @@
         parent.appendChild(reviewNode("div",bits.join(" · "),"review-row"));
       });
     });
-    if(artifact.pageText) {
+    if(artifact.extractedText) {
       parent.appendChild(reviewNode("h5","مقتطف النص المستخرج · "+(artifact.extractionMethod||"")));
-      parent.appendChild(reviewNode("pre",artifact.pageText));
+      parent.appendChild(reviewNode("pre",artifact.extractedText));
     }
   }
   function updateReviewQueueStatus(reviewId,status,notes,button) {
