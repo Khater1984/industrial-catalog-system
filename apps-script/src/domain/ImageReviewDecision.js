@@ -17,6 +17,9 @@ var ImageReviewDecision = (function () {
     Object.keys(options).forEach(function (key) {
       require_(allowedFields.indexOf(key) >= 0, "IMAGE_REVIEW_UNKNOWN_FIELD");
     });
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
     var decision = options.decision;
     require_(decision === "APPROVED" || decision === "REJECTED", "IMAGE_REVIEW_DECISION_INVALID");
     var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
@@ -75,6 +78,9 @@ var ImageReviewDecision = (function () {
       Reviewed_By: actor
     });
     return { status: decision, reviewQueueId: review.Review_Queue_ID, decisionFileId: file.getId(), decisionSha256: digest };
+    } finally {
+      lock.releaseLock();
+    }
   }
   return { submit: submit };
 })();
