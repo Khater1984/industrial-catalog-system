@@ -395,7 +395,7 @@
       (item.staging_items||[]).forEach(linked=>{
         const s=linked.staging;if(!s)return;
         const box=reviewNode("div","review-evidence");box.appendChild(reviewNode("h5","","الدليل · "+(linked.role||"")));
-        const mainName=s.proposed_product_name==="UNASSIGNED"?"اسم غير متاح بالإنجليزية: "+(s.extracted_text||""):(s.proposed_product_name||s.proposed_model_number||s.extracted_text||s.original_file_name||s.staging_id);
+        const mainName=s.proposed_product_name==="UNASSIGNED"?"تعريف المنتج غير محسوم: "+(s.extracted_text||""):(s.proposed_product_name||s.proposed_model_number||s.extracted_text||s.original_file_name||s.staging_id);
         box.appendChild(reviewNode("p","",mainName));
         box.appendChild(reviewNode("p","review-meta","الصفحة: "+(s.catalog_page_id||"—")+" · طريقة الاستخراج: "+(s.extraction_method||"—")+" · الثقة: "+(s.confidence||"—")));
         if(s.extracted_text)box.appendChild(reviewNode("p","","النص المستخرج: "+s.extracted_text));
