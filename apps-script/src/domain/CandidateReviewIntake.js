@@ -249,19 +249,38 @@ var CandidateReviewIntake = (function () {
         var variants = Array.isArray(candidateSet.variants) ? candidateSet.variants : [];
         var specs = Array.isArray(candidateSet.specifications) ? candidateSet.specifications : [];
         var evidenceStagingIds = [];
+        var productStagingIds = [];
         var unassignedProductNames = 0;
         products.forEach(function (candidate, index) {
           var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
-          if (stagingId) evidenceStagingIds.push(stagingId);
-          else unassignedProductNames += 1;
+          if (stagingId) {
+            evidenceStagingIds.push(stagingId);
+            productStagingIds.push(stagingId);
+          } else unassignedProductNames += 1;
         });
+        var modelAndSpecEvidenceIds = [];
         variants.forEach(function (candidate, index) {
           var stagingId = createVariant_(candidate, page, artifact, manifest, actor, index, counts);
-          if (stagingId) evidenceStagingIds.push(stagingId);
+          if (stagingId) { evidenceStagingIds.push(stagingId); modelAndSpecEvidenceIds.push(stagingId); }
         });
         specs.forEach(function (candidate, index) {
           var stagingId = createSpecification_(candidate, page, artifact, manifest, actor, index, counts);
-          if (stagingId) evidenceStagingIds.push(stagingId);
+          if (stagingId) { evidenceStagingIds.push(stagingId); modelAndSpecEvidenceIds.push(stagingId); }
+        });
+        // Page-level model/spec candidates are exposed as evidence to each product review
+        // on this page. The reviewer must explicitly assign or reject each candidate.
+        productStagingIds.forEach(function (productStagingId) {
+          var reviewId = stableId_("revprd", productStagingId);
+          modelAndSpecEvidenceIds.forEach(function (candidateStagingId) {
+            var evidenceLink = {
+              Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + candidateStagingId + "|EVIDENCE"),
+              Review_Queue_ID: reviewId, Staging_ID: candidateStagingId, Review_Role: "EVIDENCE",
+              Created_At: now_(), Created_By: actor
+            };
+            if (ensure_("Review_Staging_Links", "Review_Staging_Link_ID", evidenceLink,
+              ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"],
+              "CANDIDATE_EVIDENCE_LINK_CONFLICT")) counts.review_links += 1;
+          });
         });
         createAmbiguityReview_(page, artifact, manifest, actor, evidenceStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
