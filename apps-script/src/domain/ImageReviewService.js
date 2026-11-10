@@ -118,6 +118,11 @@ var ImageReviewService = (function () {
     var fingerprint = payloadHash_(decisionPayload);
     if (review.Review_Status === "APPROVED" || review.Review_Status === "REJECTED") {
       require_(review.Reviewed_Payload_Hash === fingerprint, "IMAGE_REVIEW_DECISION_ALREADY_FINAL");
+      if (decision === "ACCEPTED" && options.isPrimary === true) {
+        var retryImageId = stableId_("img", String(staging.SHA256).toLowerCase());
+        var retryLink = ImageManagement.linkToTarget(retryImageId, target.type, target.id, { actor: actor });
+        ImageManagement.setPrimary(retryLink.linkId, actor);
+      }
       return { status: review.Review_Status, reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID, reused: true };
     }
     var lock = LockService.getScriptLock();
@@ -157,12 +162,13 @@ var ImageReviewService = (function () {
         catalogApproved: catalogApproved, dataSheetApproved: dataSheetApproved,
         linkStatus: "ACTIVE", actor: actor
       });
-      if (options.isPrimary === true) ImageManagement.setPrimary(linked.linkId, actor);
+      if (options.isPrimary === true) ImageManagement.setPrimary(linked.linkId, actor, true);
       var stagingPatch = {
         Proposed_Status: "PROMOTED", Quality_Status: "ACCEPTABLE", Updated_At: now_()
       };
       if (target.type === "PRODUCT") stagingPatch.Candidate_Product_ID = target.id;
       else stagingPatch.Candidate_Variant_ID = target.id;
+      SheetsRepository.updateBy("Image_Assets", "Image_ID", imageId, { Quality_Status: "ACCEPTABLE" });
       SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, stagingPatch);
       SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", review.Review_Queue_ID, {
         Review_Status: "APPROVED", Decision_Notes: decisionPayload.notes,
