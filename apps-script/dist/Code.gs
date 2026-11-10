@@ -1,7 +1,6 @@
 // Auto-generated bundle. Do not edit.
 
 // ===== config/Schema.js =====
-
 /** Generated from approved V2.1 domain schema + ENUM_REGISTRY.md. Do not hand-edit table headers. */
 var APP = Object.freeze({ VERSION: "0.2.0-dev", SCHEMA_VERSION: "2.1", ENVIRONMENT: "DEV", ACTOR_ID: "actor_primary" });
 
@@ -207,7 +206,7 @@ var ENUM_REQUIRED = Object.freeze({
   "Run_Events.Event_Type": true,
   "Common staging envelope (all Staging_* sheets).Extraction_Method": true,
   "Common staging envelope (all Staging_* sheets).Proposed_Status": true,
-  "Staging_Specifications.Scope": true,
+  "Staging_Specifications.Scope": false,
   "Staging_Specifications.Parse_Status": true,
   "Staging_Images.Quality_Status": true,
   "Staging_Documents.Document_Type": true,
@@ -782,7 +781,7 @@ var FIELD_RULES = Object.freeze({
   "Staging_Variants.Staging_Record_Hash": { type: "HEX64", required: true, conditional: false },
   "Staging_Variants.Created_At": { type: "DATETIME_UTC", required: true, conditional: false },
   "Staging_Variants.Updated_At": { type: "DATETIME_UTC", required: true, conditional: false },
-  "Staging_Variants.Parent_Staging_Product_ID": { type: "ID", required: true, conditional: false },
+  "Staging_Variants.Parent_Staging_Product_ID": { type: "ID", required: false, conditional: false },
   "Staging_Variants.Proposed_Model_Number": { type: "TEXT(160)", required: true, conditional: false },
   "Staging_Variants.Proposed_Model_Name": { type: "TEXT(250)", required: false, conditional: false },
   "Staging_Variants.Candidate_Variant_ID": { type: "ID", required: false, conditional: false },
@@ -804,10 +803,10 @@ var FIELD_RULES = Object.freeze({
   "Staging_Specifications.Staging_Record_Hash": { type: "HEX64", required: true, conditional: false },
   "Staging_Specifications.Created_At": { type: "DATETIME_UTC", required: true, conditional: false },
   "Staging_Specifications.Updated_At": { type: "DATETIME_UTC", required: true, conditional: false },
-  "Staging_Specifications.Parent_Staging_Product_ID": { type: "ID", required: true, conditional: false },
+  "Staging_Specifications.Parent_Staging_Product_ID": { type: "ID", required: false, conditional: false },
   "Staging_Specifications.Parent_Staging_Variant_ID": { type: "ID", required: false, conditional: false },
   "Staging_Specifications.Source_Assertion_Key": { type: "TEXT(160)", required: true, conditional: false },
-  "Staging_Specifications.Scope": { type: "ENUM", required: true, conditional: false },
+  "Staging_Specifications.Scope": { type: "ENUM", required: false, conditional: false },
   "Staging_Specifications.Attribute_Key_Raw": { type: "TEXT(160)", required: true, conditional: false },
   "Staging_Specifications.Value_Raw": { type: "TEXT(2000)", required: true, conditional: false },
   "Staging_Specifications.Unit_Raw": { type: "TEXT(80)", required: false, conditional: false },
@@ -937,7 +936,6 @@ var FIELD_RULES = Object.freeze({
   "Promotion_Mappings.Payload_SHA256": { type: "HEX64", required: true, conditional: false },
   "Promotion_Mappings.Created_At": { type: "DATETIME_UTC", required: true, conditional: false }
 });
-
 
 // ===== repositories/SheetsRepository.js =====
 
@@ -2439,7 +2437,79 @@ var CandidateReviewIntake = (function () {
       "CANDIDATE_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
     return stagingId;
   }
-  function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts) {
+  function createVariant_(candidate, page, artifact, manifest, actor, index, counts) {
+    var modelNumber = text_(candidate.proposed_model_number, 160);
+    if (!modelNumber) { counts.variants_not_stageable += 1; return null; }
+    var modelName = text_(candidate.proposed_model_name, 250);
+    var quote = text_(candidate.source_quote, 4000);
+    var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|VARIANT|" + index + "|" + modelNumber + "|" + modelName + "|" + quote;
+    var sourceKey = "candidate-v1|" + sha_(sourceSeed).slice(0, 48);
+    var stagingId = stableId_("stgvar", sourceKey);
+    var createdAt = now_();
+    var method = String(artifact.extraction_method || "").toUpperCase();
+    require_(["EMBEDDED_TEXT", "OCR", "TABLE_PARSER", "MANUAL"].indexOf(method) >= 0, "CANDIDATE_EXTRACTION_METHOD_INVALID");
+    var stablePayload = {
+      Staging_ID: stagingId, Run_ID: manifest.run_id, Catalog_ID: manifest.catalog_id,
+      Catalog_Page_ID: page.catalog_page_id, Raw_Extract_File_ID: page.artifact_file_id,
+      Extracted_Text: quote, Extraction_Method: method,
+      Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
+      Source_Key_Algorithm_Version: "candidate-intake-v1",
+      Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
+      Parent_Staging_Product_ID: "",
+      Proposed_Model_Number: modelNumber, Proposed_Model_Name: modelName,
+      Identity_Match_Method: "UNRESOLVED", Source_Record_Key: sourceKey
+    };
+    var record = Object.assign({}, stablePayload, {
+      Staging_Record_Hash: sha_(canonicalJson_(stablePayload)),
+      Created_At: createdAt, Updated_At: createdAt
+    });
+    if (ensure_("Staging_Variants", "Staging_ID", record,
+      ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Extracted_Text",
+       "Extraction_Method", "Source_Key_Algorithm_Version", "Proposed_Model_Number", "Proposed_Model_Name", "Source_Record_Key"],
+      "STAGING_VARIANT_CONFLICT")) counts.staging_variants += 1;
+    return stagingId;
+  }
+  function createSpecification_(candidate, page, artifact, manifest, actor, index, counts) {
+    var key = text_(candidate.attribute_key_raw, 160);
+    var value = candidate.value_raw === undefined || candidate.value_raw === null ? "" : String(candidate.value_raw).trim();
+    if (!key || !value) { counts.specifications_not_stageable += 1; return null; }
+    var unit = text_(candidate.unit_raw, 80);
+    var quote = text_(candidate.source_quote, 4000);
+    var assertionKey = "candidate-v1|" + sha_(manifest.run_id + "|" + page.catalog_page_id + "|SPEC|" + index + "|" + key + "|" + value + "|" + unit).slice(0, 48);
+    var stagingId = stableId_("stgspec", assertionKey);
+    var createdAt = now_();
+    var method = String(artifact.extraction_method || "").toUpperCase();
+    require_(["EMBEDDED_TEXT", "OCR", "TABLE_PARSER", "MANUAL"].indexOf(method) >= 0, "CANDIDATE_EXTRACTION_METHOD_INVALID");
+    var scope = text_(candidate.scope, 20).toUpperCase();
+    if (scope && ["PRODUCT", "VARIANT"].indexOf(scope) < 0) fail_("CANDIDATE_SPEC_SCOPE_INVALID");
+    var normalizedValue = candidate.normalized_value_json;
+    if (normalizedValue === undefined || normalizedValue === null || normalizedValue === "") normalizedValue = JSON.stringify(value);
+    else if (typeof normalizedValue !== "string") normalizedValue = JSON.stringify(normalizedValue);
+    var stablePayload = {
+      Staging_ID: stagingId, Run_ID: manifest.run_id, Catalog_ID: manifest.catalog_id,
+      Catalog_Page_ID: page.catalog_page_id, Raw_Extract_File_ID: page.artifact_file_id,
+      Extracted_Text: quote, Extraction_Method: method,
+      Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
+      Source_Key_Algorithm_Version: "candidate-intake-v1",
+      Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
+      Parent_Staging_Product_ID: "", Parent_Staging_Variant_ID: "",
+      Source_Assertion_Key: assertionKey, Scope: scope,
+      Attribute_Key_Raw: key, Value_Raw: value, Unit_Raw: unit,
+      Normalized_Key: text_(candidate.normalized_key, 160),
+      Normalized_Value_JSON: normalizedValue, Normalized_Unit: text_(candidate.normalized_unit, 80),
+      Parse_Status: "AMBIGUOUS"
+    };
+    var record = Object.assign({}, stablePayload, {
+      Staging_Record_Hash: sha_(canonicalJson_(stablePayload)),
+      Created_At: createdAt, Updated_At: createdAt
+    });
+    if (ensure_("Staging_Specifications", "Staging_ID", record,
+      ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Extracted_Text",
+       "Extraction_Method", "Source_Key_Algorithm_Version", "Source_Assertion_Key", "Attribute_Key_Raw", "Value_Raw"],
+      "STAGING_SPECIFICATION_CONFLICT")) counts.staging_specifications += 1;
+    return stagingId;
+  }
+  function createAmbiguityReview_(page, artifact, manifest, actor, evidenceStagingIds, unassignedProductNames, counts) {
     var candidates = artifact.product_candidates || {};
     var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
     var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
@@ -2455,7 +2525,7 @@ var CandidateReviewIntake = (function () {
     if (ensure_("Review_Queue", "Review_Queue_ID", review,
       ["Review_Type", "Priority", "Proposed_Action", "Created_By"],
       "CANDIDATE_AMBIGUITY_REVIEW_CONFLICT")) counts.review_items += 1;
-    (productStagingIds || []).forEach(function (stagingId) {
+    (evidenceStagingIds || []).forEach(function (stagingId) {
       var link = {
         Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + stagingId + "|EVIDENCE"),
         Review_Queue_ID: reviewId, Staging_ID: stagingId, Review_Role: "EVIDENCE",
@@ -2486,7 +2556,7 @@ var CandidateReviewIntake = (function () {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      var counts = { pages: 0, staging_products: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
+      var counts = { pages: 0, staging_products: 0, staging_variants: 0, staging_specifications: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_not_stageable: 0, specifications_not_stageable: 0 };
       manifest.pages.forEach(function (page) {
         var file = DriveApp.getFileById(page.artifact_file_id);
         var blob = file.getBlob(), bytes = blob.getBytes();
@@ -2503,17 +2573,23 @@ var CandidateReviewIntake = (function () {
         var products = Array.isArray(candidateSet.products) ? candidateSet.products : [];
         var variants = Array.isArray(candidateSet.variants) ? candidateSet.variants : [];
         var specs = Array.isArray(candidateSet.specifications) ? candidateSet.specifications : [];
-        var productStagingIds = [];
+        var evidenceStagingIds = [];
         var unassignedProductNames = 0;
         products.forEach(function (candidate, index) {
           var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
-          if (stagingId) productStagingIds.push(stagingId);
+          if (stagingId) evidenceStagingIds.push(stagingId);
           else unassignedProductNames += 1;
         });
-        createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts);
+        variants.forEach(function (candidate, index) {
+          var stagingId = createVariant_(candidate, page, artifact, manifest, actor, index, counts);
+          if (stagingId) evidenceStagingIds.push(stagingId);
+        });
+        specs.forEach(function (candidate, index) {
+          var stagingId = createSpecification_(candidate, page, artifact, manifest, actor, index, counts);
+          if (stagingId) evidenceStagingIds.push(stagingId);
+        });
+        createAmbiguityReview_(page, artifact, manifest, actor, evidenceStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
-        counts.variants_unassigned += variants.length;
-        counts.specifications_unassigned += specs.length;
       });
     } finally {
       lock.releaseLock();
@@ -2534,11 +2610,10 @@ var CandidateReviewIntake = (function () {
     }
     return { status: "COMPLETED", run_id: manifest.run_id, catalog_id: manifest.catalog_id,
       counts: counts, image_intake: imageIntake,
-      note: "Product candidates were staged for human review. Model/specification candidates remain in their verified page artifacts until a reviewer establishes parent relationships." };
+      note: "Product, model, and specification candidates were staged for human review. Model/specification parent relationships remain blank until a reviewer explicitly assigns them." };
   }
   return { intakeRun: intakeRun };
 })();
-
 
 // ===== domain/WorkerIntegration.js =====
 /** GitHub Actions dispatch plus owner-executed Drive result polling. */
@@ -4548,6 +4623,10 @@ var ReviewDashboard = (function () {
           imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
           fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
           imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
+          parentProductStagingId: row.Parent_Staging_Product_ID || "",
+          parentVariantStagingId: row.Parent_Staging_Variant_ID || "",
+          scope: row.Scope || "", parseStatus: row.Parse_Status || "",
+          proposedStatus: row.Proposed_Status || "",
           confidence: row.Confidence === undefined ? "" : row.Confidence,
           extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
           quote: short_(row.Extracted_Text, 700),
@@ -4592,7 +4671,6 @@ var ReviewDashboard = (function () {
   }
   return { getQueue: getQueue };
 })();
-
 
 // ===== domain/ReviewWorkspace.js =====
 /** Human review actions and immutable decision/Staging Set generation.
