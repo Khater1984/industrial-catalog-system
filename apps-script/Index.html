@@ -436,7 +436,6 @@
         const catalog=check("اعتماد للكتالوج",false);
         const datasheet=check("اعتماد لـ TDS",false);
         const primary=check("صورة رئيسية",false);
-        const alpha=check("تحتوي شفافية",false);
         const actions=node("div","");actions.style.cssText="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px";
         const approve=node("button","refresh","اعتماد وربط");approve.type="button";
         const reject=node("button","refresh","رفض الصورة");reject.type="button";
@@ -459,7 +458,7 @@
             reviewQueueId:item.reviewQueueId,decision:"APPROVED",
             targetType:chosen[0],targetId:chosen[1],
             catalogApproved:catalog.checked,dataSheetApproved:datasheet.checked,
-            isPrimary:primary.checked,hasAlpha:alpha.checked,catalogOrder:0,dataSheetOrder:0
+            isPrimary:primary.checked,catalogOrder:0,dataSheetOrder:0
           });
         });
         reject.addEventListener("click",()=>{
