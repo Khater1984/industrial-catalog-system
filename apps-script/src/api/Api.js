@@ -98,6 +98,38 @@ var Api = (function () {
         return success_(requestId, intakeResult);
       }
 
+      // Phase 4 — Image Management
+      if (body.action === "image.link") {
+        require_(p.imageId && p.targetType && p.targetId, "IMAGE_LINK_ARGUMENTS_REQUIRED");
+        return success_(requestId, ImageManagement.linkToTarget(p.imageId, p.targetType, p.targetId, {
+          actor: actor,
+          isPrimary: Boolean(p.isPrimary),
+          catalogApproved: Boolean(p.catalogApproved),
+          dataSheetApproved: Boolean(p.dataSheetApproved)
+        }));
+      }
+      if (body.action === "image.setApproval") {
+        require_(p.linkId, "IMAGE_LINK_ID_REQUIRED");
+        return success_(requestId, ImageManagement.setApproval(p.linkId, {
+          actor: actor,
+          catalogApproved: p.catalogApproved,
+          dataSheetApproved: p.dataSheetApproved,
+          linkStatus: p.linkStatus
+        }));
+      }
+      if (body.action === "image.setPrimary") {
+        require_(p.linkId, "IMAGE_LINK_ID_REQUIRED");
+        return success_(requestId, ImageManagement.setPrimary(p.linkId));
+      }
+      if (body.action === "image.getForProduct") {
+        require_(p.productId, "PRODUCT_ID_REQUIRED");
+        return success_(requestId, ImageManagement.getImagesForProduct(p.productId, p.variantId || null));
+      }
+      if (body.action === "image.findDuplicate") {
+        require_(p.sha256, "IMAGE_SHA256_REQUIRED");
+        return success_(requestId, ImageManagement.findDuplicateBySha256(p.sha256));
+      }
+
       // Product domain — all validated at boundary
       if (body.action === "product.createCompanyRecord") {
         var pc = InputValidation.productCreatePayload(p);
