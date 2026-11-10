@@ -68,9 +68,9 @@ var StagingPromotion = (function () {
       Related_Run_ID: runId || ""
     });
   }
-  function decision_(entityType, stagingType, stagingId, stagingHash, resultId, actor, parentDecisionId) {
+  function decision_(entityType, stagingType, stagingId, stagingHash, resultId, actor, parentDecisionId, decisionType, candidateCanonicalId, rationale) {
     var existing = existingBy_("Identity_Match_Decisions", "Source_Staging_ID", stagingId);
-    if (existing) return existing;
+    var selectedDecision = decisionType || "CREATE_NEW";
     var record = {
       Match_Decision_ID: stableId_("imd", stagingType + "|" + stagingId),
       Entity_Type: entityType,
@@ -78,12 +78,20 @@ var StagingPromotion = (function () {
       Source_Staging_ID: stagingId,
       Source_Staging_Hash: stagingHash,
       Parent_Product_Match_Decision_ID: parentDecisionId || "",
-      Decision: "CREATE_NEW",
+      Candidate_Canonical_ID: candidateCanonicalId || "",
+      Decision: selectedDecision,
       Result_Canonical_ID: resultId,
-      Rationale: "Accepted staging record promoted as a new canonical identity.",
+      Rationale: text_(rationale || "Reviewer approved this canonical identity resolution.", 1000),
       Decided_At: now_(),
       Decided_By: actor
     };
+    if (existing) {
+      require_(existing.Source_Staging_Hash === stagingHash &&
+        existing.Decision === selectedDecision &&
+        String(existing.Candidate_Canonical_ID || "") === String(candidateCanonicalId || "") &&
+        existing.Result_Canonical_ID === resultId, "PROMOTION_IDENTITY_DECISION_CONFLICT");
+      return existing;
+    }
     appendOnce_("Identity_Match_Decisions", record);
     return record;
   }
@@ -146,9 +154,21 @@ var StagingPromotion = (function () {
       staging.products.forEach(function (product) {
         if (!accepted_(product)) { counts.rejected += 1; return; }
         var sourceKey = text_(catalogId + "|" + product.catalog_page_id + "|" + product.proposed_product_name, 160);
-        var productId = stableId_("prd", sourceKey);
+        var identityResolution = text_(product.identity_resolution || "CREATE_NEW", 30).toUpperCase();
+        require_(identityResolution === "CREATE_NEW" || identityResolution === "MATCH_EXISTING", "PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID");
+        var canonicalCandidateId = text_(product.canonical_product_id || "", 160);
+        if (identityResolution === "MATCH_EXISTING") {
+          require_(canonicalCandidateId, "PROMOTION_MATCH_PRODUCT_ID_REQUIRED");
+          var matchedCanonicalProduct = existingBy_("Products", "Product_ID", canonicalCandidateId);
+          require_(matchedCanonicalProduct && matchedCanonicalProduct.Lifecycle_Status === "ACTIVE", "PROMOTION_MATCH_PRODUCT_NOT_ACTIVE");
+        } else {
+          require_(!canonicalCandidateId, "PROMOTION_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
+        }
+        var productId = identityResolution === "MATCH_EXISTING"
+          ? canonicalCandidateId : stableId_("prd", sourceKey);
         var existingSource = existingBy_("Product_Source_Records", "Source_Record_Key", sourceKey);
         if (existingSource) {
+          require_(existingSource.Product_ID === productId, "PROMOTION_EXISTING_SOURCE_PRODUCT_CONFLICT");
           productIds[product.staging_id] = existingSource.Product_ID;
           productSourceIds[product.staging_id] = existingSource.Product_Source_Record_ID;
           productDecisionIds[product.staging_id] = existingSource.Match_Decision_ID;
@@ -156,12 +176,19 @@ var StagingPromotion = (function () {
           return;
         }
         var hash = product.staging_record_hash || sha_(product.staging_id);
-        var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor);
-        if (!existingBy_("Products", "Product_ID", productId)) {
+        var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor, "",
+          identityResolution, canonicalCandidateId, product.match_rationale);
+        if (identityResolution === "CREATE_NEW" && !existingBy_("Products", "Product_ID", productId)) {
           appendOnce_("Products", {
             Product_ID: productId, Lifecycle_Status: "ACTIVE",
-            Canonical_Notes: text_(product.proposed_product_name, 2000),
+            Canonical_Notes: "",
             Created_At: now_(), Created_By: actor
+          });
+          appendOnce_("Product_Company", {
+            Product_ID: productId, Product_Name_EN: "", Product_Name_AR: "",
+            Company_Description: "", Manufacturer_or_Product_Brand_Label: "",
+            Product_Family_ID: "", Company_Notes: "",
+            Updated_At: now_(), Updated_By: actor
           });
           counts.products += 1;
         }
@@ -172,12 +199,12 @@ var StagingPromotion = (function () {
           Source_Product_Name: text_(product.proposed_product_name, 300),
           Catalog_Page_ID: product.catalog_page_id, Source_Quote: text_(product.source_quote, 2000),
           Extraction_Run_ID: runId, Extraction_Record_ID: product.staging_id,
-          Identity_Resolution: "CREATE_NEW", Match_Decision_ID: decision.Match_Decision_ID,
+          Identity_Resolution: identityResolution, Match_Decision_ID: decision.Match_Decision_ID,
           Created_At: now_(), Created_By: actor
         });
         mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT", productId, "PRODUCT", productId, decision.Match_Decision_ID, product);
         mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT_SOURCE_RECORD", sourceId, "PRODUCT", productId, decision.Match_Decision_ID, product);
-        audit_(actor, "PROMOTE", "PRODUCT", productId, "Accepted staging product", runId, product);
+        audit_(actor, "PROMOTE", "PRODUCT", productId, "Accepted staging product using " + identityResolution, runId, product);
         productIds[product.staging_id] = productId;
         productSourceIds[product.staging_id] = sourceId;
         productDecisionIds[product.staging_id] = decision.Match_Decision_ID;
