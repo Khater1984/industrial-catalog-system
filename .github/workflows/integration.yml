@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, "dev/**"]
   push:
-    branches: ["dev/**"]
+    branches: ["main", "dev/**"]
 
 permissions:
   contents: read
@@ -45,6 +45,8 @@ jobs:
           node-version: "20"
       - name: Build Apps Script bundle
         run: npm run build
+      - name: Verify committed deployment bundle is reproducible
+        run: git diff --exit-code -- src/config/Schema.js dist/Code.gs dist/Index.html
       - name: Run tests
         run: npm test
       - name: Check generated JavaScript syntax
