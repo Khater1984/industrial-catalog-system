@@ -495,7 +495,9 @@
           [["","اختر القرار"],["ACCEPTED","قبول المواصفة"],["REJECTED","رفض المرشح"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;decision.appendChild(o);});
           const scope=document.createElement("select");scope.className="review-filter";
           [["","حدد النطاق"],["PRODUCT","مواصفة المنتج"],["VARIANT","مواصفة الموديل"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;scope.appendChild(o);});
-          const parentVariant=document.createElement("input");parentVariant.type="text";parentVariant.className="review-notes";parentVariant.placeholder="معرّف الموديل الأب عند اختيار نطاق الموديل";
+          const parentVariant=document.createElement("select");parentVariant.className="review-filter";
+          const noParent=document.createElement("option");noParent.value="";noParent.textContent="اختر الموديل الأب";parentVariant.appendChild(noParent);
+          variantControls.forEach(x=>{const option=document.createElement("option");option.value=x.ev.stagingId;option.textContent=[x.ev.modelNumber,x.ev.modelName].filter(Boolean).join(" · ")||x.ev.stagingId;parentVariant.appendChild(option);});
           const value=document.createElement("input");value.type="text";value.className="review-notes";value.value=ev.value||"";value.placeholder="القيمة النهائية";
           const unit=document.createElement("input");unit.type="text";unit.className="review-notes";unit.value=ev.unit||"";unit.placeholder="الوحدة";
           const reason=document.createElement("input");reason.type="text";reason.className="review-notes";reason.placeholder="سبب تعديل القيمة (إلزامي عند تغييرها)";
