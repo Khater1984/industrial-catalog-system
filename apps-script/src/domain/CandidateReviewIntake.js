@@ -57,8 +57,8 @@ var CandidateReviewIntake = (function () {
     var name = text_(candidate.proposed_product_name, 300);
     require_(name, "CANDIDATE_PRODUCT_NAME_MISSING");
     var quote = text_(candidate.source_quote, 4000);
-    var sourceKey = "candidate-v1|" + manifest.run_id + "|" + page.catalog_page_id + "|" +
-      index + "|" + sha_(name + "|" + quote).slice(0, 24);
+    var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|" + index + "|" + name + "|" + quote;
+    var sourceKey = "candidate-v1|" + sha_(sourceSeed).slice(0, 48);
     var stagingId = stableId_("stgprd", sourceKey);
     var createdAt = now_();
     var method = String(artifact.extraction_method || "").toUpperCase();
