@@ -87,6 +87,20 @@ def make_pdf_with_image(path):
     return output.read_bytes()
 
 
+def make_pdf_with_repeated_image(path):
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    image = BytesIO()
+    Image.new("RGB", (24, 16), (20, 120, 180)).save(image, format="PNG")
+    image_bytes = image.getvalue()
+    pdf = canvas.Canvas(str(output))
+    for x in (72, 220):
+        pdf.drawImage(ImageReader(BytesIO(image_bytes)), x, 700, width=60, height=40)
+    pdf.showPage()
+    pdf.save()
+    return output.read_bytes()
+
+
 def test_drive_runner_processes_and_uploads_immutable_artifacts(tmp_path):
     pdf_bytes = make_pdf(tmp_path / "source.pdf")
     source_sha = hashlib.sha256(pdf_bytes).hexdigest()
@@ -270,3 +284,41 @@ def test_github_cli_fallback_publishes_terminal_failure_manifest(tmp_path):
     manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
     assert manifest["error_code"] == "DRIVE_UPLOAD_FAILED"
     assert manifest["run_id"] == "run_test_fallback"
+
+def test_runner_keeps_repeated_placements_but_uploads_identical_bytes_once(tmp_path, monkeypatch):
+    pdf_bytes = make_pdf_with_repeated_image(tmp_path / "source-repeated-image.pdf")
+    source_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    job = {
+        "contract_version": "1",
+        "run_id": "run_test_repeated_images",
+        "logical_job_id": "job_test_repeated_images",
+        "catalog_id": "cat_test_repeated_images",
+        "source_pdf_file_id": "source-pdf",
+        "source_sha256": source_sha,
+        "idempotency_key": idempotency_key("run_test_repeated_images", "job_test_repeated_images", source_sha),
+        "attempt_number": 1,
+        "run_folder_id": "folder-run",
+        "extraction_profile": "embedded-text-v1",
+    }
+    drive = FakeDrive(job, pdf_bytes)
+    monkeypatch.setattr(runner, "image_extraction_enabled", lambda: True)
+
+    result = runner.run_from_drive(
+        job_file_id="job-file-id-123456",
+        drive=drive,
+        output_root=tmp_path / "work-repeated-images",
+    )
+
+    manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
+    image_state = manifest["image_extraction"]
+    assert image_state["status"] == "COMPLETED"
+    assert image_state["image_count"] == 2
+    assert image_state["uploaded_count"] == 1
+    assert image_state["reused_count"] == 1
+
+    image_manifest = json.loads(drive.files[image_state["manifest_file_id"]]["content"])
+    rows = image_manifest["images"]
+    assert len(rows) == 2
+    assert len({row["artifact_path"] for row in rows}) == 2
+    assert len({row["sha256"] for row in rows}) == 1
+    assert len({row["drive_file_id"] for row in rows}) == 1
