@@ -123,7 +123,7 @@ The following columns appear in each staging sheet:
 ### `Staging_Variants`
 | Column | Type | Required | Rule |
 |---|---|---:|---|
-| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Parent_Staging_Product_ID | ID | No | FK → Staging_Products; blank until a reviewer explicitly assigns the model to a product |
 | Proposed_Model_Number | TEXT(160) | Yes | Exact supplier model number |
 | Proposed_Model_Name | TEXT(250) | No | Exact supplier model name |
 | Candidate_Variant_ID | ID | No | Suggested canonical candidate only |
@@ -135,11 +135,11 @@ The following columns appear in each staging sheet:
 ### `Staging_Specifications`
 | Column | Type | Required | Rule |
 |---|---|---:|---|
-| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Parent_Staging_Product_ID | ID | No | FK → Staging_Products; blank until a reviewer explicitly assigns the assertion to a product |
 | Parent_Staging_Variant_ID | ID | No | FK → Staging_Variants; required iff Scope=VARIANT |
 | Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator |
 | Source_Key_Algorithm_Version | TEXT(80) | Yes | Must match common staging envelope |
-| Scope | ENUM | Yes | PRODUCT, VARIANT |
+| Scope | ENUM | No | PRODUCT, VARIANT; blank until a reviewer explicitly assigns the assertion scope |
 | Attribute_Key_Raw | TEXT(160) | Yes | Exact source label |
 | Value_Raw | TEXT(2000) | Yes | Exact source value |
 | Unit_Raw | TEXT(80) | No | Exact source unit |
@@ -148,7 +148,7 @@ The following columns appear in each staging sheet:
 | Normalized_Unit | TEXT(80) | No | Normalized unit |
 | Parse_Status | ENUM | Yes | UNPARSED, PARSED, AMBIGUOUS, INVALID |
 
-Scope=VARIANT requires Parent_Staging_Variant_ID and the variant must belong to Parent_Staging_Product_ID. Scope=PRODUCT forbids Parent_Staging_Variant_ID.
+After review, Scope=VARIANT requires Parent_Staging_Variant_ID and the variant must belong to Parent_Staging_Product_ID. Scope=PRODUCT forbids Parent_Staging_Variant_ID. Before parent assignment, Parent_Staging_Product_ID, Parent_Staging_Variant_ID, and Scope may remain blank; these records cannot be promoted until the reviewer resolves the required relationships.
 
 ### `Staging_Images`
 | Column | Type | Required | Rule |
