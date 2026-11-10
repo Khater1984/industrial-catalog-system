@@ -255,6 +255,7 @@ def test_github_cli_fallback_publishes_terminal_failure_manifest(tmp_path):
         "logical_job_id": "job_test_fallback",
         "catalog_id": "cat_test_fallback",
         "source_sha256": source_sha,
+        "idempotency_key": idempotency_key("run_test_fallback", "job_test_fallback", source_sha),
         "attempt_number": 1,
         "run_folder_id": "folder-run",
     }
