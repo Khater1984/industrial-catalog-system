@@ -1,6 +1,6 @@
 // Auto-generated bundle. Do not edit.
 
-/** BEGIN SOURCE: src/config/Schema.js */
+// ===== config/Schema.js =====
 
 /** Generated from approved V2.1 domain schema + ENUM_REGISTRY.md. Do not hand-edit table headers. */
 var APP = Object.freeze({ VERSION: "0.2.0-dev", SCHEMA_VERSION: "2.1", ENVIRONMENT: "DEV", ACTOR_ID: "actor_primary" });
@@ -937,9 +937,9 @@ var FIELD_RULES = Object.freeze({
   "Promotion_Mappings.Payload_SHA256": { type: "HEX64", required: true, conditional: false },
   "Promotion_Mappings.Created_At": { type: "DATETIME_UTC", required: true, conditional: false }
 });
-/** END SOURCE: src/config/Schema.js */
 
-/** BEGIN SOURCE: src/repositories/SheetsRepository.js */
+
+// ===== repositories/SheetsRepository.js =====
 
 var SheetsRepository = (function () {
   function spreadsheet_() {
@@ -1184,9 +1184,9 @@ var SheetsRepository = (function () {
   }
   return { listAll: listAll, updateBy: updateBy, initialize: initialize, append: append, findBy: findBy, getBy: getBy, listRecent: listRecent, validateEnums: validateEnums_, validateRecord: validateRecord_ };
 })();
-/** END SOURCE: src/repositories/SheetsRepository.js */
 
-/** BEGIN SOURCE: src/security/Auth.js */
+
+// ===== security/Auth.js =====
 
 /**
  * Defense in depth: the deployed web app must remain restricted to the owner.
@@ -1207,9 +1207,9 @@ function jsonResponse_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
 }
-/** END SOURCE: src/security/Auth.js */
 
-/** BEGIN SOURCE: src/validation/InputValidation.js */
+
+// ===== validation/InputValidation.js =====
 
 /**
  * Boundary validation for untrusted browser/API input.
@@ -1296,9 +1296,9 @@ var InputValidation = (function () {
   }
   return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_ };
 })();
-/** END SOURCE: src/validation/InputValidation.js */
 
-/** BEGIN SOURCE: src/domain/ProductService.js */
+
+// ===== domain/ProductService.js =====
 
 /** Product domain service — canonical identity + company fields.
  * Does not create source records or specifications.
@@ -1419,9 +1419,9 @@ var ProductService = (function () {
 
   return { create: create, getWorkspace: getWorkspace, search: search, updateCompany: updateCompany, archive: archive, reactivate: reactivate };
 })();
-/** END SOURCE: src/domain/ProductService.js */
 
-/** BEGIN SOURCE: src/domain/ProductFamilyService.js */
+
+// ===== domain/ProductFamilyService.js =====
 
 /** Product family hierarchy.
  * Cycle prevention, dependency-safe archive, no physical deletion.
@@ -1512,9 +1512,9 @@ var ProductFamilyService = (function () {
 
   return { create: create, updateParent: updateParent, archive: archive, reactivate: reactivate };
 })();
-/** END SOURCE: src/domain/ProductFamilyService.js */
 
-/** BEGIN SOURCE: src/domain/VariantService.js */
+
+// ===== domain/VariantService.js =====
 
 /** Variant domain service. Product_ID is immutable (ADR-035). */
 var VariantService = (function () {
@@ -1599,9 +1599,9 @@ var VariantService = (function () {
 
   return { create: create, updateCompany: updateCompany, archive: archive, reactivate: reactivate };
 })();
-/** END SOURCE: src/domain/VariantService.js */
 
-/** BEGIN SOURCE: src/domain/AttributeService.js */
+
+// ===== domain/AttributeService.js =====
 
 /** Typed attributes and variant overrides.
  * VALUE vs INTENTIONALLY_EMPTY are distinct. Removing override restores inheritance.
@@ -1689,9 +1689,9 @@ var AttributeService = (function () {
 
   return { setProductValue: setProductValue, setVariantOverride: setVariantOverride, clearVariantOverride: clearVariantOverride };
 })();
-/** END SOURCE: src/domain/AttributeService.js */
 
-/** BEGIN SOURCE: src/domain/SpecificationService.js */
+
+// ===== domain/SpecificationService.js =====
 
 /** Specification change lifecycle.
  * Approval acquires LockService, re-reads state, validates transition, allocates Sequence_No.
@@ -1821,9 +1821,9 @@ var SpecificationService = (function () {
 
   return { appendDraft: appendDraft, approve: approve, reject: reject };
 })();
-/** END SOURCE: src/domain/SpecificationService.js */
 
-/** BEGIN SOURCE: src/domain/EffectiveSpecificationResolver.js */
+
+// ===== domain/EffectiveSpecificationResolver.js =====
 
 /** Deterministic effective specification resolver.
  * Reads immutable Specifications + APPROVED Specification_Changes only.
@@ -2006,9 +2006,9 @@ var EffectiveSpecificationResolver = (function () {
 
   return { resolveEffectiveSpecifications: resolveEffectiveSpecifications };
 })();
-/** END SOURCE: src/domain/EffectiveSpecificationResolver.js */
 
-/** BEGIN SOURCE: src/domain/CatalogService.js */
+
+// ===== domain/CatalogService.js =====
 
 var CatalogService = (function () {
   function id_(prefix) {
@@ -2118,9 +2118,9 @@ var CatalogService = (function () {
   }
   return { register: register };
 })();
-/** END SOURCE: src/domain/CatalogService.js */
 
-/** BEGIN SOURCE: src/domain/Ingest.js */
+
+// ===== domain/Ingest.js =====
 
 /** Validates and idempotently materializes a Worker result manifest into V2.1 Sheets. */
 var Ingest = (function () {
@@ -2322,9 +2322,9 @@ var Ingest = (function () {
   }
   return { ingestManifest: ingestManifest };
 })();
-/** END SOURCE: src/domain/Ingest.js */
 
-/** BEGIN SOURCE: src/domain/WorkerIntegration.js */
+
+// ===== domain/WorkerIntegration.js =====
 
 /** Cloud Run dispatch plus owner-executed Drive result polling. */
 var WorkerIntegration = (function () {
@@ -2513,9 +2513,9 @@ function installWorkerPoller() {
   assertPrimaryUser_();
   return WorkerIntegration.installPoller();
 }
-/** END SOURCE: src/domain/WorkerIntegration.js */
 
-/** BEGIN SOURCE: src/domain/StagingPromotion.js */
+
+// ===== domain/StagingPromotion.js =====
 
 /** Promotes accepted staging records into V2.1 Sheets tables.
 
@@ -2821,9 +2821,9 @@ var StagingPromotion = (function () {
 
   return { promoteReviewedStaging: promoteReviewedStaging };
 })();
-/** END SOURCE: src/domain/StagingPromotion.js */
 
-/** BEGIN SOURCE: src/domain/ImagePromotion.js */
+
+// ===== domain/ImagePromotion.js =====
 
 /** Promotes accepted image staging records into Image_Assets / Image_Links.
 
@@ -2943,9 +2943,9 @@ var ImagePromotion = (function () {
 
   return { promoteAcceptedImages: promoteAcceptedImages };
 })();
-/** END SOURCE: src/domain/ImagePromotion.js */
 
-/** BEGIN SOURCE: src/domain/ImageReviewIntake.js */
+
+// ===== domain/ImageReviewIntake.js =====
 
 /** Image Review Intake
  *
@@ -3282,9 +3282,9 @@ var ImageReviewIntake = (function () {
 
   return { intake: intake };
 })();
-/** END SOURCE: src/domain/ImageReviewIntake.js */
 
-/** BEGIN SOURCE: src/domain/DocumentService.js */
+
+// ===== domain/DocumentService.js =====
 
 /**
  * Shared document library: immutable versions, explicit links and deterministic inheritance.
@@ -3549,9 +3549,9 @@ function listDocumentsForBrowser() { assertPrimaryUser_(); return DocumentServic
 function linkDocumentFromBrowser(payload) { assertPrimaryUser_(); return DocumentService.link(payload, APP.ACTOR_ID); }
 function resolveDocumentsForBrowser(targetType, targetId) { assertPrimaryUser_(); return DocumentService.resolve(targetType, targetId); }
 function archiveDocumentFromBrowser(docId, reason) { assertPrimaryUser_(); return DocumentService.archive(docId, reason, APP.ACTOR_ID); }
-/** END SOURCE: src/domain/DocumentService.js */
 
-/** BEGIN SOURCE: src/domain/BackupService.js */
+
+// ===== domain/BackupService.js =====
 
 var BackupService=(function(){
  function now_(){return new Date().toISOString();}
@@ -3575,9 +3575,9 @@ var BackupService=(function(){
 })();
 function createDevBackup(){assertPrimaryUser_();return BackupService.create();}
 function verifyDevBackup(folderId){assertPrimaryUser_();return BackupService.verify(folderId);}
-/** END SOURCE: src/domain/BackupService.js */
 
-/** BEGIN SOURCE: src/domain/DesignService.js */
+
+// ===== domain/DesignService.js =====
 
 /** Version-pinned identity, paper and template configuration management. */
 var DesignService=(function(){
@@ -3721,9 +3721,9 @@ function createTemplateFromBrowser(p){assertPrimaryUser_();return DesignService.
 function createPaperFromBrowser(p){assertPrimaryUser_();return DesignService.createPaper(p);}
 function publishDesignVersionFromBrowser(kind,id){assertPrimaryUser_();if(kind==="BRAND")return DesignService.publishBrand(id);if(kind==="TEMPLATE")return DesignService.publishTemplate(id);if(kind==="PAPER")return DesignService.publishPaper(id);throw new Error("DESIGN_KIND_INVALID");}
 function linkTemplateIdentityFromBrowser(p){assertPrimaryUser_();return DesignService.linkTemplateIdentity(p);}
-/** END SOURCE: src/domain/DesignService.js */
 
-/** BEGIN SOURCE: src/domain/DesignStudio.js */
+
+// ===== domain/DesignStudio.js =====
 
 /** Integrated Design Studio (DEV).
  * Brand identities + templates + domain-aware snapshot generation.
@@ -4185,9 +4185,9 @@ function publishTemplateFromBrowser(name) { assertPrimaryUser_(); return DesignS
 function copyTemplateFromBrowser(src, dest) { assertPrimaryUser_(); return DesignStudio.copyTemplate(src, dest); }
 function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); return DesignStudio.buildSnapshotFromDomain(config); }
 function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
-/** END SOURCE: src/domain/DesignStudio.js */
 
-/** BEGIN SOURCE: src/api/Api.js */
+
+// ===== api/Api.js =====
 
 var Api = (function () {
   function requestId_(body) {
@@ -4326,4 +4326,4 @@ function initializeDevSchema() {
 function doPost(e) {
   return Api.post(e);
 }
-/** END SOURCE: src/api/Api.js */
+
