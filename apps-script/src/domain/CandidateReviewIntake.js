@@ -81,7 +81,7 @@ var CandidateReviewIntake = (function () {
       Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
       Source_Key_Algorithm_Version: "candidate-intake-v1",
       Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
-      Proposed_Product_Name_EN: unassignedName ? "" : name, Identity_Match_Method: "UNRESOLVED",
+      Proposed_Product_Name_EN: unassignedName ? "UNASSIGNED" : name, Identity_Match_Method: "UNRESOLVED",
       Source_Record_Key: sourceKey
     };
     var record = Object.assign({}, stablePayload, {
