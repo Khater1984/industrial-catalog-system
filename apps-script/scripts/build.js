@@ -24,6 +24,7 @@ const order = [
   // Catalog intake, worker, and human-review pipeline
   "domain/CatalogService.js",
   "domain/Ingest.js",
+  "domain/CandidateReviewIntake.js",
   "domain/WorkerIntegration.js",
   "domain/StagingPromotion.js",
   "domain/ImagePromotion.js",
