@@ -146,3 +146,17 @@ test("poller marks an expired worker lease failed when no result manifest exists
   assert.equal(updates[0].Run_Status, "FAILED");
   assert.equal(updates[0].Lease_Expires_At, "");
 });
+
+test("GitHub workflow rejection is surfaced as a terminal failed registration", () => {
+  const context = {};
+  vm.runInNewContext(source, context);
+  context.WorkerIntegration.dispatchCatalogRun = () => {
+    throw new Error("GITHUB_WORKFLOW_REJECTED: 403");
+  };
+  const registered = { catalogId: "cat_1", runId: "run_1", status: "QUEUED" };
+  const result = context.dispatchRegisteredCatalog_(registered);
+  assert.equal(result.accepted, false);
+  assert.equal(result.retryable, false);
+  assert.equal(result.error_code, "GITHUB_WORKFLOW_REJECTED");
+  assert.equal(registered.status, "FAILED");
+});
