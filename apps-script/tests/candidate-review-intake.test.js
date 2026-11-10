@@ -14,7 +14,7 @@ function canonical(value) {
 function canonicalText(value) { return JSON.stringify(canonical(value)); }
 function sha(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 
-function fixture(imageExtraction) {
+function fixture(imageExtraction, variantOnly) {
   const artifact = {
     run_id: "run_test", catalog_id: "cat_test",
     catalog_page_id: "cp_cat_test_00001", page_number: 1,
@@ -28,6 +28,7 @@ function fixture(imageExtraction) {
       specifications: [{ attribute_key_raw: "Power", value_raw: "100", unit_raw: "kW", source_quote: "Power: 100 kW", confidence: "LOW" }]
     }
   };
+  if (variantOnly) artifact.product_candidates.products = [];
   artifact.output_sha256 = sha(canonicalText(artifact));
   const artifactBytes = Buffer.from(canonicalText(artifact));
   const page = {
@@ -141,4 +142,16 @@ test("candidate intake fails retryably when image review intake is partial", () 
   const ctx = fixture(imageExtraction);
   ctx.context.ImageReviewIntake.intake = () => ({ status: "PARTIAL" });
   assert.throws(() => ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" }), /IMAGE_REVIEW_INTAKE_INCOMPLETE/);
+});
+
+test("model/spec-only pages receive a linked evidence anchor for human review", () => {
+  const ctx = fixture(null, true);
+  const result = ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
+  assert.equal(result.counts.page_evidence_anchors, 1);
+  assert.equal(ctx.rows.Staging_Products.length, 1);
+  assert.equal(ctx.rows.Staging_Products[0].Proposed_Product_Name_EN, "UNASSIGNED");
+  assert.match(ctx.rows.Staging_Products[0].Extracted_Text, /Model DG100/);
+  assert.equal(ctx.rows.Review_Queue.length, 1);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 1);
+  assert.equal(ctx.rows.Review_Staging_Links[0].Review_Role, "EVIDENCE");
 });
