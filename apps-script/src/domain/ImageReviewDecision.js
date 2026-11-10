@@ -13,7 +13,7 @@ var ImageReviewDecision = (function () {
   }
   function submit(options) {
     require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
-    var allowedFields = ["reviewQueueId", "decision", "targetType", "targetId", "catalogApproved", "dataSheetApproved", "isPrimary", "catalogOrder", "dataSheetOrder", "hasAlpha"];
+    var allowedFields = ["reviewQueueId", "decision", "targetType", "targetId", "catalogApproved", "dataSheetApproved", "isPrimary", "catalogOrder", "dataSheetOrder"];
     Object.keys(options).forEach(function (key) {
       require_(allowedFields.indexOf(key) >= 0, "IMAGE_REVIEW_UNKNOWN_FIELD");
     });
@@ -45,7 +45,6 @@ var ImageReviewDecision = (function () {
       require_(typeof options.targetId === "string" && options.targetId.trim(), "IMAGE_TARGET_ID_REQUIRED");
       require_(typeof options.catalogApproved === "boolean" && typeof options.dataSheetApproved === "boolean", "IMAGE_APPROVAL_FLAGS_REQUIRED");
       require_(options.catalogApproved || options.dataSheetApproved, "IMAGE_APPROVAL_USAGE_REQUIRED");
-      require_(typeof options.hasAlpha === "boolean", "IMAGE_ALPHA_FLAG_REQUIRED");
       record.target_type = options.targetType;
       record.target_id = options.targetId.trim();
       record.catalog_approved = options.catalogApproved;
@@ -53,7 +52,6 @@ var ImageReviewDecision = (function () {
       record.is_primary = options.isPrimary === true;
       record.catalog_order = Number.isSafeInteger(options.catalogOrder) ? options.catalogOrder : 0;
       record.datasheet_order = Number.isSafeInteger(options.dataSheetOrder) ? options.dataSheetOrder : 0;
-      record.has_alpha = options.hasAlpha;
       // Validate target existence and parent-product integrity before recording approval.
       if (record.target_type === "PRODUCT") {
         var product = SheetsRepository.getBy("Products", "Product_ID", record.target_id);
