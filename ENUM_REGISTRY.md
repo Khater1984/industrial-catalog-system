@@ -55,7 +55,7 @@
 
 | Field | Required | Allowed stored values |
 |---|---|---|
-| `Scope` | Yes | PRODUCT, VARIANT |
+| `Scope` | No | PRODUCT, VARIANT |
 
 ### `Product_Families`
 
