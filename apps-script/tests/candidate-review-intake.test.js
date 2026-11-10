@@ -106,6 +106,7 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   assert.equal(ctx.rows.Staging_Variants[0].Parent_Staging_Product_ID, "UNASSIGNED");
   assert.equal(ctx.rows.Staging_Variants[0].Proposed_Model_Number, "DG100");
   assert.equal(ctx.rows.Staging_Specifications.length, 1);
+  assert.equal(ctx.rows.Staging_Specifications[0].Parent_Staging_Product_ID, "UNASSIGNED");
   assert.equal(ctx.rows.Staging_Specifications[0].Parse_Status, "AMBIGUOUS");
   assert.equal(ctx.rows.Staging_Specifications[0].Scope, "VARIANT");
   assert.equal(ctx.rows.Review_Queue.length, 4);
