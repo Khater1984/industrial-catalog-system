@@ -207,7 +207,7 @@ test("connection failure leaves the operation in doubt and retry resumes without
   assert.throws(() => first.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }), /SHEETS_CONNECTION_FAILED/);
   assert.equal(first.store.Promotion_Operations[0].Operation_Status, "IN_DOUBT");
   assert.equal(first.store.Products.length, 1);
-  assert.equal(first.store.Product_Company, undefined);
+  assert.equal(first.store.Product_Company.length, 0);
   const before = first.store.Products.length;
   const resumed = buildContext(Object.assign({ store: first.store }, opts));
   const result = resumed.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
