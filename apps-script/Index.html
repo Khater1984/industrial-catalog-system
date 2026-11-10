@@ -492,6 +492,95 @@
   function showPromoteStatus(message, type) {
     const box = el("promoteStatus"); box.textContent = message; box.className = "status show " + type;
   }
+
+  let reviewItems = [];
+  const reviewTypeLabels = {
+    PRODUCT_MATCH:"مطابقة منتج", VARIANT_MATCH:"مطابقة موديل",
+    SPECIFICATION:"مراجعة مواصفة", IMAGE_QUALITY:"جودة صورة",
+    IMAGE_DUPLICATE:"تكرار صورة", EXTRACTION_AMBIGUITY:"التباس في الاستخراج",
+    DOCUMENT_MATCH:"مطابقة مستند", OTHER:"مراجعة أخرى"
+  };
+  function reviewNode(tag, text, className) {
+    const node=document.createElement(tag);
+    if(text!==undefined&&text!==null)node.textContent=String(text);
+    if(className)node.className=className;
+    return node;
+  }
+  function reviewLink(parent, url, label) {
+    if(!url)return;
+    const a=reviewNode("a",label,"review-link");a.href=url;a.target="_blank";a.rel="noopener noreferrer";parent.appendChild(a);
+  }
+  function loadReviewQueue() {
+    el("reviewQueueList").textContent="جارٍ تحميل عناصر المراجعة...";
+    google.script.run.withSuccessHandler(data=>{
+      reviewItems=(data&&data.items)||[];
+      const counts=(data&&data.counts)||{};
+      el("reviewOpenCount").textContent=counts.open||0;
+      el("reviewInProgressCount").textContent=counts.inReview||0;
+      el("reviewDeferredCount").textContent=counts.deferred||0;
+      el("reviewTotalCount").textContent=counts.total||0;
+      renderReviewQueue();
+    }).withFailureHandler(err=>{
+      el("reviewQueueList").textContent="تعذر تحميل قائمة المراجعة. تحقق من صلاحيات DEV وتهيئة الجداول.";
+      const box=el("reviewStatus");box.textContent=(err&&err.message)||"تعذر تحميل القائمة.";box.className="status show err";
+    }).getReviewQueueForBrowser();
+  }
+  function renderReviewQueue() {
+    const root=el("reviewQueueList");root.textContent="";
+    const filter=el("reviewStatusFilter").value;
+    const visible=reviewItems.filter(item=>filter==="ALL"||item.status===filter);
+    if(!visible.length){root.appendChild(reviewNode("div","لا توجد عناصر بهذه الحالة.","empty"));return;}
+    visible.forEach(item=>{
+      const card=reviewNode("article",null,"review-card");
+      const head=reviewNode("div",null,"review-card-head");
+      const titleWrap=reviewNode("div");
+      titleWrap.appendChild(reviewNode("h4",reviewTypeLabels[item.type]||item.type||"مراجعة"));
+      titleWrap.appendChild(reviewNode("div",[item.supplierName,item.catalogTitle].filter(Boolean).join(" · ")||"كتالوج غير محدد","review-meta"));
+      titleWrap.appendChild(reviewNode("div",["الصفحة: "+(item.pageNumber||item.pageLabel||"غير محددة"),"الحالة: "+(item.status||"—"),"الأولوية: "+(item.priority||"—")].join(" · "),"review-meta"));
+      head.appendChild(titleWrap);
+      head.appendChild(reviewNode("span",item.status||"—","pill "+(item.status==="OPEN"?"queued":"")));
+      card.appendChild(head);
+      if(item.proposedAction)card.appendChild(reviewNode("p",item.proposedAction,"notice"));
+      const actions=reviewNode("div",null,"review-actions");
+      reviewLink(actions,item.sourcePdfUrl,"فتح كتالوج PDF");
+      reviewLink(actions,item.pageArtifactUrl,"فتح ملف الصفحة المستخرج");
+      card.appendChild(actions);
+      const details=document.createElement("details");details.className="review-evidence";
+      details.appendChild(reviewNode("summary","عرض المرشحات والأدلة"));
+      const evidence=item.evidence||[];
+      evidence.forEach(ev=>{
+        const row=reviewNode("div",null,"review-row");
+        row.appendChild(reviewNode("strong",ev.type+" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
+        const parts=["رقم مرجعي: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
+        row.appendChild(reviewNode("div",parts.join(" · "),"review-meta"));
+        if(ev.extractedText)row.appendChild(reviewNode("div",ev.extractedText,"review-meta"));
+        const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.imageFileUrl,"فتح الصورة");reviewLink(evLinks,ev.sourceArtifactUrl,"فتح دليل الصفحة");row.appendChild(evLinks);
+        details.appendChild(row);
+      });
+      const artifact=item.artifact;
+      if(artifact){
+        if(artifact.error)details.appendChild(reviewNode("p","تعذر قراءة ملف الصفحة؛ افتح الملف من Drive إن توفر.","notice"));
+        [["products","أسماء المنتجات"],["variants","الموديلات"],["specifications","المواصفات"]].forEach(([key,label])=>{
+          const values=artifact[key]||[];if(!values.length)return;
+          details.appendChild(reviewNode("h5",label+" ("+values.length+")"));
+          values.forEach(value=>{
+            const bits=Object.keys(value).map(k=>k+": "+value[k]).filter(Boolean);
+            details.appendChild(reviewNode("div",bits.join(" · "),"review-row"));
+          });
+        });
+        if(artifact.extractedText) {
+          details.appendChild(reviewNode("h5","مقتطف النص المستخرج"));
+          details.appendChild(reviewNode("pre",artifact.extractedText));
+        }
+      }
+      if(!evidence.length&&!artifact)details.appendChild(reviewNode("p","لا تتوفر تفاصيل مرتبطة بهذا العنصر في الجداول الحالية.","notice"));
+      card.appendChild(details);root.appendChild(card);
+    });
+  }
+  el("reviewRefresh").addEventListener("click",loadReviewQueue);
+  el("reviewStatusFilter").addEventListener("change",renderReviewQueue);
+  loadReviewQueue();
+
 </script>
 </body>
 </html>
