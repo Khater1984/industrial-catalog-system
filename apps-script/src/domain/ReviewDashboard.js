@@ -29,6 +29,7 @@ var ReviewDashboard = (function () {
       variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
       specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
       extractedText: short_(artifact && artifact.extracted_text, 1800),
+      pageText: short_(artifact && artifact.extracted_text, 1800),
       pageNumber: artifact && artifact.page_number || "",
       extractionMethod: artifact && artifact.extraction_method || ""
     };
@@ -78,6 +79,7 @@ var ReviewDashboard = (function () {
           attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
           value: row.Value_Raw || row.Normalized_Value_JSON || "", unit: row.Unit_Raw || row.Normalized_Unit || "",
           imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
+          fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
           imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
           confidence: row.Confidence === undefined ? "" : row.Confidence,
           extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
@@ -96,14 +98,18 @@ var ReviewDashboard = (function () {
       var catalog = catalogs[catalogId] || {}, page = pages[pageId] || {};
       var artifact = artifactSummary_(artifactId);
       if (artifact && !page.Page_Number && artifact.pageNumber) page = { Page_Number: artifact.pageNumber };
+      if (artifact) artifact.fileUrl = safeUrl_(artifactId);
       return {
-        reviewId: review.Review_Queue_ID, type: review.Review_Type, status: review.Review_Status,
+        id: review.Review_Queue_ID, reviewId: review.Review_Queue_ID,
+        type: review.Review_Type, status: review.Review_Status,
         priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
+        notes: short_(review.Decision_Notes || "", 1500),
         decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
         runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
         catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
         sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
-        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId), evidence: evidence, artifact: artifact
+        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId),
+        evidence: evidence, artifact: artifact, pageArtifact: artifact
       };
     });
     var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
