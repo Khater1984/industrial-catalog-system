@@ -56,7 +56,7 @@ var ReviewDashboard = (function () {
       try {
         var data = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString("UTF-8"));
         artifacts[id] = candidateSummary_(data);
-      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE" }; }
+      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE", warning: true }; }
       return artifacts[id];
     }
     var items = reviews.map(function (review) {
@@ -72,7 +72,7 @@ var ReviewDashboard = (function () {
         catalogId = catalogId || row.Catalog_ID || "";
         var page = pages[row.Catalog_Page_ID] || {};
         evidence.push({
-          stagingId: row.Staging_ID, type: type, role: link.Review_Role || "",
+          stagingId: row.Staging_ID, type: type, table: type, role: link.Review_Role || "",
           pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
           productName: row.Proposed_Product_Name_EN || "", productReference: row.Proposed_Product_Reference || "",
           modelNumber: row.Proposed_Model_Number || "", modelName: row.Proposed_Model_Name || "",
@@ -83,6 +83,7 @@ var ReviewDashboard = (function () {
           imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
           confidence: row.Confidence === undefined ? "" : row.Confidence,
           extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
+          quote: short_(row.Extracted_Text, 700),
           sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
         });
       });
@@ -103,13 +104,14 @@ var ReviewDashboard = (function () {
         id: review.Review_Queue_ID, reviewId: review.Review_Queue_ID,
         type: review.Review_Type, status: review.Review_Status,
         priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
+        action: short_(review.Proposed_Action, 1800),
         notes: short_(review.Decision_Notes || "", 1500),
         decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
         runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
         catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
         sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
         pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId),
-        evidence: evidence, artifact: artifact, pageArtifact: artifact
+        evidence: evidence, links: evidence, artifact: artifact, pageArtifact: artifact
       };
     });
     var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
