@@ -50,15 +50,18 @@ test("poller ignores terminal runs and runs without an input manifest", () => {
   assert.equal(result.errors.length, 0);
 });
 
-test("dispatch writes an immutable job manifest and accepts the deterministic Cloud Task", () => {
+test("dispatch writes an immutable job manifest and starts the GitHub Actions workflow", () => {
   const properties = {
     DEV_RUNS_FOLDER_ID: "runs-folder-id-123456",
-    DEV_WORKER_ENDPOINT: "https://worker.example/run",
-    DEV_WORKER_SHARED_TOKEN: "shared-worker-token"
+    GITHUB_ACTIONS_TOKEN: "github-actions-token",
+    GITHUB_WORKFLOW_REF: "main"
   };
+  const key = crypto.createHash("sha256")
+    .update(["logical_1", "run_1", "1", "", "", "a".repeat(64)].join("|"))
+    .digest("hex");
   const run = {
     Run_ID: "run_1", Catalog_ID: "cat_1", Logical_Job_ID: "logical_1",
-    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: "", Idempotency_Key: "catalog_sha256_" + "a".repeat(64)
+    Attempt_Number: 1, Run_Status: "QUEUED", Started_At: "", Idempotency_Key: key
   };
   const catalog = {
     Catalog_ID: "cat_1", Source_File_ID: "source-file-id-123456",
@@ -96,10 +99,7 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
     UrlFetchApp: {
       fetch: (url, options) => {
         request = { url, options };
-        return {
-          getResponseCode: () => 202,
-          getContentText: () => JSON.stringify({ accepted: true, run_id: "run_1", task: "task-1" })
-        };
+        return { getResponseCode: () => 204, getContentText: () => "" };
       }
     }
   };
@@ -107,10 +107,14 @@ test("dispatch writes an immutable job manifest and accepts the deterministic Cl
   const result = context.WorkerIntegration.dispatchCatalogRun("cat_1", "run_1");
   assert.equal(result.accepted, true);
   assert.equal(run.Run_Status, "RUNNING");
-  assert.equal(request.url, "https://worker.example/run");
-  assert.equal(request.options.headers.Authorization, "Bearer shared-worker-token");
-  assert.equal(request.options.headers["Idempotency-Key"], run.Idempotency_Key);
-  assert.equal(JSON.parse(request.options.payload).idempotency_key, run.Idempotency_Key);
+  assert.equal(request.url, "https://api.github.com/repos/Khater1984/industrial-catalog-system/actions/workflows/catalog-worker-dispatch.yml/dispatches");
+  assert.equal(request.options.headers.Authorization, "Bearer github-actions-token");
+  assert.equal(request.options.headers.Accept, "application/vnd.github+json");
+  assert.equal(request.options.headers["X-GitHub-Api-Version"], "2022-11-28");
+  const payload = JSON.parse(request.options.payload);
+  assert.equal(payload.ref, "main");
+  assert.equal(payload.inputs.run_id, "run_1");
+  assert.equal(payload.inputs.job_file_id, "job-file-id-123456");
   const job = JSON.parse(jobContent);
   assert.equal(job.run_id, "run_1");
   assert.equal(job.source_pdf_file_id, "source-file-id-123456");
