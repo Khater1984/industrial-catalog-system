@@ -13,7 +13,7 @@ function canonical(value) {
 function canonicalText(value) { return JSON.stringify(canonical(value)); }
 function sha(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
 
-function fixture() {
+function fixture(imageExtraction) {
   const artifact = {
     run_id: "run_test", catalog_id: "cat_test",
     catalog_page_id: "cp_cat_test_00001", page_number: 1,
@@ -33,7 +33,7 @@ function fixture() {
   };
   const manifest = {
     run_id: "run_test", catalog_id: "cat_test", run_status: "COMPLETED",
-    pages: [page]
+    pages: [page], ...(imageExtraction ? { image_extraction: imageExtraction } : {})
   };
   const files = {
     "manifest-file-id": Buffer.from(JSON.stringify(manifest)),
@@ -44,6 +44,7 @@ function fixture() {
     Output_Manifest_File_ID: "manifest-file-id"
   };
   const rows = {};
+  const imageCalls = [];
   const context = {
     APP: { ACTOR_ID: "actor_primary" },
     Utilities: {
@@ -52,6 +53,7 @@ function fixture() {
       computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    ImageReviewIntake: { intake: (options) => { imageCalls.push(options); return { status: "COMPLETED" }; } },
     DriveApp: { getFileById: (id) => ({
       getBlob: () => ({
         getBytes: () => Array.from(files[id]),
@@ -70,7 +72,7 @@ function fixture() {
     }
   };
   vm.runInNewContext(source, context);
-  return { intake: context.CandidateReviewIntake, rows };
+  return { intake: context.CandidateReviewIntake, rows, imageCalls };
 }
 
 test("candidate intake stages products and queues unresolved model/spec evidence without guessing parents", () => {
@@ -104,4 +106,19 @@ test("candidate intake rejects artifacts with altered bytes or identity", () => 
   const ctx = fixture();
   const run = { Run_ID: "run_test", Catalog_ID: "cat_test", Run_Status: "COMPLETED", Output_Manifest_File_ID: "wrong-manifest" };
   assert.throws(() => ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "wrong-manifest" }), /CANDIDATE_MANIFEST_NOT_INGESTED/);
+});
+
+
+test("candidate intake forwards completed image manifests to image review intake", () => {
+  const imageExtraction = {
+    enabled: true, status: "COMPLETED", manifest_file_id: "image-manifest-id",
+    manifest_sha256: "a".repeat(64), drive_manifest_file_id: "drive-manifest-id",
+    drive_manifest_sha256: "b".repeat(64)
+  };
+  const ctx = fixture(imageExtraction);
+  const result = ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
+  assert.equal(result.image_intake.status, "COMPLETED");
+  assert.equal(ctx.imageCalls.length, 1);
+  assert.equal(ctx.imageCalls[0].imageManifestFileId, "image-manifest-id");
+  assert.equal(ctx.imageCalls[0].driveManifestFileId, "drive-manifest-id");
 });
