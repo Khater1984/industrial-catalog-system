@@ -116,6 +116,13 @@ var ReviewWorkspace = (function () {
         source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
       };
     });
+    links.forEach(function (link) {
+      if (link.Review_Role !== "EVIDENCE") return;
+      var id = String(link.Staging_ID || "");
+      var candidate = SheetsRepository.getBy("Staging_Variants", "Staging_ID", id) ||
+        SheetsRepository.getBy("Staging_Specifications", "Staging_ID", id);
+      if (candidate && !seen[id]) fail_("REVIEW_CANDIDATE_DECISION_REQUIRED");
+    });
     return { variants: variants, specifications: specifications };
   }
   function updateStatus(options, actor) {
