@@ -96,7 +96,6 @@ var Api = (function () {
           isPrimary: p.isPrimary,
           catalogOrder: p.catalogOrder,
           dataSheetOrder: p.dataSheetOrder,
-          hasAlpha: p.hasAlpha
         });
         return success_(requestId, decisionResult);
       }
@@ -378,7 +377,6 @@ function submitImageReviewDecisionFromBrowser(payload) {
     isPrimary: payload.isPrimary,
     catalogOrder: payload.catalogOrder,
     dataSheetOrder: payload.dataSheetOrder,
-    hasAlpha: payload.hasAlpha
   });
 }
 
