@@ -4786,7 +4786,9 @@ var Api = (function () {
           isPrimary: Boolean(p.isPrimary),
           catalogApproved: Boolean(p.catalogApproved),
           dataSheetApproved: Boolean(p.dataSheetApproved),
-          linkStatus: p.linkStatus || "CANDIDATE"
+          linkStatus: p.linkStatus || "CANDIDATE",
+          catalogOrder: p.catalogOrder,
+          dataSheetOrder: p.dataSheetOrder
         }));
       }
       if (body.action === "image.setApproval") {
