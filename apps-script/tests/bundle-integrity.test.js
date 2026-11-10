@@ -28,7 +28,6 @@ test("deployment bundle contains every active domain module", () => {
     "domain/ImagePromotion.js",
     "domain/ImageReviewIntake.js",
     "domain/ReviewWorkspace.js",
-    "domain/ReviewWorkspace.js",
     "domain/DocumentService.js",
     "domain/BackupService.js",
     "domain/DesignService.js",
