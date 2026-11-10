@@ -209,3 +209,40 @@ test("Staging Set refuses specifications without an explicit supported scope", (
     /REVIEW_SPECIFICATION_SCOPE_REQUIRED/
   );
 });
+
+
+test("Staging Set accepts product-scope specifications without a variant parent", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  rewriteDecision(ctx, decision => {
+    const productStagingId = decision.products[0].staging_id;
+    decision.specifications.push({
+      staging_id: "stg_spec_product_123", parent_staging_product_id: productStagingId,
+      parent_staging_variant_id: "", scope: "PRODUCT",
+      attribute_key_raw: "Manufacturer", value_raw: "ACME", review_status: "ACCEPTED"
+    });
+  });
+  const result = ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary");
+  assert.equal(result.specifications, 1);
+});
+
+test("Staging Set rejects a product-scope specification carrying a variant parent", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  rewriteDecision(ctx, decision => {
+    const productStagingId = decision.products[0].staging_id;
+    decision.variants.push({
+      staging_id: "stg_variant_product_scope", parent_staging_product_id: productStagingId,
+      proposed_model_number: "DG100", review_status: "ACCEPTED"
+    });
+    decision.specifications.push({
+      staging_id: "stg_spec_product_scope", parent_staging_product_id: productStagingId,
+      parent_staging_variant_id: "stg_variant_product_scope", scope: "PRODUCT",
+      attribute_key_raw: "Manufacturer", value_raw: "ACME", review_status: "ACCEPTED"
+    });
+  });
+  assert.throws(
+    () => ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary"),
+    /REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN/
+  );
+});
