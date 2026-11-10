@@ -23,7 +23,7 @@ import pypdf
 from pypdf import PdfReader
 
 try:
-    import fitz
+    import pymupdf as fitz
     PYMUPDF_AVAILABLE = True
 except ImportError:
     fitz = None
