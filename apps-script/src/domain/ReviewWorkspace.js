@@ -57,6 +57,11 @@ var ReviewWorkspace = (function () {
       Staging_Documents: SheetsRepository.listAll("Staging_Documents")
     };
     var artifactCache = {};
+    var catalogs = {};
+    SheetsRepository.listAll("Catalogs").forEach(function (row) { catalogs[row.Catalog_ID] = row; });
+    var pages = {};
+    SheetsRepository.listAll("Catalog_Pages").forEach(function (row) { pages[row.Catalog_Page_ID] = row; });
+    var runUnits = SheetsRepository.listAll("Run_Units");
     var items = queue.filter(function (q) { return ALLOWED[q.Review_Status] === true; }).slice(0, 100).map(function (q) {
       var related = links.filter(function (l) { return l.Review_Queue_ID === q.Review_Queue_ID; }).map(function (link) {
         var found = stagingRecord_(link.Staging_ID, tables);
@@ -75,15 +80,38 @@ var ReviewWorkspace = (function () {
           quote: text_(r.Extracted_Text || "", 4000),
           pageId: text_(r.Catalog_Page_ID || "", 120),
           runId: text_(r.Run_ID || "", 120),
+          catalogId: text_(r.Catalog_ID || "", 120),
           confidence: r.Confidence || "",
           fileUrl: fileUrl_(r.Proposed_Image_File_ID || r.Proposed_Document_File_ID || ""),
           artifact: artifact
         };
       });
+      var actionMatch = String(q.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      var runId = (related[0] && related[0].runId) || (actionMatch && actionMatch[2]) || "";
+      var pageId = (related[0] && related[0].pageId) || (actionMatch && actionMatch[1]) || "";
+      var runUnit = runUnits.find(function (unit) { return unit.Run_ID === runId && unit.Catalog_Page_ID === pageId; });
+      var pageArtifact = null;
+      if (runUnit && runUnit.Output_Manifest_File_ID && !related.some(function (link) { return link.artifact; })) {
+        pageArtifact = readArtifact_(runUnit.Output_Manifest_File_ID, artifactCache);
+      }
+      var catalogId = (related[0] && related[0].catalogId) || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {};
+      var page = pages[pageId] || {};
       return {
         id: q.Review_Queue_ID, type: q.Review_Type, priority: q.Priority,
         status: q.Review_Status, action: text_(q.Proposed_Action || "", 500),
         notes: text_(q.Decision_Notes || "", 1500), createdAt: q.Created_At || "",
+        runId: runId, catalogId: catalogId, pageId: pageId,
+        pageNumber: page.Page_Number || (pageArtifact && pageArtifact.pageNumber) || "",
+        pageLabel: page.Page_Label || "",
+        supplierName: text_(catalog.Supplier_Name || "", 160),
+        catalogTitle: text_(catalog.Catalog_Title || catalog.Source_File_Name || "", 240),
+        sourcePdfUrl: fileUrl_(catalog.Source_File_ID || ""),
+        pageArtifact: pageArtifact,
         links: related
       };
     });
