@@ -89,9 +89,9 @@
         <div class="stat"><b id="reviewOpenCount">—</b><span>مفتوحة</span></div>
         <div class="stat"><b id="reviewInProgressCount">—</b><span>قيد المراجعة</span></div>
         <div class="stat"><b id="reviewDeferredCount">—</b><span>مؤجلة</span></div>
-        <div class="stat"><b id="reviewTotalCount">—</b><span>آخر 250 عنصرًا</span></div>
+        <div class="stat"><b id="reviewTotalCount">—</b><span>آخر 100 مهمة</span></div>
       </div>
-      <div class="notice">هذه النسخة تعرض الأدلة والمرشحات للقراءة فقط. لم تُفعّل بعد قرارات القبول والرفض والربط أو نقل السجلات إلى البيانات الأساسية.</div>
+      <div class="notice">أزرار استلام المهمة أو تأجيلها أو رفضها تغيّر حالة مهمة المراجعة وملاحظاتها فقط. لا تعني اعتماد المنتج أو الموديل أو المواصفات، ولا تنقل أي سجل إلى البيانات الأساسية.</div>
       <div id="reviewQueueList"><div class="empty">جارٍ تحميل قائمة المراجعة...</div></div>
       <div class="status" id="reviewStatus" role="status" aria-live="polite"></div>
     </section>
@@ -491,6 +491,7 @@
   }
   function renderArtifactEvidence(parent,artifact) {
     if(artifact.warning){parent.appendChild(reviewNode("p","تعذر قراءة ملف الصفحة من Drive.","notice"));return;}
+    if(artifact.fileUrl){const fileLinks=reviewNode("div",null,"review-actions");reviewLink(fileLinks,artifact.fileUrl,"فتح دليل الاستخراج");parent.appendChild(fileLinks);}
     [["products","أسماء المنتجات"],["variants","الموديلات"],["specifications","المواصفات"]].forEach(([key,label])=>{
       const values=artifact[key]||[];if(!values.length)return;
       parent.appendChild(reviewNode("h5",label+" ("+values.length+")"));
