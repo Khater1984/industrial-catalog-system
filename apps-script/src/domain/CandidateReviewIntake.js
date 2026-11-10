@@ -112,11 +112,109 @@ var CandidateReviewIntake = (function () {
       "CANDIDATE_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
     return stagingId;
   }
+  function createVariant_(candidate, page, artifact, manifest, actor, index, counts) {
+    var model = text_(candidate.proposed_model_number, 160);
+    require_(model, "CANDIDATE_MODEL_NUMBER_MISSING");
+    var quote = text_(candidate.source_quote, 4000);
+    var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|variant|" + index + "|" + model + "|" + quote;
+    var sourceKey = "candidate-variant-v1|" + sha_(sourceSeed).slice(0, 48);
+    var stagingId = stableId_("stgvar", sourceKey);
+    var at = now_();
+    var stablePayload = {
+      Staging_ID: stagingId, Run_ID: manifest.run_id, Catalog_ID: manifest.catalog_id,
+      Catalog_Page_ID: page.catalog_page_id, Raw_Extract_File_ID: page.artifact_file_id,
+      Extracted_Text: quote, Extraction_Method: String(artifact.extraction_method || "EMBEDDED_TEXT").toUpperCase(),
+      Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
+      Source_Key_Algorithm_Version: "candidate-variant-v1",
+      Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
+      Parent_Staging_Product_ID: "UNASSIGNED",
+      Proposed_Model_Number: model,
+      Proposed_Model_Name: text_(candidate.proposed_model_name || model, 250),
+      Identity_Match_Method: "UNRESOLVED",
+      Match_Confidence: confidence_(candidate.confidence),
+      Source_Record_Key: sourceKey
+    };
+    var record = Object.assign({}, stablePayload, {
+      Staging_Record_Hash: sha_(canonicalJson_(stablePayload)),
+      Created_At: at, Updated_At: at
+    });
+    if (ensure_("Staging_Variants", "Staging_ID", record,
+      ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Extracted_Text",
+       "Proposed_Model_Number", "Source_Record_Key", "Parent_Staging_Product_ID"],
+      "STAGING_VARIANT_CONFLICT")) counts.staging_variants += 1;
+    var reviewId = stableId_("revvar", stagingId);
+    var review = {
+      Review_Queue_ID: reviewId, Review_Type: "VARIANT_MATCH", Priority: "NORMAL",
+      Review_Status: "OPEN",
+      Proposed_Action: "Assign this model to the correct active product, then create a new variant or match an existing one.",
+      Created_At: at, Created_By: actor
+    };
+    if (ensure_("Review_Queue", "Review_Queue_ID", review,
+      ["Review_Type", "Priority", "Proposed_Action", "Created_By"], "VARIANT_REVIEW_CONFLICT")) counts.review_items += 1;
+    var link = {
+      Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + stagingId),
+      Review_Queue_ID: reviewId, Staging_ID: stagingId, Review_Role: "PRIMARY",
+      Created_At: at, Created_By: actor
+    };
+    if (ensure_("Review_Staging_Links", "Review_Staging_Link_ID", link,
+      ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"], "VARIANT_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
+    return stagingId;
+  }
+  function createSpecification_(candidate, page, artifact, manifest, actor, index, counts) {
+    var key = text_(candidate.attribute_key_raw, 160);
+    var value = text_(candidate.value_raw, 2000);
+    require_(key && value, "CANDIDATE_SPECIFICATION_FIELDS_MISSING");
+    var quote = text_(candidate.source_quote, 4000);
+    var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|spec|" + index + "|" + key + "|" + value + "|" + quote;
+    var sourceKey = "candidate-spec-v1|" + sha_(sourceSeed).slice(0, 48);
+    var stagingId = stableId_("stgspec", sourceKey);
+    var at = now_();
+    var stablePayload = {
+      Staging_ID: stagingId, Run_ID: manifest.run_id, Catalog_ID: manifest.catalog_id,
+      Catalog_Page_ID: page.catalog_page_id, Raw_Extract_File_ID: page.artifact_file_id,
+      Extracted_Text: quote, Extraction_Method: String(artifact.extraction_method || "EMBEDDED_TEXT").toUpperCase(),
+      Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
+      Source_Key_Algorithm_Version: "candidate-spec-v1",
+      Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
+      Source_Assertion_Key: sourceKey,
+      Scope: "VARIANT",
+      Attribute_Key_Raw: key, Value_Raw: value, Unit_Raw: text_(candidate.unit_raw, 80),
+      Normalized_Key: key, Normalized_Value_JSON: JSON.stringify(value),
+      Normalized_Unit: text_(candidate.unit_raw, 80),
+      Parse_Status: "AMBIGUOUS"
+    };
+    var record = Object.assign({}, stablePayload, {
+      Staging_Record_Hash: sha_(canonicalJson_(stablePayload)),
+      Created_At: at, Updated_At: at
+    });
+    if (ensure_("Staging_Specifications", "Staging_ID", record,
+      ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Source_Assertion_Key",
+       "Scope", "Attribute_Key_Raw", "Value_Raw", "Unit_Raw", "Parse_Status"],
+      "STAGING_SPECIFICATION_CONFLICT")) counts.staging_specifications += 1;
+    var reviewId = stableId_("revspec", stagingId);
+    var review = {
+      Review_Queue_ID: reviewId, Review_Type: "SPECIFICATION", Priority: "NORMAL",
+      Review_Status: "OPEN",
+      Proposed_Action: "Confirm this value and explicitly assign its scope and target product or model before promotion.",
+      Created_At: at, Created_By: actor
+    };
+    if (ensure_("Review_Queue", "Review_Queue_ID", review,
+      ["Review_Type", "Priority", "Proposed_Action", "Created_By"], "SPECIFICATION_REVIEW_CONFLICT")) counts.review_items += 1;
+    var link = {
+      Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + stagingId),
+      Review_Queue_ID: reviewId, Staging_ID: stagingId, Review_Role: "PRIMARY",
+      Created_At: at, Created_By: actor
+    };
+    if (ensure_("Review_Staging_Links", "Review_Staging_Link_ID", link,
+      ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"], "SPECIFICATION_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
+    return stagingId;
+  }
+
   function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts) {
     var candidates = artifact.product_candidates || {};
     var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
     var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
-    if (!variants.length && !specs.length && !unassignedProductNames) return;
+    if (!unassignedProductNames) return;
     var reviewId = stableId_("revamb", manifest.run_id + "|" + page.catalog_page_id);
     var createdAt = now_();
     var review = {
@@ -159,7 +257,7 @@ var CandidateReviewIntake = (function () {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      var counts = { pages: 0, staging_products: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
+      var counts = { pages: 0, staging_products: 0, staging_variants: 0, staging_specifications: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
       manifest.pages.forEach(function (page) {
         var file = DriveApp.getFileById(page.artifact_file_id);
         var blob = file.getBlob(), bytes = blob.getBytes();
@@ -182,6 +280,12 @@ var CandidateReviewIntake = (function () {
           var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
           if (stagingId) productStagingIds.push(stagingId);
           else unassignedProductNames += 1;
+        });
+        variants.forEach(function (candidate, index) {
+          createVariant_(candidate, page, artifact, manifest, actor, index, counts);
+        });
+        specs.forEach(function (candidate, index) {
+          createSpecification_(candidate, page, artifact, manifest, actor, index, counts);
         });
         createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
