@@ -818,14 +818,12 @@ var FIELD_RULES = Object.freeze({
   "Staging_Images.Run_ID": { type: "ID", required: true, conditional: false },
   "Staging_Images.Catalog_ID": { type: "ID", required: false, conditional: false },
   "Staging_Images.Catalog_Page_ID": { type: "ID", required: false, conditional: false },
-  "Staging_Images.Page_Number": { type: "INTEGER", required: false, conditional: false },
-  "Staging_Images.Has_Alpha": { type: "BOOLEAN", required: false, conditional: false },
   "Staging_Images.Source_Region": { type: "TEXT(120)", required: false, conditional: false },
   "Staging_Images.Raw_Extract_File_ID": { type: "DRIVE_FILE_ID", required: false, conditional: false },
   "Staging_Images.Extracted_Text": { type: "TEXT(4000)", required: false, conditional: false },
   "Staging_Images.Extraction_Method": { type: "ENUM", required: true, conditional: false },
   "Staging_Images.Extraction_Tool_Version": { type: "TEXT(120)", required: false, conditional: false },
-  "Staging_Images.Source_Key_Algorithm_Version": { type: "TEXT(80)", required: false, conditional: false },
+  "Staging_Images.Source_Key_Algorithm_Version": { type: "TEXT(80)", required: false, conditional: true },
   "Staging_Images.Confidence": { type: "DECIMAL(5,4)", required: false, conditional: false },
   "Staging_Images.Proposed_Status": { type: "ENUM", required: true, conditional: false },
   "Staging_Images.Staging_Record_Hash": { type: "HEX64", required: true, conditional: false },
@@ -843,6 +841,8 @@ var FIELD_RULES = Object.freeze({
   "Staging_Images.Candidate_Variant_ID": { type: "ID", required: false, conditional: false },
   "Staging_Images.Image_Role": { type: "TEXT(80)", required: false, conditional: false },
   "Staging_Images.Quality_Status": { type: "ENUM", required: true, conditional: false },
+  "Staging_Images.Page_Number": { type: "INTEGER", required: false, conditional: false },
+  "Staging_Images.Has_Alpha": { type: "BOOLEAN", required: false, conditional: false },
   "Staging_Documents.Staging_ID": { type: "ID", required: true, conditional: false },
   "Staging_Documents.Run_ID": { type: "ID", required: true, conditional: false },
   "Staging_Documents.Catalog_ID": { type: "ID", required: false, conditional: false },
@@ -852,7 +852,7 @@ var FIELD_RULES = Object.freeze({
   "Staging_Documents.Extracted_Text": { type: "TEXT(4000)", required: false, conditional: false },
   "Staging_Documents.Extraction_Method": { type: "ENUM", required: true, conditional: false },
   "Staging_Documents.Extraction_Tool_Version": { type: "TEXT(120)", required: false, conditional: false },
-  "Staging_Documents.Source_Key_Algorithm_Version": { type: "TEXT(80)", required: false, conditional: false },
+  "Staging_Documents.Source_Key_Algorithm_Version": { type: "TEXT(80)", required: false, conditional: true },
   "Staging_Documents.Confidence": { type: "DECIMAL(5,4)", required: false, conditional: false },
   "Staging_Documents.Proposed_Status": { type: "ENUM", required: true, conditional: false },
   "Staging_Documents.Staging_Record_Hash": { type: "HEX64", required: true, conditional: false },
@@ -941,7 +941,6 @@ var FIELD_RULES = Object.freeze({
 
 
 // ===== repositories/SheetsRepository.js =====
-
 var SheetsRepository = (function () {
   function spreadsheet_() {
     var id = PropertiesService.getScriptProperties().getProperty("DEV_SPREADSHEET_ID");
@@ -1188,7 +1187,6 @@ var SheetsRepository = (function () {
 
 
 // ===== security/Auth.js =====
-
 /**
  * Defense in depth: the deployed web app must remain restricted to the owner.
  * With executeAs=USER_DEPLOYING, the effective user is the deploying account.
@@ -1211,7 +1209,6 @@ function jsonResponse_(payload) {
 
 
 // ===== validation/InputValidation.js =====
-
 /**
  * Boundary validation for untrusted browser/API input.
  * Pure JavaScript: no Apps Script services, so rules can be tested independently.
@@ -1233,6 +1230,16 @@ var InputValidation = (function () {
     if (normalized.length > maxLength) throw new Error("VALIDATION_TOO_LONG: " + field);
     return normalized;
   }
+  function id_(value, field) {
+    var id = requiredString_(value, field, 120);
+    if (!/^[A-Za-z0-9_.-]{1,120}$/.test(id)) throw new Error("VALIDATION_INVALID_FORMAT: " + field);
+    return id;
+  }
+  function optionalId_(value, field) {
+    if (value === undefined || value === null || value === "") return "";
+    return id_(value, field);
+  }
+
   function uploadMetadata_(payload) {
     if (!isPlainObject_(payload)) throw new Error("INVALID_UPLOAD_PAYLOAD");
     var allowed = ["supplierName", "catalogTitle", "catalogRevision", "fileName", "mimeType", "base64"];
@@ -1253,6 +1260,7 @@ var InputValidation = (function () {
       base64: base64
     };
   }
+
   function catalogPayload_(payload) {
     if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
     var allowed = ["driveFileId","supplierName","catalogTitle","catalogReference","catalogRevision","languageCode","publishedDate","sourceUrl","notes"];
@@ -1295,12 +1303,281 @@ var InputValidation = (function () {
       notes: optionalString_(payload.notes, "notes", 2000)
     };
   }
-  return { catalogPayload: catalogPayload_, uploadMetadata: uploadMetadata_ };
+
+  function promotionPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["stagingSetFileId", "stagingSetSha256"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var stagingSetFileId = requiredString_(payload.stagingSetFileId, "stagingSetFileId", 200);
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(stagingSetFileId)) throw new Error("VALIDATION_INVALID_FORMAT: stagingSetFileId");
+    var stagingSetSha256 = requiredString_(payload.stagingSetSha256, "stagingSetSha256", 64);
+    if (!/^[a-f0-9]{64}$/.test(stagingSetSha256)) throw new Error("VALIDATION_INVALID_FORMAT: stagingSetSha256");
+    return { stagingSetFileId: stagingSetFileId, stagingSetSha256: stagingSetSha256 };
+  }
+
+  function imagesPromotePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["images", "run_id", "catalog_id"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+
+    var catalogId = requiredString_(payload.catalog_id, "catalog_id", 128);
+    var runId = optionalString_(payload.run_id, "run_id", 128);
+    if (runId && !/^[A-Za-z0-9_.-]+$/.test(runId)) {
+      throw new Error("VALIDATION_INVALID_FORMAT: run_id");
+    }
+    if (!Array.isArray(payload.images) || payload.images.length > 500) {
+      throw new Error("VALIDATION_INVALID_TYPE: images");
+    }
+
+    var allowedImageFields = [
+      "review_status", "sha256", "drive_file_id", "original_name", "mime_type",
+      "width_px", "height_px", "file_size_bytes", "has_alpha",
+      "catalog_page_id", "page_number", "target_type", "target_id"
+    ];
+    var allowedMimeTypes = {
+      "image/jpeg": true, "image/png": true, "image/webp": true,
+      "image/gif": true, "image/tiff": true, "image/bmp": true,
+      "image/jp2": true, "image/jpx": true, "image/x-ms-bmp": true
+    };
+
+    function positiveInteger_(value, field, maximum) {
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1 || value > maximum) {
+        throw new Error("VALIDATION_INVALID_TYPE: " + field);
+      }
+      return value;
+    }
+
+    var images = payload.images.map(function (image, index) {
+      var label = "images[" + index + "]";
+      if (!isPlainObject_(image)) throw new Error("VALIDATION_INVALID_OBJECT: " + label);
+      Object.keys(image).forEach(function (key) {
+        if (allowedImageFields.indexOf(key) < 0) {
+          throw new Error("VALIDATION_UNKNOWN_FIELD: " + label + "." + key);
+        }
+      });
+      var status = requiredString_(image.review_status, label + ".review_status", 20);
+      if (["ACCEPTED", "REJECTED", "PENDING"].indexOf(status) < 0) {
+        throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".review_status");
+      }
+      var normalized = { review_status: status };
+      if (status !== "ACCEPTED") return normalized;
+
+      var sha = requiredString_(image.sha256, label + ".sha256", 64).toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(sha)) throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".sha256");
+      var driveId = requiredString_(image.drive_file_id, label + ".drive_file_id", 200);
+      if (!/^[A-Za-z0-9_-]{10,200}$/.test(driveId)) {
+        throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".drive_file_id");
+      }
+      var originalName = requiredString_(image.original_name, label + ".original_name", 255);
+      var mimeType = requiredString_(image.mime_type, label + ".mime_type", 100).toLowerCase();
+      if (!allowedMimeTypes[mimeType]) throw new Error("UNSUPPORTED_IMAGE_MIME_TYPE");
+      var width = positiveInteger_(image.width_px, label + ".width_px", 50000);
+      var height = positiveInteger_(image.height_px, label + ".height_px", 50000);
+      if (width * height > 100000000) throw new Error("IMAGE_PIXEL_LIMIT_EXCEEDED");
+      var fileSize = positiveInteger_(image.file_size_bytes, label + ".file_size_bytes", 26214400);
+      if (typeof image.has_alpha !== "boolean") {
+        throw new Error("VALIDATION_INVALID_TYPE: " + label + ".has_alpha");
+      }
+
+      normalized.sha256 = sha;
+      normalized.drive_file_id = driveId;
+      normalized.original_name = originalName;
+      normalized.mime_type = mimeType;
+      normalized.width_px = width;
+      normalized.height_px = height;
+      normalized.file_size_bytes = fileSize;
+      normalized.has_alpha = image.has_alpha;
+
+      var pageId = optionalString_(image.catalog_page_id, label + ".catalog_page_id", 180);
+      if (pageId) normalized.catalog_page_id = pageId;
+      if (image.page_number !== undefined && image.page_number !== null && image.page_number !== "") {
+        normalized.page_number = positiveInteger_(image.page_number, label + ".page_number", 1000000);
+      }
+      var targetType = optionalString_(image.target_type, label + ".target_type", 20);
+      var targetId = optionalString_(image.target_id, label + ".target_id", 120);
+      if (Boolean(targetType) !== Boolean(targetId)) {
+        throw new Error("IMAGE_TARGET_PAIR_REQUIRED");
+      }
+      if (targetType) {
+        if (["PRODUCT", "VARIANT"].indexOf(targetType) < 0) {
+          throw new Error("VALIDATION_INVALID_FORMAT: " + label + ".target_type");
+        }
+        normalized.target_type = targetType;
+        normalized.target_id = targetId;
+      }
+      return normalized;
+    });
+
+    return { images: images, run_id: runId, catalog_id: catalogId };
+  }
+
+  function productCreatePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["nameEn", "nameAr", "description", "brandLabel", "notes", "familyId", "idempotencyKey"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      nameEn: optionalString_(payload.nameEn, "nameEn", 300),
+      nameAr: optionalString_(payload.nameAr, "nameAr", 300),
+      description: optionalString_(payload.description, "description", 4000),
+      brandLabel: optionalString_(payload.brandLabel, "brandLabel", 160),
+      notes: optionalString_(payload.notes, "notes", 4000),
+      familyId: optionalId_(payload.familyId, "familyId"),
+      idempotencyKey: optionalString_(payload.idempotencyKey, "idempotencyKey", 120)
+    };
+  }
+
+  function productUpdatePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["productId", "nameEn", "nameAr", "description", "brandLabel", "notes", "familyId"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      productId: id_(payload.productId, "productId"),
+      nameEn: payload.nameEn !== undefined ? optionalString_(payload.nameEn, "nameEn", 300) : undefined,
+      nameAr: payload.nameAr !== undefined ? optionalString_(payload.nameAr, "nameAr", 300) : undefined,
+      description: payload.description !== undefined ? optionalString_(payload.description, "description", 4000) : undefined,
+      brandLabel: payload.brandLabel !== undefined ? optionalString_(payload.brandLabel, "brandLabel", 160) : undefined,
+      notes: payload.notes !== undefined ? optionalString_(payload.notes, "notes", 4000) : undefined,
+      familyId: payload.familyId !== undefined ? optionalId_(payload.familyId, "familyId") : undefined
+    };
+  }
+
+  function productSearchPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["query"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return { query: optionalString_(payload.query, "query", 200).toLowerCase() };
+  }
+
+  function variantCreatePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["productId", "modelNameEn", "modelNameAr", "notes", "idempotencyKey"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      productId: id_(payload.productId, "productId"),
+      modelNameEn: optionalString_(payload.modelNameEn, "modelNameEn", 250),
+      modelNameAr: optionalString_(payload.modelNameAr, "modelNameAr", 250),
+      notes: optionalString_(payload.notes, "notes", 2000),
+      idempotencyKey: optionalString_(payload.idempotencyKey, "idempotencyKey", 120)
+    };
+  }
+
+  function variantUpdatePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["variantId", "modelNameEn", "modelNameAr", "notes"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      variantId: id_(payload.variantId, "variantId"),
+      modelNameEn: payload.modelNameEn !== undefined ? optionalString_(payload.modelNameEn, "modelNameEn", 250) : undefined,
+      modelNameAr: payload.modelNameAr !== undefined ? optionalString_(payload.modelNameAr, "modelNameAr", 250) : undefined,
+      notes: payload.notes !== undefined ? optionalString_(payload.notes, "notes", 2000) : undefined
+    };
+  }
+
+  function attributeSetPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["productId", "variantId", "attributeId", "valueJson", "mode"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var mode = optionalString_(payload.mode, "mode", 30);
+    if (mode && ["VALUE", "INTENTIONALLY_EMPTY"].indexOf(mode) < 0) throw new Error("VALIDATION_INVALID_FORMAT: mode");
+    return {
+      productId: optionalId_(payload.productId, "productId"),
+      variantId: optionalId_(payload.variantId, "variantId"),
+      attributeId: id_(payload.attributeId, "attributeId"),
+      valueJson: optionalString_(payload.valueJson, "valueJson", 2000),
+      mode: mode
+    };
+  }
+
+  function familyPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["nameEn", "nameAr", "parentId", "familyId", "newParentId"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      nameEn: optionalString_(payload.nameEn, "nameEn", 180),
+      nameAr: optionalString_(payload.nameAr, "nameAr", 180),
+      parentId: optionalId_(payload.parentId, "parentId"),
+      familyId: optionalId_(payload.familyId, "familyId"),
+      newParentId: optionalId_(payload.newParentId, "newParentId")
+    };
+  }
+
+  function specificationChangePayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["operation", "productId", "variantId", "attributeKey", "valueJson", "unitCode", "reason", "targetSpecificationId", "idempotencyKey", "changeId"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    var operation = payload.operation ? requiredString_(payload.operation, "operation", 20) : "";
+    if (operation && ["ADD", "UPDATE", "DELETE"].indexOf(operation) < 0) throw new Error("VALIDATION_INVALID_FORMAT: operation");
+    return {
+      operation: operation,
+      productId: optionalId_(payload.productId, "productId"),
+      variantId: optionalId_(payload.variantId, "variantId"),
+      attributeKey: optionalString_(payload.attributeKey, "attributeKey", 160),
+      valueJson: optionalString_(payload.valueJson, "valueJson", 2000),
+      unitCode: optionalString_(payload.unitCode, "unitCode", 40),
+      reason: optionalString_(payload.reason, "reason", 1000),
+      targetSpecificationId: optionalId_(payload.targetSpecificationId, "targetSpecificationId"),
+      idempotencyKey: optionalString_(payload.idempotencyKey, "idempotencyKey", 120),
+      changeId: optionalId_(payload.changeId, "changeId")
+    };
+  }
+
+  function effectiveSpecPayload_(payload) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    var allowed = ["productId", "variantId"];
+    Object.keys(payload).forEach(function (key) {
+      if (allowed.indexOf(key) < 0) throw new Error("VALIDATION_UNKNOWN_FIELD: " + key);
+    });
+    return {
+      productId: id_(payload.productId, "productId"),
+      variantId: optionalId_(payload.variantId, "variantId")
+    };
+  }
+
+  function idOnlyPayload_(payload, field) {
+    if (!isPlainObject_(payload)) throw new Error("VALIDATION_INVALID_OBJECT: payload");
+    return { [field]: id_(payload[field], field) };
+  }
+
+  return {
+    catalogPayload: catalogPayload_,
+    uploadMetadata: uploadMetadata_,
+    promotionPayload: promotionPayload_,
+    imagesPromotePayload: imagesPromotePayload_,
+    productCreatePayload: productCreatePayload_,
+    productUpdatePayload: productUpdatePayload_,
+    productSearchPayload: productSearchPayload_,
+    variantCreatePayload: variantCreatePayload_,
+    variantUpdatePayload: variantUpdatePayload_,
+    attributeSetPayload: attributeSetPayload_,
+    familyPayload: familyPayload_,
+    specificationChangePayload: specificationChangePayload_,
+    effectiveSpecPayload: effectiveSpecPayload_,
+    idOnlyPayload: idOnlyPayload_
+  };
 })();
 
 
 // ===== domain/ProductService.js =====
-
 /** Product domain service — canonical identity + company fields.
  * Does not create source records or specifications.
  */
@@ -1423,7 +1700,6 @@ var ProductService = (function () {
 
 
 // ===== domain/ProductFamilyService.js =====
-
 /** Product family hierarchy.
  * Cycle prevention, dependency-safe archive, no physical deletion.
  */
@@ -1516,7 +1792,6 @@ var ProductFamilyService = (function () {
 
 
 // ===== domain/VariantService.js =====
-
 /** Variant domain service. Product_ID is immutable (ADR-035). */
 var VariantService = (function () {
   function now_() { return new Date().toISOString(); }
@@ -1603,7 +1878,6 @@ var VariantService = (function () {
 
 
 // ===== domain/AttributeService.js =====
-
 /** Typed attributes and variant overrides.
  * VALUE vs INTENTIONALLY_EMPTY are distinct. Removing override restores inheritance.
  */
@@ -1693,7 +1967,6 @@ var AttributeService = (function () {
 
 
 // ===== domain/SpecificationService.js =====
-
 /** Specification change lifecycle.
  * Approval acquires LockService, re-reads state, validates transition, allocates Sequence_No.
  */
@@ -1825,7 +2098,6 @@ var SpecificationService = (function () {
 
 
 // ===== domain/EffectiveSpecificationResolver.js =====
-
 /** Deterministic effective specification resolver.
  * Reads immutable Specifications + APPROVED Specification_Changes only.
  * Never writes. Surfaces product/variant scope conflicts (ADR-040).
@@ -2010,7 +2282,6 @@ var EffectiveSpecificationResolver = (function () {
 
 
 // ===== domain/CatalogService.js =====
-
 var CatalogService = (function () {
   function id_(prefix) {
     return prefix + "_" + Utilities.getUuid().replace(/-/g, "");
@@ -2021,6 +2292,9 @@ var CatalogService = (function () {
       var v = (b < 0 ? b + 256 : b).toString(16);
       return v.length === 1 ? "0" + v : v;
     }).join("");
+  }
+  function sha256Text_(value) {
+    return sha256_(Utilities.newBlob(String(value), "text/plain").getBytes());
   }
   function resultFor_(catalog, run) {
     return {
@@ -2055,10 +2329,12 @@ var CatalogService = (function () {
   function createRun_(catalogId, sourceHash, now) {
     var runId = id_("run");
     var logicalJobId = id_("job");
+    var attempt = 1, parentRunId = "", retryReason = "";
+    var idempotencyKey = sha256Text_(logicalJobId + "|" + runId + "|" + attempt + "|||" + sourceHash);
     SheetsRepository.append("Run_Log", {
       Run_ID: runId, Run_Type: "CATALOG_EXTRACTION", Catalog_ID: catalogId,
-      Logical_Job_ID: logicalJobId, Parent_Run_ID: "", Attempt_Number: 1,
-      Retry_Reason: "", Idempotency_Key: "catalog_sha256_" + sourceHash, Run_Status: "QUEUED",
+      Logical_Job_ID: logicalJobId, Parent_Run_ID: parentRunId, Attempt_Number: attempt,
+      Retry_Reason: retryReason, Idempotency_Key: idempotencyKey, Run_Status: "QUEUED",
       Current_Step: "REGISTERED", Total_Units: "", Completed_Units: 0, Failed_Units: 0,
       Created_At: now, Created_By: APP.ACTOR_ID
     });
@@ -2122,7 +2398,6 @@ var CatalogService = (function () {
 
 
 // ===== domain/Ingest.js =====
-
 /** Validates and idempotently materializes a Worker result manifest into V2.1 Sheets. */
 var Ingest = (function () {
   function canonical_(value) {
@@ -2157,6 +2432,9 @@ var Ingest = (function () {
     if (requireString_(manifest, "run_id") !== run.Run_ID) throw new Error("MANIFEST_RUN_MISMATCH");
     if (requireString_(manifest, "catalog_id") !== run.Catalog_ID) throw new Error("MANIFEST_CATALOG_MISMATCH");
     if (requireString_(manifest, "logical_job_id") !== run.Logical_Job_ID) throw new Error("MANIFEST_LOGICAL_JOB_MISMATCH");
+    if (requireString_(manifest, "idempotency_key") !== String(run.Idempotency_Key || "").trim().toLowerCase()) {
+      throw new Error("MANIFEST_IDEMPOTENCY_MISMATCH");
+    }
     if (manifest.attempt_number !== Number(run.Attempt_Number) || manifest.run_type !== "CATALOG_EXTRACTION" ||
         String(manifest.parent_run_id || "") !== String(run.Parent_Run_ID || "") ||
         String(manifest.retry_reason || "") !== String(run.Retry_Reason || "")) {
@@ -2638,3252 +2916,3 @@ var CandidateReviewIntake = (function () {
 })();
 
 
-// ===== domain/WorkerIntegration.js =====
-/** GitHub Actions dispatch plus owner-executed Drive result polling. */
-var WorkerIntegration = (function () {
-  var CONTRACT_VERSION = "1";
-  function property_(name) {
-    return (PropertiesService.getScriptProperties().getProperty(name) || "").trim();
-  }
-  function sha256Text_(value) {
-    var bytes = Utilities.newBlob(String(value), "text/plain").getBytes();
-    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes);
-    return digest.map(function (b) {
-      var v = (b < 0 ? b + 256 : b).toString(16);
-      return v.length === 1 ? "0" + v : v;
-    }).join("");
-  }
-  function expectedIdempotencyKey_(run, catalog) {
-    var attempt = Number(run.Attempt_Number) || 1;
-    var parent = String(run.Parent_Run_ID || "").trim();
-    var retry = String(run.Retry_Reason || "").trim();
-    return sha256Text_([
-      String(run.Logical_Job_ID).trim(), String(run.Run_ID).trim(), String(attempt),
-      parent, retry, String(catalog.SHA256).trim().toLowerCase()
-    ].join("|"));
-  }
-  function getRunFolder_(runId) {
-    var rootId = property_("DEV_RUNS_FOLDER_ID");
-    if (!rootId) throw new Error("CONFIG_MISSING: DEV_RUNS_FOLDER_ID");
-    var root = DriveApp.getFolderById(rootId), folders = root.getFoldersByName(runId);
-    if (folders.hasNext()) return folders.next();
-    return root.createFolder(runId);
-  }
-  function immutableJobFile_(folder, body) {
-    var content = JSON.stringify(body), files = folder.getFilesByName("job.json");
-    if (files.hasNext()) {
-      var existing = files.next();
-      if (existing.getBlob().getDataAsString("UTF-8") !== content) throw new Error("JOB_MANIFEST_IMMUTABLE_CONFLICT");
-      return existing;
-    }
-    return folder.createFile("job.json", content, MimeType.JSON);
-  }
-  function dispatchCatalogRun(catalogId, runId) {
-    var token = property_("GITHUB_ACTIONS_TOKEN");
-    if (!token) return { configured: false, accepted: false, reason: "GITHUB_ACTIONS_TOKEN_NOT_CONFIGURED" };
-    var workflowRef = property_("GITHUB_WORKFLOW_REF") || "dev/worker-v2.1-resumable";
-    if (!/^[A-Za-z0-9._\\/-]{1,120}$/.test(workflowRef) || workflowRef.indexOf("..") >= 0) {
-      throw new Error("GITHUB_WORKFLOW_REF_INVALID");
-    }
-
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
-      var catalog = SheetsRepository.getBy("Catalogs", "Catalog_ID", catalogId);
-      if (!run || !catalog || run.Catalog_ID !== catalogId) throw new Error("RUN_CATALOG_NOT_FOUND");
-      if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) >= 0) {
-        throw new Error("TERMINAL_RUN_CANNOT_DISPATCH");
-      }
-      var idempotencyKey = expectedIdempotencyKey_(run, catalog);
-      var storedKey = String(run.Idempotency_Key || "").trim().toLowerCase();
-      if (storedKey !== idempotencyKey) {
-        var migrationFolder = getRunFolder_(runId);
-        var existingJob = migrationFolder.getFilesByName("job.json");
-        var canMigrate = ["QUEUED", "RETRY_PENDING"].indexOf(run.Run_Status) >= 0 &&
-          !run.Input_Manifest_File_ID && !existingJob.hasNext();
-        if (!canMigrate) throw new Error("RUN_IDEMPOTENCY_KEY_MISMATCH");
-        SheetsRepository.updateBy("Run_Log", "Run_ID", runId, { Idempotency_Key: idempotencyKey });
-        run.Idempotency_Key = idempotencyKey;
-      }
-      if (!/^[a-f0-9]{64}$/.test(idempotencyKey)) throw new Error("RUN_IDEMPOTENCY_KEY_INVALID");
-      var folder = getRunFolder_(runId);
-      var job = {
-        contract_version: CONTRACT_VERSION, manifest_version: 1,
-        run_id: runId, logical_job_id: run.Logical_Job_ID,
-        catalog_id: catalogId, source_pdf_file_id: catalog.Source_File_ID,
-        source_sha256: catalog.SHA256, attempt_number: Number(run.Attempt_Number) || 1,
-        parent_run_id: run.Parent_Run_ID || null, retry_reason: run.Retry_Reason || null,
-        idempotency_key: idempotencyKey,
-        extraction_profile: "text-ocr-candidates-v2", ocr_languages: "ara+eng",
-        ocr_min_usable_chars: 40, run_folder_id: folder.getId()
-      };
-      var jobFile = immutableJobFile_(folder, job);
-      var now = new Date().toISOString();
-      var startedAt = run.Started_At instanceof Date ? run.Started_At.toISOString() : (run.Started_At || now);
-      var leaseExpiresAt = new Date(Date.now() + 120 * 60 * 1000).toISOString();
-      SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
-        Run_Status: "RUNNING", Current_Step: "WORKER_DISPATCH",
-        Input_Manifest_File_ID: jobFile.getId(), Started_At: startedAt,
-        Heartbeat_At: now, Worker_Lease_ID: "lease_" + Utilities.getUuid().replace(/-/g, ""),
-        Lease_Expires_At: leaseExpiresAt, Error_Code: "", Error_Summary: ""
-      });
-
-      var url = "https://api.github.com/repos/Khater1984/industrial-catalog-system/actions/workflows/catalog-worker-dispatch.yml/dispatches";
-      var payload = {
-        ref: workflowRef,
-        inputs: { run_id: runId, job_file_id: jobFile.getId() }
-      };
-      var lastError = "";
-      for (var attempt = 1; attempt <= 3; attempt++) {
-        var response;
-        try {
-          response = UrlFetchApp.fetch(url, {
-            method: "post",
-            contentType: "application/json",
-            headers: {
-              Authorization: "Bearer " + token,
-              Accept: "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28"
-            },
-            payload: JSON.stringify(payload),
-            muteHttpExceptions: true
-          });
-        } catch (err) {
-          lastError = "GITHUB_NETWORK_ERROR";
-          response = null;
-        }
-        if (response) {
-          var code = response.getResponseCode();
-          if (code === 204) {
-            return { configured: true, accepted: true, run_id: runId, workflow: "catalog-worker-dispatch.yml" };
-          }
-          lastError = "GITHUB_HTTP_" + code;
-          if (code >= 400 && code < 500 && code !== 408 && code !== 429) {
-            SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
-              Run_Status: "FAILED", Current_Step: "DISPATCH_REJECTED",
-              Finished_At: new Date().toISOString(), Worker_Lease_ID: "", Lease_Expires_At: "",
-              Error_Code: "GITHUB_WORKFLOW_REJECTED",
-              Error_Summary: "GitHub rejected the workflow dispatch (" + code + "). Check workflow availability and token permissions."
-            });
-            throw new Error("GITHUB_WORKFLOW_REJECTED: " + code);
-          }
-        }
-        if (attempt < 3) Utilities.sleep(1000 * Math.pow(2, attempt - 1));
-      }
-      // Re-dispatch uses the same immutable Run_ID/job.json. The worker is idempotent
-      // and the workflow concurrency group prevents simultaneous execution per run.
-      SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
-        Run_Status: "RETRY_PENDING", Current_Step: "DISPATCH_UNCONFIRMED",
-        Error_Code: "GITHUB_DISPATCH_UNCONFIRMED",
-        Error_Summary: "GitHub did not confirm workflow dispatch; retry with the same Run_ID. " + lastError
-      });
-      return { configured: true, accepted: false, retryable: true, run_id: runId };
-    } finally {
-      lock.releaseLock();
-    }
-  }
-  function processCompletedRuns() {
-    var runs = SheetsRepository.listAll("Run_Log"), processed = [], errors = [];
-    runs.forEach(function (run) {
-      var retryCandidateIntake = run.Run_Status === "COMPLETED" && run.Current_Step === "REVIEW_INTAKE_PENDING";
-      if (["RUNNING", "RETRY_PENDING"].indexOf(run.Run_Status) < 0 && !retryCandidateIntake) return;
-      if (!run.Input_Manifest_File_ID) return;
-      try {
-        var jobFile = DriveApp.getFileById(run.Input_Manifest_File_ID);
-        var parents = jobFile.getParents();
-        if (!parents.hasNext()) throw new Error("RUN_FOLDER_NOT_FOUND");
-        var folder = parents.next(), files = folder.getFilesByName("result-manifest.json");
-        if (!files.hasNext()) {
-          var expiresAt = run.Lease_Expires_At ? new Date(run.Lease_Expires_At).getTime() : 0;
-          if (expiresAt && expiresAt <= Date.now()) {
-            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-              Run_Status: "FAILED", Current_Step: "WORKER_LEASE_EXPIRED",
-              Finished_At: new Date().toISOString(), Worker_Lease_ID: "", Lease_Expires_At: "",
-              Error_Code: "WORKER_LEASE_EXPIRED",
-              Error_Summary: "No terminal result manifest arrived before the worker lease expired."
-            });
-            errors.push({ run_id: run.Run_ID, code: "WORKER_LEASE_EXPIRED" });
-          }
-          return;
-        }
-        var resultFile = files.next();
-        var result = Ingest.ingestManifest({
-          runId: run.Run_ID, resultManifestFileId: resultFile.getId()
-        });
-        if (result.run_status === "COMPLETED") {
-          run.Run_Status = "COMPLETED";
-          run.Current_Step = "INGESTED";
-          var reviewIntake = CandidateReviewIntake.intakeRun({
-            runId: run.Run_ID, resultManifestFileId: resultFile.getId()
-          });
-          SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-            Current_Step: "REVIEW_READY", Error_Code: "", Error_Summary: ""
-          });
-          processed.push(Object.assign({}, result, { review_intake: reviewIntake }));
-        } else {
-          processed.push(result);
-        }
-      } catch (err) {
-        var code = String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120);
-        if (run.Run_Status === "COMPLETED") {
-          try {
-            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-              Current_Step: "REVIEW_INTAKE_PENDING",
-              Error_Code: "CANDIDATE_REVIEW_INTAKE_FAILED", Error_Summary: code
-            });
-          } catch (ignore) {}
-        } else if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) < 0) {
-          try {
-            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-              Error_Code: "RESULT_INGEST_REJECTED", Error_Summary: code
-            });
-          } catch (ignore) {}
-        }
-        errors.push({ run_id: run.Run_ID, code: code });
-      }
-    });
-    return { processed: processed, errors: errors };
-  }
-  function installPoller() {
-    var triggers = ScriptApp.getProjectTriggers();
-    var exists = triggers.some(function (trigger) {
-      return trigger.getHandlerFunction() === "processWorkerResults";
-    });
-    if (!exists) ScriptApp.newTrigger("processWorkerResults").timeBased().everyMinutes(5).create();
-    return { installed: true, interval_minutes: 5, already_installed: exists };
-  }
-  return {
-    dispatchCatalogRun: dispatchCatalogRun,
-    processCompletedRuns: processCompletedRuns,
-    installPoller: installPoller
-  };
-})();
-
-function dispatchRegisteredCatalog_(registered) {
-  if (!registered || ["QUEUED", "RETRY_PENDING"].indexOf(registered.status) < 0) {
-    return { accepted: false, reason: "RUN_NOT_DISPATCHABLE", status: registered && registered.status || "" };
-  }
-  try {
-    var result = WorkerIntegration.dispatchCatalogRun(registered.catalogId, registered.runId);
-    if (result.accepted) registered.status = "RUNNING";
-    else if (result.retryable) registered.status = "RETRY_PENDING";
-    return result;
-  } catch (err) {
-    var message = String(err && err.message ? err.message : "WORKER_DISPATCH_FAILED");
-    var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
-    var code = match ? match[1] : "WORKER_DISPATCH_FAILED";
-    var rejected = code === "WORKER_REJECTED" || code === "GITHUB_WORKFLOW_REJECTED";
-    if (rejected) registered.status = "FAILED";
-    return { configured: true, accepted: false, retryable: !rejected, run_id: registered.runId,
-      error_code: code };
-  }
-}
-
-function processWorkerResults() {
-  return WorkerIntegration.processCompletedRuns();
-}
-
-function installWorkerPoller() {
-  assertPrimaryUser_();
-  return WorkerIntegration.installPoller();
-}
-
-
-// ===== domain/StagingPromotion.js =====
-/** Promotes accepted staging records into V2.1 Sheets tables.
-
-Source specification rows are append-only. Reviewer edits are recorded in
-Specification_Changes and never overwrite Specifications.Attribute_Value_Source.
-There is no Specifications_Source table in Schema V2.1; the immutable source
-row in Specifications is the source assertion.
-*/
-var StagingPromotion = (function () {
-  function now_() { return new Date().toISOString(); }
-  function sha_(value) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value).map(function (b) {
-      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
-      return hex.length === 1 ? "0" + hex : hex;
-    }).join("");
-  }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
-  function text_(value, limit) {
-    var text = value === undefined || value === null ? "" : String(value).trim();
-    return text.length > limit ? text.slice(0, limit) : text;
-  }
-  function json_(value) { return JSON.stringify(value === undefined || value === null ? "" : value); }
-  function confidence_(value) {
-    if (typeof value === "number" && isFinite(value)) return value;
-    var map = { HIGH: 0.95, MEDIUM: 0.7, LOW: 0.4 };
-    return map[String(value || "").toUpperCase()] || "";
-  }
-  function require_(condition, code) { if (!condition) throw new Error(code); }
-  function accepted_(record) { return record && record.review_status === "ACCEPTED"; }
-  function sourceValue_(spec) {
-    return spec.edited && Object.prototype.hasOwnProperty.call(spec, "original_value_raw")
-      ? spec.original_value_raw : spec.value_raw;
-  }
-
-  function existingBy_(table, column, value) {
-    return value ? SheetsRepository.getBy(table, column, value) : null;
-  }
-  function appendOnce_(table, record) { return SheetsRepository.append(table, record); }
-  function mapping_(operationId, stagingType, stagingId, productionType, productionId, canonicalType, canonicalId, decisionId, payload) {
-    var existing = existingBy_("Promotion_Mappings", "Staging_ID", stagingId);
-    if (existing && existing.Production_Entity_Type === productionType) return existing;
-    var record = {
-      Promotion_Mapping_ID: stableId_("pmap", operationId + "|" + stagingType + "|" + stagingId + "|" + productionType),
-      Promotion_Operation_ID: operationId,
-      Staging_Type: stagingType,
-      Staging_ID: stagingId,
-      Production_Entity_Type: productionType,
-      Production_Entity_ID: productionId,
-      Canonical_Entity_Type: canonicalType || "",
-      Canonical_Entity_ID: canonicalId || "",
-      Identity_Match_Decision_ID: decisionId || "",
-      Payload_SHA256: sha_(json_(payload)),
-      Created_At: now_()
-    };
-    appendOnce_("Promotion_Mappings", record);
-    return record;
-  }
-  function audit_(actor, action, entityType, entityId, reason, runId, payload) {
-    appendOnce_("Audit_Log", {
-      Audit_ID: stableId_("aud", action + "|" + entityType + "|" + entityId + "|" + reason),
-      Event_Idempotency_Key: text_(action + "|" + entityType + "|" + entityId + "|" + reason, 180),
-      Payload_SHA256: sha_(json_(payload)),
-      Event_At: now_(),
-      Actor_ID: actor,
-      Action: action,
-      Entity_Type: entityType,
-      Entity_ID: entityId,
-      Reason: text_(reason, 1000),
-      Related_Run_ID: runId || ""
-    });
-  }
-  function decision_(entityType, stagingType, stagingId, stagingHash, resultId, actor, parentDecisionId, decisionType, candidateCanonicalId, rationale) {
-    var existing = existingBy_("Identity_Match_Decisions", "Source_Staging_ID", stagingId);
-    var selectedDecision = decisionType || "CREATE_NEW";
-    var record = {
-      Match_Decision_ID: stableId_("imd", stagingType + "|" + stagingId),
-      Entity_Type: entityType,
-      Source_Staging_Type: stagingType,
-      Source_Staging_ID: stagingId,
-      Source_Staging_Hash: stagingHash,
-      Parent_Product_Match_Decision_ID: parentDecisionId || "",
-      Candidate_Canonical_ID: candidateCanonicalId || "",
-      Decision: selectedDecision,
-      Result_Canonical_ID: resultId,
-      Rationale: text_(rationale || "Reviewer approved this canonical identity resolution.", 1000),
-      Decided_At: now_(),
-      Decided_By: actor
-    };
-    if (existing) {
-      require_(existing.Source_Staging_Hash === stagingHash &&
-        existing.Decision === selectedDecision &&
-        String(existing.Candidate_Canonical_ID || "") === String(candidateCanonicalId || "") &&
-        existing.Result_Canonical_ID === resultId, "PROMOTION_IDENTITY_DECISION_CONFLICT");
-      return existing;
-    }
-    appendOnce_("Identity_Match_Decisions", record);
-    return record;
-  }
-
-  function promoteReviewedStaging(options) {
-    require_(options && options.stagingSetFileId && options.stagingSetSha256, "PROMOTION_ARGUMENTS_INVALID");
-    if (options.staging) throw new Error("PROMOTION_CLIENT_STAGING_FORBIDDEN");
-    require_(/^[A-Za-z0-9_-]{10,200}$/.test(options.stagingSetFileId), "PROMOTION_FILE_ID_INVALID");
-    require_(/^[a-f0-9]{64}$/.test(options.stagingSetSha256), "PROMOTION_SHA_INVALID");
-    var file = DriveApp.getFileById(options.stagingSetFileId);
-    if (!file) throw new Error("STAGING_FILE_NOT_FOUND");
-    var blob = file.getBlob();
-    var bytes = blob.getBytes();
-    var computed = sha_(bytes);
-    require_(computed === options.stagingSetSha256, "STAGING_FILE_SHA_MISMATCH");
-    var content = blob.getDataAsString();
-    var staging;
-    try { staging = JSON.parse(content); } catch (e) { throw new Error("STAGING_FILE_INVALID_JSON"); }
-    require_(staging && Array.isArray(staging.products) && Array.isArray(staging.variants) && Array.isArray(staging.specifications), "STAGING_SET_INVALID");
-    var actor = options.actor || APP.ACTOR_ID;
-    var runId = text_(staging.run_id, 120);
-    var catalogId = text_(staging.catalog_id, 120);
-    var keyVersion = text_(staging.source_key_algorithm_version || "source-key-v1", 80);
-    var promotionKey = text_("promote|" + runId + "|" + options.stagingSetSha256.slice(0, 32), 180);
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    var operationId = stableId_("pop", promotionKey);
-    try {
-      var existingOp = existingBy_("Promotion_Operations", "Promotion_Key", promotionKey);
-      if (existingOp && existingOp.Operation_Status === "COMPLETED") {
-        return { promotion_operation_id: existingOp.Promotion_Operation_ID, skipped: true, status: "COMPLETED" };
-      }
-      if (!existingOp) {
-        SheetsRepository.append("Promotion_Operations", {
-          Promotion_Operation_ID: operationId,
-          Promotion_Key: promotionKey,
-          Run_ID: runId,
-          Operation_Status: "APPLYING",
-          Staging_Set_Manifest_File_ID: options.stagingSetFileId,
-          Staging_Set_SHA256: options.stagingSetSha256,
-          Intended_Output_Manifest_File_ID: options.intendedOutputFileId || options.stagingSetFileId,
-          Intended_Output_SHA256: options.intendedOutputSha256 || options.stagingSetSha256,
-          Created_At: now_(),
-          Created_By: actor,
-          Started_At: now_()
-        });
-      } else {
-        operationId = existingOp.Promotion_Operation_ID;
-        SheetsRepository.updateBy("Promotion_Operations", "Promotion_Operation_ID", operationId, { Operation_Status: "APPLYING", Started_At: now_() });
-      }
-
-      var counts = { products: 0, variants: 0, specifications: 0, changes: 0, rejected: 0, skipped: 0 };
-      var productIds = {};
-      var variantIds = {};
-      var variantParentIds = {};
-      var variantSourceIds = {};
-      var productSourceIds = {};
-      var productDecisionIds = {};
-
-      staging.products.forEach(function (product) {
-        if (!accepted_(product)) { counts.rejected += 1; return; }
-        var sourceKey = text_(catalogId + "|" + product.catalog_page_id + "|" + product.proposed_product_name, 160);
-        var identityResolution = text_(product.identity_resolution || "", 30).toUpperCase();
-        require_(identityResolution === "CREATE_NEW" || identityResolution === "MATCH_EXISTING", "PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID");
-        var canonicalCandidateId = text_(product.canonical_product_id || "", 160);
-        if (identityResolution === "MATCH_EXISTING") {
-          require_(canonicalCandidateId, "PROMOTION_MATCH_PRODUCT_ID_REQUIRED");
-          var matchedCanonicalProduct = existingBy_("Products", "Product_ID", canonicalCandidateId);
-          require_(matchedCanonicalProduct && matchedCanonicalProduct.Lifecycle_Status === "ACTIVE", "PROMOTION_MATCH_PRODUCT_NOT_ACTIVE");
-        } else {
-          require_(!canonicalCandidateId, "PROMOTION_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
-        }
-        var productId = identityResolution === "MATCH_EXISTING"
-          ? canonicalCandidateId : stableId_("prd", sourceKey);
-        var existingSource = existingBy_("Product_Source_Records", "Source_Record_Key", sourceKey);
-        if (existingSource) {
-          require_(existingSource.Product_ID === productId, "PROMOTION_EXISTING_SOURCE_PRODUCT_CONFLICT");
-          productIds[product.staging_id] = existingSource.Product_ID;
-          productSourceIds[product.staging_id] = existingSource.Product_Source_Record_ID;
-          productDecisionIds[product.staging_id] = existingSource.Match_Decision_ID;
-          counts.skipped += 1;
-          return;
-        }
-        var hash = product.staging_record_hash || sha_(product.staging_id);
-        var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor, "",
-          identityResolution, canonicalCandidateId, product.match_rationale);
-        if (identityResolution === "CREATE_NEW") {
-          if (!existingBy_("Products", "Product_ID", productId)) {
-            appendOnce_("Products", {
-              Product_ID: productId, Lifecycle_Status: "ACTIVE",
-              Canonical_Notes: "",
-              Created_At: now_(), Created_By: actor
-            });
-            counts.products += 1;
-          }
-          if (!existingBy_("Product_Company", "Product_ID", productId)) {
-            appendOnce_("Product_Company", {
-              Product_ID: productId, Product_Name_EN: "", Product_Name_AR: "",
-              Company_Description: "", Manufacturer_or_Product_Brand_Label: "",
-              Product_Family_ID: "", Company_Notes: "",
-              Updated_At: now_(), Updated_By: actor
-            });
-          }
-        }
-        var sourceId = stableId_("psr", sourceKey);
-        appendOnce_("Product_Source_Records", {
-          Product_Source_Record_ID: sourceId, Product_ID: productId, Catalog_ID: catalogId,
-          Source_Record_Key: sourceKey, Source_Key_Algorithm_Version: keyVersion,
-          Source_Product_Name: text_(product.proposed_product_name, 300),
-          Catalog_Page_ID: product.catalog_page_id, Source_Quote: text_(product.source_quote, 2000),
-          Extraction_Run_ID: runId, Extraction_Record_ID: product.staging_id,
-          Identity_Resolution: identityResolution, Match_Decision_ID: decision.Match_Decision_ID,
-          Created_At: now_(), Created_By: actor
-        });
-        mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT", productId, "PRODUCT", productId, decision.Match_Decision_ID, product);
-        mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT_SOURCE_RECORD", sourceId, "PRODUCT", productId, decision.Match_Decision_ID, product);
-        audit_(actor, "PROMOTE", "PRODUCT", productId, "Accepted staging product using " + identityResolution, runId, product);
-        productIds[product.staging_id] = productId;
-        productSourceIds[product.staging_id] = sourceId;
-        productDecisionIds[product.staging_id] = decision.Match_Decision_ID;
-      });
-
-      staging.variants.forEach(function (variant) {
-        if (!accepted_(variant)) { counts.rejected += 1; return; }
-        var productId = productIds[variant.parent_staging_product_id];
-        if (!productId) { counts.skipped += 1; return; }
-        var sourceKey = text_(productId + "|" + variant.proposed_model_number, 160);
-        var variantId = stableId_("var", sourceKey);
-        var existingSource = existingBy_("Variant_Source_Records", "Source_Record_Key", sourceKey);
-        if (existingSource) {
-          variantIds[variant.staging_id] = existingSource.Variant_ID;
-          variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
-          variantSourceIds[variant.staging_id] = existingSource.Variant_Source_Record_ID;
-          counts.skipped += 1;
-          return;
-        }
-        var hash = variant.staging_record_hash || sha_(variant.staging_id);
-        var decision = decision_("VARIANT", "STAGING_VARIANT", variant.staging_id, hash, variantId, actor, productDecisionIds[variant.parent_staging_product_id]);
-        if (!existingBy_("Variants", "Variant_ID", variantId)) {
-          appendOnce_("Variants", {
-            Variant_ID: variantId, Product_ID: productId, Lifecycle_Status: "ACTIVE",
-            Canonical_Notes: text_(variant.proposed_model_number, 2000),
-            Created_At: now_(), Created_By: actor
-          });
-          counts.variants += 1;
-        }
-        var sourceId = stableId_("vsr", sourceKey);
-        appendOnce_("Variant_Source_Records", {
-          Variant_Source_Record_ID: sourceId, Variant_ID: variantId,
-          Product_Source_Record_ID: productSourceIds[variant.parent_staging_product_id],
-          Source_Record_Key: sourceKey, Source_Key_Algorithm_Version: keyVersion,
-          Source_Model_Number: text_(variant.proposed_model_number, 160),
-          Source_Model_Name: text_(variant.proposed_model_name || variant.proposed_model_number, 250),
-          Catalog_Page_ID: variant.catalog_page_id, Source_Quote: text_(variant.source_quote, 2000),
-          Extraction_Run_ID: runId, Extraction_Record_ID: variant.staging_id,
-          Identity_Resolution: "CREATE_NEW", Match_Decision_ID: decision.Match_Decision_ID,
-          Created_At: now_(), Created_By: actor
-        });
-        mapping_(operationId, "VARIANT", variant.staging_id, "VARIANT", variantId, "VARIANT", variantId, decision.Match_Decision_ID, variant);
-        mapping_(operationId, "VARIANT", variant.staging_id, "VARIANT_SOURCE_RECORD", sourceId, "VARIANT", variantId, decision.Match_Decision_ID, variant);
-        audit_(actor, "PROMOTE", "VARIANT", variantId, "Accepted staging variant", runId, variant);
-        variantIds[variant.staging_id] = variantId;
-        variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
-        variantSourceIds[variant.staging_id] = sourceId;
-      });
-
-      staging.specifications.forEach(function (spec) {
-        if (!accepted_(spec)) { counts.rejected += 1; return; }
-        var productId = productIds[spec.parent_staging_product_id];
-        var scope = text_(spec.scope, 20).toUpperCase();
-        var variantId = "";
-        var productSourceRecordId = "";
-        var variantSourceRecordId = "";
-        var canonicalEntityType = "PRODUCT";
-        var canonicalEntityId = productId;
-        require_(productId, "PROMOTION_SPEC_PRODUCT_PARENT_MISSING");
-        if (scope === "PRODUCT") {
-          require_(!spec.parent_staging_variant_id, "PROMOTION_SPEC_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
-          productSourceRecordId = productSourceIds[spec.parent_staging_product_id];
-          require_(productSourceRecordId, "PROMOTION_SPEC_PRODUCT_SOURCE_MISSING");
-        } else if (scope === "VARIANT") {
-          variantId = variantIds[spec.parent_staging_variant_id];
-          require_(variantId, "PROMOTION_SPEC_VARIANT_PARENT_MISSING");
-          require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
-          variantSourceRecordId = variantSourceIds[spec.parent_staging_variant_id];
-          require_(variantSourceRecordId, "PROMOTION_SPEC_VARIANT_SOURCE_MISSING");
-          canonicalEntityType = "VARIANT";
-          canonicalEntityId = variantId;
-        } else {
-          require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
-        }
-        var original = text_(sourceValue_(spec), 2000);
-        var originalUnit = spec.edited && Object.prototype.hasOwnProperty.call(spec, "original_unit_raw")
-          ? text_(spec.original_unit_raw, 80) : text_(spec.unit_raw, 80);
-        var finalUnit = text_(spec.unit_raw, 80);
-        var sourceAssertionKey = text_(spec.source_assertion_key || spec.staging_id, 160);
-        var sourceRecordId = scope === "PRODUCT" ? productSourceRecordId : variantSourceRecordId;
-        var logicalAddKey = text_("ADD:" + canonicalEntityId + "|" + spec.attribute_key_raw, 180);
-        if (original) {
-          var specId = stableId_("spec", sourceRecordId + "|" + sourceAssertionKey);
-          if (!existingBy_("Specifications", "Specification_ID", specId)) {
-            appendOnce_("Specifications", {
-              Specification_ID: specId, Source_Assertion_Key: sourceAssertionKey,
-              Source_Key_Algorithm_Version: keyVersion, Scope: scope,
-              Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
-              Product_ID: productId, Variant_ID: variantId,
-              Attribute_Key_Source: text_(spec.attribute_key_raw, 160),
-              Attribute_Value_Source: original, Unit_Source: originalUnit,
-              Normalized_Key: text_(spec.normalized_key || spec.attribute_key_raw, 160),
-              Normalized_Value_JSON: json_(original),
-              Normalized_Unit: text_(spec.normalized_unit || originalUnit, 80),
-              Catalog_Page_ID: spec.catalog_page_id, Source_Quote: text_(spec.source_quote, 2000),
-              Extraction_Run_ID: runId, Extraction_Confidence: confidence_(spec.confidence),
-              Created_At: now_(), Created_By: actor
-            });
-            counts.specifications += 1;
-            audit_(actor, "PROMOTE", "SPECIFICATION", specId, "Accepted source specification", runId, spec);
-          } else counts.skipped += 1;
-          mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
-          if (spec.edited && (text_(spec.value_raw, 2000) !== original || finalUnit !== originalUnit)) {
-            var changePayload = {
-              before: { value: original, unit: originalUnit },
-              after: { value: text_(spec.value_raw, 2000), unit: finalUnit }
-            };
-            var logicalSourceKey = "SRC:" + specId;
-            var changeId = stableId_("chg", logicalSourceKey + "|" + json_(changePayload));
-            if (!existingBy_("Specification_Changes", "Specification_Change_ID", changeId)) {
-              appendOnce_("Specification_Changes", {
-                Specification_Change_ID: changeId, Logical_Specification_Key: logicalSourceKey,
-                Sequence_No: 1, Operation: "UPDATE", Target_Specification_ID: specId,
-                Product_ID: productId, Variant_ID: variantId,
-                Attribute_Key: text_(spec.attribute_key_raw, 160),
-                Value_JSON: json_(spec.value_raw), Unit_Code: text_(spec.unit_raw, 40),
-                Change_Status: "APPROVED", Reason: text_(spec.edit_reason || "Accepted reviewer edit", 1000),
-                Created_At: now_(), Created_By: actor, Approved_At: now_(), Approved_By: actor,
-                Approval_Payload_SHA256: sha_(json_(changePayload))
-              });
-              counts.changes += 1;
-            }
-          }
-        } else if (text_(spec.value_raw, 2000)) {
-          var addId = stableId_("chg", logicalAddKey + "|" + spec.value_raw);
-          if (!existingBy_("Specification_Changes", "Specification_Change_ID", addId)) {
-            appendOnce_("Specification_Changes", {
-              Specification_Change_ID: addId, Logical_Specification_Key: logicalAddKey,
-              Sequence_No: 1, Operation: "ADD", Product_ID: productId, Variant_ID: variantId,
-              Attribute_Key: text_(spec.attribute_key_raw, 160), Value_JSON: json_(spec.value_raw),
-              Unit_Code: text_(spec.unit_raw, 40), Change_Status: "APPROVED",
-              Reason: "Reviewer supplied a value missing from source.",
-              Created_At: now_(), Created_By: actor, Approved_At: now_(), Approved_By: actor,
-              Approval_Payload_SHA256: sha_(json_({ after: spec.value_raw }))
-            });
-            counts.changes += 1;
-          }
-        } else counts.skipped += 1;
-      });
-
-      SheetsRepository.updateBy("Promotion_Operations", "Promotion_Operation_ID", operationId, {
-        Operation_Status: "COMPLETED", Finished_At: now_()
-      });
-      return { promotion_operation_id: operationId, status: "COMPLETED", counts: counts, skipped: false };
-    } catch (err) {
-      try {
-        if (existingBy_("Promotion_Operations", "Promotion_Operation_ID", operationId)) {
-          SheetsRepository.updateBy("Promotion_Operations", "Promotion_Operation_ID", operationId, {
-            Operation_Status: "IN_DOUBT", Recovery_Notes: text_(String(err && err.message || err), 1500)
-          });
-        }
-      } catch (statusErr) {}
-      throw err;
-    } finally {
-      lock.releaseLock();
-    }
-  }
-
-  return { promoteReviewedStaging: promoteReviewedStaging };
-})();
-
-
-// ===== domain/ImagePromotion.js =====
-/** Secure image promotion.
- * The browser supplies only a Review_Queue_ID. All image metadata and approval
- * facts are loaded from server-side Sheets/Drive records and verified here.
- */
-var ImagePromotion = (function () {
-  var SHA_RE = /^[a-f0-9]{64}$/;
-  function fail_(code) { throw new Error(code); }
-  function require_(ok, code) { if (!ok) fail_(code); }
-  function now_() { return new Date().toISOString(); }
-  function sha_(value) {
-    var bytes = typeof value === "string" ? Utilities.newBlob(value, "text/plain").getBytes() : value;
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
-      var n = b < 0 ? b + 256 : b, h = n.toString(16);
-      return h.length === 1 ? "0" + h : h;
-    }).join("");
-  }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
-  function text_(v, code, max) {
-    require_(typeof v === "string" && v.trim().length > 0, code);
-    var s = v.trim(); require_(s.length <= max, code); return s;
-  }
-  function canonical_(value) {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-    if (typeof value === "number") { require_(isFinite(value), "IMAGE_SOURCE_MANIFEST_INVALID"); return value; }
-    if (Array.isArray(value)) return value.map(canonical_);
-    if (value && Object.prototype.toString.call(value) === "[object Object]") {
-      var out = {};
-      Object.keys(value).sort().forEach(function (key) {
-        require_(value[key] !== undefined, "IMAGE_SOURCE_MANIFEST_INVALID");
-        out[key] = canonical_(value[key]);
-      });
-      return out;
-    }
-    fail_("IMAGE_SOURCE_MANIFEST_INVALID");
-  }
-  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
-  function withoutKey_(value, key) {
-    var out = {};
-    Object.keys(value).forEach(function (name) { if (name !== key) out[name] = value[name]; });
-    return out;
-  }
-  function verifyImageSource_(staging, digest, width, height, size, mime) {
-    var metadata;
-    try { metadata = JSON.parse(String(staging.Extracted_Text || "")); } catch (e) { fail_("IMAGE_SOURCE_METADATA_INVALID"); }
-    require_(metadata && SHA_RE.test(String(metadata.source_manifest_sha256 || "")), "IMAGE_SOURCE_MANIFEST_SHA_MISSING");
-    require_(SHA_RE.test(String(metadata.source_manifest_internal_sha256 || "")), "IMAGE_SOURCE_MANIFEST_CHECKSUM_MISSING");
-    var file;
-    try { file = DriveApp.getFileById(staging.Raw_Extract_File_ID); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_NOT_FOUND"); }
-    var raw = file.getBlob().getBytes();
-    require_(sha_(raw) === metadata.source_manifest_sha256, "IMAGE_SOURCE_MANIFEST_SHA_MISMATCH");
-    var manifest;
-    try { manifest = JSON.parse(file.getBlob().getDataAsString("UTF-8")); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_INVALID"); }
-    require_(manifest && manifest.manifest_version === 1 && Array.isArray(manifest.images), "IMAGE_SOURCE_MANIFEST_INVALID");
-    require_(manifest.manifest_sha256 === metadata.source_manifest_internal_sha256, "IMAGE_SOURCE_MANIFEST_IDENTITY_MISMATCH");
-    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(manifest, "manifest_sha256")), "application/json").getBytes()) === manifest.manifest_sha256,
-      "IMAGE_SOURCE_MANIFEST_CHECKSUM_INVALID");
-    require_(manifest.catalog_id === staging.Catalog_ID && manifest.run_id === staging.Run_ID, "IMAGE_SOURCE_MANIFEST_SCOPE_MISMATCH");
-    var matches = manifest.images.filter(function (img) {
-      return img && img.sha256 === digest && img.artifact_path === metadata.artifact_path;
-    });
-    require_(matches.length === 1, "IMAGE_SOURCE_RECORD_NOT_UNIQUE");
-    var source = matches[0];
-    var sourceCopy = withoutKey_(withoutKey_(source, "drive_file_id"), "drive_sha256");
-    require_(SHA_RE.test(String(source.output_sha256 || "")), "IMAGE_SOURCE_RECORD_CHECKSUM_MISSING");
-    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(sourceCopy, "output_sha256")), "application/json").getBytes()) === source.output_sha256,
-      "IMAGE_SOURCE_RECORD_CHECKSUM_INVALID");
-    require_(source.metadata_status === "COMPLETED", "IMAGE_SOURCE_METADATA_INCOMPLETE");
-    require_(typeof source.has_alpha === "boolean", "IMAGE_SOURCE_ALPHA_METADATA_MISSING");
-    require_(Number(source.width_px) === width && Number(source.height_px) === height, "IMAGE_SOURCE_DIMENSIONS_MISMATCH");
-    require_(Number(source.file_size_bytes) === size && source.mime_type === mime, "IMAGE_SOURCE_FILE_METADATA_MISMATCH");
-    require_(source.sha256 === digest, "IMAGE_SOURCE_DIGEST_MISMATCH");
-    require_(metadata.image_output_sha256 === source.output_sha256, "IMAGE_SOURCE_STAGING_CHECKSUM_MISMATCH");
-    require_(metadata.artifact_path === source.artifact_path, "IMAGE_SOURCE_ARTIFACT_PATH_MISMATCH");
-    require_(metadata.has_alpha === source.has_alpha, "IMAGE_SOURCE_ALPHA_MISMATCH");
-    return source;
-  }
-  function promoteReviewedImage(options) {
-    require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-    var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
-    require_(review, "IMAGE_REVIEW_NOT_FOUND");
-    require_(review.Review_Type === "IMAGE_QUALITY", "IMAGE_REVIEW_TYPE_INVALID");
-    require_(review.Review_Status === "APPROVED", "IMAGE_REVIEW_NOT_APPROVED");
-    require_(review.Decision_JSON_File_ID && SHA_RE.test(String(review.Decision_SHA256 || "")), "IMAGE_DECISION_EVIDENCE_MISSING");
-    require_(review.Reviewed_Payload_Hash && SHA_RE.test(String(review.Reviewed_Payload_Hash)), "IMAGE_REVIEWED_HASH_MISSING");
-    require_(review.Reviewed_By && review.Reviewed_At, "IMAGE_REVIEW_ACTOR_OR_TIME_MISSING");
-
-    var decisionFile;
-    try { decisionFile = DriveApp.getFileById(review.Decision_JSON_File_ID); } catch (e) { fail_("IMAGE_DECISION_FILE_NOT_FOUND"); }
-    var decisionBytes = decisionFile.getBlob().getBytes();
-    require_(sha_(decisionBytes) === review.Decision_SHA256, "IMAGE_DECISION_FILE_SHA_MISMATCH");
-    var decision;
-    try { decision = JSON.parse(decisionFile.getBlob().getDataAsString("UTF-8")); } catch (e) { fail_("IMAGE_DECISION_JSON_INVALID"); }
-    require_(decision && decision.schema_version === 1, "IMAGE_DECISION_SCHEMA_INVALID");
-    require_(decision.review_queue_id === review.Review_Queue_ID, "IMAGE_DECISION_REVIEW_MISMATCH");
-    require_(decision.decision === "APPROVED", "IMAGE_DECISION_NOT_APPROVED");
-    require_(decision.reviewed_by === review.Reviewed_By, "IMAGE_DECISION_ACTOR_MISMATCH");
-    require_(String(decision.reviewed_at) === String(review.Reviewed_At instanceof Date ? review.Reviewed_At.toISOString() : review.Reviewed_At), "IMAGE_DECISION_TIME_MISMATCH");
-
-    var links = (SheetsRepository.listAll("Review_Staging_Links") || []).filter(function (r) {
-      return r.Review_Queue_ID === review.Review_Queue_ID && r.Review_Role === "PRIMARY";
-    });
-    require_(links.length === 1, "IMAGE_REVIEW_PRIMARY_STAGING_LINK_INVALID");
-    var staging = SheetsRepository.getBy("Staging_Images", "Staging_ID", links[0].Staging_ID);
-    require_(staging, "IMAGE_STAGING_NOT_FOUND");
-    require_(decision.staging_id === staging.Staging_ID, "IMAGE_DECISION_STAGING_MISMATCH");
-    require_(staging.Staging_Record_Hash === review.Reviewed_Payload_Hash, "IMAGE_STAGING_REVIEW_HASH_MISMATCH");
-    require_(decision.reviewed_payload_sha256 === staging.Staging_Record_Hash, "IMAGE_DECISION_PAYLOAD_HASH_MISMATCH");
-
-    var targetType = text_(decision.target_type, "IMAGE_DECISION_TARGET_TYPE_REQUIRED", 20);
-    var targetId = text_(decision.target_id, "IMAGE_DECISION_TARGET_ID_REQUIRED", 120);
-    require_(targetType === "PRODUCT" || targetType === "VARIANT", "IMAGE_DECISION_TARGET_TYPE_INVALID");
-    require_(typeof decision.catalog_approved === "boolean" && typeof decision.datasheet_approved === "boolean", "IMAGE_DECISION_APPROVAL_FLAGS_INVALID");
-    require_(decision.catalog_approved || decision.datasheet_approved, "IMAGE_DECISION_HAS_NO_USAGE_APPROVAL");
-    var mime = text_(staging.MIME_Type, "IMAGE_STAGING_MIME_MISSING", 100).toLowerCase();
-    var allowed = {"image/jpeg":1,"image/png":1,"image/webp":1,"image/gif":1,"image/tiff":1,"image/bmp":1,"image/jp2":1,"image/jpx":1,"image/x-ms-bmp":1};
-    require_(allowed[mime] === 1, "IMAGE_STAGING_MIME_UNSUPPORTED");
-    var width = Number(staging.Width_PX), height = Number(staging.Height_PX), size = Number(staging.File_Size_Bytes);
-    require_(Number.isSafeInteger(width) && width > 0 && width <= 50000, "IMAGE_WIDTH_INVALID");
-    require_(Number.isSafeInteger(height) && height > 0 && height <= 50000, "IMAGE_HEIGHT_INVALID");
-    require_(width * height <= 100000000, "IMAGE_PIXEL_LIMIT_EXCEEDED");
-    require_(Number.isSafeInteger(size) && size > 0 && size <= 26214400, "IMAGE_SIZE_INVALID");
-    var digest = text_(staging.SHA256, "IMAGE_SHA_MISSING", 64).toLowerCase();
-    require_(SHA_RE.test(digest), "IMAGE_SHA_INVALID");
-    var sourceImage = verifyImageSource_(staging, digest, width, height, size, mime);
-    var driveId = text_(staging.Proposed_Image_File_ID, "IMAGE_DRIVE_FILE_ID_MISSING", 200);
-    require_(/^[A-Za-z0-9_-]{10,200}$/.test(driveId), "IMAGE_DRIVE_FILE_ID_INVALID");
-    var driveFile;
-    try { driveFile = DriveApp.getFileById(driveId); } catch (e) { fail_("IMAGE_DRIVE_FILE_NOT_FOUND"); }
-    require_(driveFile.getSize() === size, "IMAGE_DRIVE_SIZE_MISMATCH");
-    require_(driveFile.getMimeType() === mime, "IMAGE_DRIVE_MIME_MISMATCH");
-    require_(sha_(driveFile.getBlob().getBytes()) === digest, "IMAGE_DRIVE_SHA_MISMATCH");
-
-    var imageId = stableId_("img", digest);
-    var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", imageId);
-    if (!asset) {
-      SheetsRepository.append("Image_Assets", {
-        Image_ID: imageId, Original_File_ID: driveId,
-        Original_File_Name: text_(staging.Original_File_Name, "IMAGE_NAME_MISSING", 255),
-        MIME_Type: mime, Width_PX: width, Height_PX: height,
-        File_Size_Bytes: size, Has_Alpha: sourceImage.has_alpha,
-        Color_Space: ["SRGB", "DISPLAY_P3", "CMYK", "GRAYSCALE", "UNKNOWN"].indexOf(sourceImage.color_space) >= 0 ? sourceImage.color_space : "UNKNOWN",
-        Orientation: ["NORMALIZED", "EXIF_ROTATED", "UNKNOWN"].indexOf(sourceImage.orientation) >= 0 ? sourceImage.orientation : "UNKNOWN",
-        SHA256: digest,
-        Source_Type: "CATALOG_EMBEDDED", Source_Catalog_ID: staging.Catalog_ID,
-        Source_Catalog_Page_ID: staging.Catalog_Page_ID || "",
-        Source_Page_Label: sourceImage.page_number ? String(sourceImage.page_number) : "",
-        Quality_Status: "ACCEPTABLE", Lifecycle_Status: "ACTIVE",
-        Created_At: now_(), Created_By: options.actor || APP.ACTOR_ID
-      });
-    } else {
-      require_(asset.SHA256 === digest && asset.Original_File_ID === driveId, "IMAGE_ASSET_IDENTITY_CONFLICT");
-    }
-
-    var link = ImageManagement.linkToTarget(imageId, targetType, targetId, {
-      actor: options.actor || APP.ACTOR_ID,
-      catalogApproved: decision.catalog_approved,
-      dataSheetApproved: decision.datasheet_approved,
-      linkStatus: "ACTIVE",
-      isPrimary: false,
-      catalogOrder: Number.isSafeInteger(decision.catalog_order) ? decision.catalog_order : 0,
-      dataSheetOrder: Number.isSafeInteger(decision.datasheet_order) ? decision.datasheet_order : 0
-    });
-    // Idempotent replay also repairs a previously-created candidate link instead
-    // of treating its existence as proof that it is already publication-ready.
-    ImageManagement.setApproval(link.linkId, {
-      actor: options.actor || APP.ACTOR_ID,
-      catalogApproved: decision.catalog_approved,
-      dataSheetApproved: decision.datasheet_approved,
-      linkStatus: "ACTIVE"
-    });
-    if (decision.is_primary === true) ImageManagement.setPrimary(link.linkId, options.actor || APP.ACTOR_ID);
-    SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, {
-      Proposed_Status: "PROMOTED",
-      Quality_Status: "ACCEPTABLE",
-      Updated_At: now_()
-    });
-    return { status: "COMPLETED", reviewQueueId: review.Review_Queue_ID, stagingId: staging.Staging_ID, imageId: imageId, link: link };
-    } finally {
-      lock.releaseLock();
-    }
-  }
-  return { promoteReviewedImage: promoteReviewedImage };
-})();
-
-
-// ===== domain/ImageReviewIntake.js =====
-/** Image Review Intake
- *
- * Verifies the worker's immutable image manifests and Drive objects, then
- * idempotently creates Staging_Images, Review_Queue and Review_Staging_Links.
- *
- * Deliberately does not write Image_Assets/Image_Links, associate products,
- * or invoke ImagePromotion.
- */
-var ImageReviewIntake = (function () {
-  var SHA_RE = /^[a-f0-9]{64}$/;
-  var DRIVE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
-
-  function fail_(code) { throw new Error(code); }
-  function require_(condition, code) { if (!condition) fail_(code); }
-  function now_() { return new Date().toISOString(); }
-
-  function bytes_(value) {
-    return typeof value === "string" ? Utilities.newBlob(value, "application/json").getBytes() : value;
-  }
-  function sha_(value) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes_(value)).map(function (b) {
-      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
-      return hex.length === 1 ? "0" + hex : hex;
-    }).join("");
-  }
-
-  // Matches worker.images.canonical_json_bytes: UTF-8 JSON, sorted object keys,
-  // compact separators, non-ASCII characters retained.
-  function canonical_(value) {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-    if (typeof value === "number") {
-      if (!isFinite(value)) fail_("MANIFEST_NONFINITE_NUMBER");
-      return value;
-    }
-    if (Array.isArray(value)) return value.map(canonical_);
-    if (value && Object.prototype.toString.call(value) === "[object Object]") {
-      var out = {};
-      Object.keys(value).sort().forEach(function (key) {
-        if (value[key] === undefined) fail_("MANIFEST_UNDEFINED_VALUE");
-        out[key] = canonical_(value[key]);
-      });
-      return out;
-    }
-    fail_("MANIFEST_VALUE_UNSUPPORTED");
-  }
-  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
-  function withoutKey_(value, key) {
-    var out = {};
-    Object.keys(value).forEach(function (name) { if (name !== key) out[name] = value[name]; });
-    return out;
-  }
-  function verifyRecordHash_(record, hashField, errorCode) {
-    require_(record && typeof record[hashField] === "string" && SHA_RE.test(record[hashField]), errorCode);
-    require_(sha_(canonicalJson_(withoutKey_(record, hashField))) === record[hashField], errorCode);
-  }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 24); }
-  function requireText_(value, code, maxLength) {
-    require_(typeof value === "string" && value.trim().length > 0, code);
-    var result = value.trim();
-    if (maxLength) require_(result.length <= maxLength, code);
-    return result;
-  }
-  function requireInteger_(value, code, minimum) {
-    require_(typeof value === "number" && Number.isSafeInteger(value) && value >= minimum, code);
-    return value;
-  }
-  function idValid_(value) { return typeof value === "string" && DRIVE_ID_RE.test(value); }
-
-  function loadManifest_(fileId, expectedSha, kind) {
-    require_(idValid_(fileId), "MANIFEST_FILE_ID_INVALID");
-    var file;
-    try { file = DriveApp.getFileById(fileId); } catch (e) { fail_("MANIFEST_FILE_NOT_FOUND"); }
-    require_(file, "MANIFEST_FILE_NOT_FOUND");
-    var blob = file.getBlob();
-    var rawBytes = blob.getBytes();
-    var rawSha = sha_(rawBytes);
-    if (expectedSha) {
-      require_(typeof expectedSha === "string" && SHA_RE.test(expectedSha), "MANIFEST_EXPECTED_SHA_INVALID");
-      require_(rawSha === expectedSha, "MANIFEST_FILE_SHA_MISMATCH");
-    }
-    var data;
-    try { data = JSON.parse(blob.getDataAsString("UTF-8")); } catch (e) { fail_("MANIFEST_INVALID_JSON"); }
-    require_(data && Object.prototype.toString.call(data) === "[object Object]", "MANIFEST_STRUCTURE_INVALID");
-    verifyRecordHash_(data, "manifest_sha256", "MANIFEST_CHECKSUM_INVALID");
-    require_(data.manifest_version === 1, "MANIFEST_VERSION_UNSUPPORTED");
-    requireText_(data.catalog_id, "MANIFEST_CATALOG_INVALID", 120);
-    requireText_(data.run_id, "MANIFEST_RUN_INVALID", 120);
-    if (kind === "image") {
-      require_(Array.isArray(data.images), "IMAGE_MANIFEST_IMAGES_INVALID");
-      require_(data.image_count === data.images.length, "IMAGE_MANIFEST_COUNT_MISMATCH");
-      data.images.forEach(function (image) {
-        require_(image && Object.prototype.toString.call(image) === "[object Object]", "IMAGE_RECORD_INVALID");
-        // Runner adds Drive pointers after extraction. The per-image worker
-        // checksum intentionally covers the immutable extraction record only.
-        var sourceImage = withoutKey_(withoutKey_(image, "drive_file_id"), "drive_sha256");
-        verifyRecordHash_(sourceImage, "output_sha256", "IMAGE_RECORD_CHECKSUM_INVALID");
-      });
-    } else {
-      require_(Array.isArray(data.images), "DRIVE_MANIFEST_IMAGES_INVALID");
-      require_(data.image_count === data.images.length, "DRIVE_MANIFEST_COUNT_MISMATCH");
-    }
-    return { data: data, sha: rawSha };
-  }
-
-  function verifyDriveManifest_(imageData, driveData) {
-    require_(driveData.catalog_id === imageData.catalog_id, "CATALOG_ID_MISMATCH");
-    require_(driveData.run_id === imageData.run_id, "RUN_ID_MISMATCH");
-    // The worker Drive manifest references the original extraction manifest.
-    // Runner enriches the separately published image manifest with Drive IDs;
-    // reconstruct the pre-enrichment manifest before comparing the source hash.
-    var sourceCopy = withoutKey_(withoutKey_(imageData, "manifest_sha256"), "enabled");
-    sourceCopy.images = imageData.images.map(function (image) {
-      return withoutKey_(withoutKey_(image, "drive_file_id"), "drive_sha256");
-    });
-    require_(driveData.source_manifest_sha256 === sha_(canonicalJson_(sourceCopy)), "SOURCE_MANIFEST_SHA_MISMATCH");
-    var counts = { UPLOADED: 0, REUSED: 0, FAILED: 0 };
-    var sourceKeys = {};
-    imageData.images.forEach(function (item) {
-      require_(item && SHA_RE.test(String(item.sha256 || "")), "IMAGE_RECORD_SHA_INVALID");
-      requireText_(item.artifact_path, "IMAGE_RECORD_PATH_INVALID", 500);
-      var sourceKey = item.sha256 + "|" + item.artifact_path;
-      require_(!sourceKeys[sourceKey], "IMAGE_RECORD_DUPLICATE");
-      sourceKeys[sourceKey] = true;
-    });
-    require_(driveData.images.length === imageData.images.length, "DRIVE_IMAGE_SET_COUNT_MISMATCH");
-    var seen = {};
-    driveData.images.forEach(function (item) {
-      require_(item && typeof item === "object", "DRIVE_IMAGE_RECORD_INVALID");
-      var status = item.upload_status;
-      require_(Object.prototype.hasOwnProperty.call(counts, status), "DRIVE_UPLOAD_STATUS_INVALID");
-      counts[status] += 1;
-      require_(SHA_RE.test(String(item.sha256 || "")), "DRIVE_IMAGE_SHA_INVALID");
-      requireText_(item.artifact_path, "DRIVE_IMAGE_PATH_INVALID", 500);
-      var key = item.sha256 + "|" + item.artifact_path;
-      require_(Object.prototype.hasOwnProperty.call(sourceKeys, key), "DRIVE_IMAGE_UNMATCHED");
-      require_(!seen[key], "DRIVE_IMAGE_DUPLICATE");
-      seen[key] = true;
-      if (status !== "FAILED") {
-        require_(idValid_(item.drive_file_id), "DRIVE_FILE_ID_INVALID");
-        require_(item.catalog_id === imageData.catalog_id && item.run_id === imageData.run_id, "DRIVE_IMAGE_IDENTITY_MISMATCH");
-      }
-    });
-    Object.keys(sourceKeys).forEach(function (key) {
-      require_(seen[key], "DRIVE_IMAGE_MISSING");
-    });
-    require_(driveData.uploaded_count === counts.UPLOADED &&
-      driveData.reused_count === counts.REUSED &&
-      driveData.failed_count === counts.FAILED &&
-      driveData.stored_count === counts.UPLOADED + counts.REUSED, "DRIVE_MANIFEST_COUNTER_MISMATCH");
-    var expectedOverall = counts.FAILED === 0 ? "COMPLETED" :
-      (counts.UPLOADED + counts.REUSED > 0 ? "PARTIAL" : "FAILED");
-    require_(driveData.overall_status === expectedOverall, "DRIVE_MANIFEST_STATUS_MISMATCH");
-  }
-
-  function verifyDriveFile_(driveFileId, expected) {
-    require_(idValid_(driveFileId), "DRIVE_FILE_ID_INVALID");
-    var file;
-    try { file = DriveApp.getFileById(driveFileId); } catch (e) { fail_("DRIVE_FILE_NOT_FOUND"); }
-    require_(file, "DRIVE_FILE_NOT_FOUND");
-    var size = file.getSize();
-    var mime = file.getMimeType();
-    require_(size === expected.file_size_bytes, "DRIVE_FILE_SIZE_MISMATCH");
-    require_(mime === expected.mime_type, "DRIVE_FILE_MIME_MISMATCH");
-    var actualSha = sha_(file.getBlob().getBytes());
-    require_(actualSha === expected.sha256, "DRIVE_FILE_SHA_MISMATCH");
-    return { size: size, mime: mime, sha256: actualSha };
-  }
-
-  function existingBy_(table, column, value) {
-    return SheetsRepository.getBy(table, column, value);
-  }
-  function compareExisting_(table, existing, expected, fields, code) {
-    fields.forEach(function (field) {
-      var actual = existing[field];
-      var wanted = expected[field];
-      if (actual instanceof Date && !isNaN(actual.getTime())) actual = actual.toISOString();
-      if (String(actual === undefined || actual === null ? "" : actual) !==
-          String(wanted === undefined || wanted === null ? "" : wanted)) fail_(code);
-    });
-  }
-  function ensureRecord_(table, idColumn, record, compareFields, conflictCode) {
-    var existing = existingBy_(table, idColumn, record[idColumn]);
-    if (existing) {
-      compareExisting_(table, existing, record, compareFields, conflictCode);
-      return false;
-    }
-    SheetsRepository.append(table, record);
-    return true;
-  }
-
-  function stagingHashPayload_(record) {
-    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
-      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
-      Candidate_Variant_ID: true, Image_Role: true };
-    var out = {};
-    Object.keys(record).forEach(function (key) { if (!mutable[key]) out[key] = record[key]; });
-    return out;
-  }
-
-  function buildStaging_(img, driveImage, options, catalogId, runId, stagingId) {
-    var name = requireText_(img.original_name, "IMAGE_ORIGINAL_NAME_MISSING", 255);
-    var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
-    var size = requireInteger_(img.file_size_bytes, "IMAGE_FILE_SIZE_INVALID", 1);
-    require_(driveImage.file_size_bytes === size, "DRIVE_MANIFEST_FILE_SIZE_MISMATCH");
-    require_(img.sha256 === driveImage.sha256, "DRIVE_MANIFEST_SHA_MISMATCH");
-    var record = {
-      Staging_ID: stagingId,
-      Run_ID: runId,
-      Catalog_ID: catalogId,
-      Raw_Extract_File_ID: options.imageManifestFileId,
-      Extraction_Method: "IMAGE_EXTRACTION",
-      Proposed_Status: "NEEDS_REVIEW",
-      Proposed_Image_File_ID: driveImage.drive_file_id,
-      Original_File_Name: name,
-      MIME_Type: mime,
-      File_Size_Bytes: size,
-      SHA256: img.sha256,
-      Quality_Status: "NEEDS_REVIEW"
-    };
-    if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
-    if (img.page_number !== null && img.page_number !== undefined) record.Page_Number = requireInteger_(img.page_number, "IMAGE_PAGE_NUMBER_INVALID", 1);
-    if (typeof img.has_alpha === "boolean") record.Has_Alpha = img.has_alpha;
-    if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
-      record.Extraction_Tool_Version = requireText_(img.extractor_version, "IMAGE_EXTRACTOR_VERSION_INVALID", 120);
-    }
-    if (img.width_px !== null && img.width_px !== undefined) record.Width_PX = requireInteger_(img.width_px, "IMAGE_WIDTH_INVALID", 1);
-    if (img.height_px !== null && img.height_px !== undefined) record.Height_PX = requireInteger_(img.height_px, "IMAGE_HEIGHT_INVALID", 1);
-    record.Staging_Record_Hash = sha_(canonicalJson_(stagingHashPayload_(record)));
-    record.Created_At = now_();
-    record.Updated_At = record.Created_At;
-    return record;
-  }
-
-  function intake(options) {
-    require_(options && idValid_(options.imageManifestFileId) && idValid_(options.driveManifestFileId), "INTAKE_ARGUMENTS_INVALID");
-    var imageManifest = loadManifest_(options.imageManifestFileId, options.imageManifestSha256, "image");
-    var driveManifest = loadManifest_(options.driveManifestFileId, options.driveManifestSha256, "drive");
-    var imgData = imageManifest.data, drvData = driveManifest.data;
-    verifyDriveManifest_(imgData, drvData);
-
-    var catalogId = requireText_(imgData.catalog_id, "CATALOG_OR_RUN_MISSING", 120);
-    var runId = requireText_(imgData.run_id, "CATALOG_OR_RUN_MISSING", 120);
-    var actor = requireText_(options.actor || APP.ACTOR_ID, "INTAKE_ACTOR_MISSING", 120);
-    var driveByKey = {};
-    drvData.images.forEach(function (item) {
-      if (item.upload_status !== "FAILED") driveByKey[item.sha256 + "|" + item.artifact_path] = item;
-    });
-    var sourceKeys = {};
-    imgData.images.forEach(function (item) {
-      require_(item && SHA_RE.test(String(item.sha256 || "")), "IMAGE_RECORD_SHA_INVALID");
-      requireText_(item.artifact_path, "IMAGE_RECORD_PATH_INVALID", 500);
-      var key = item.sha256 + "|" + item.artifact_path;
-      require_(!sourceKeys[key], "IMAGE_RECORD_DUPLICATE");
-      sourceKeys[key] = true;
-    });
-
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      var counts = { staging: 0, reviews: 0, links: 0, reused: 0, skipped: 0, failed: 0, conflicts: 0 };
-      var results = [];
-      imgData.images.forEach(function (img) {
-        var key = img.sha256 + "|" + img.artifact_path;
-        var driveImage = driveByKey[key];
-        if (!driveImage) {
-          counts.skipped += 1;
-          results.push({ sha256: img.sha256, status: "SKIPPED", reason: "DRIVE_UPLOAD_NOT_AVAILABLE" });
-          return;
-        }
-        try {
-          require_(driveImage.drive_file_id, "DRIVE_FILE_ID_MISSING");
-          require_(driveImage.sha256 === img.sha256, "DRIVE_IMAGE_SHA_MISMATCH");
-          if (img.drive_file_id) require_(img.drive_file_id === driveImage.drive_file_id, "DRIVE_FILE_ID_CONFLICT");
-          if (img.drive_sha256) require_(img.drive_sha256 === driveImage.sha256, "DRIVE_SHA_CONFLICT");
-          require_(driveImage.artifact_path === img.artifact_path, "DRIVE_IMAGE_PATH_MISMATCH");
-          var size = requireInteger_(img.file_size_bytes, "IMAGE_FILE_SIZE_INVALID", 1);
-          require_(driveImage.file_size_bytes === size, "DRIVE_MANIFEST_FILE_SIZE_MISMATCH");
-          var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
-          if (img.mime_type) require_(img.mime_type === mime, "IMAGE_MIME_TYPE_CONFLICT");
-          verifyDriveFile_(driveImage.drive_file_id, { file_size_bytes: size, mime_type: mime, sha256: img.sha256 });
-
-          var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
-          var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
-          var stagingFields = Object.keys(staging).filter(function (field) {
-            return ["Created_At", "Updated_At", "Proposed_Status", "Quality_Status",
-              "Candidate_Product_ID", "Candidate_Variant_ID", "Image_Role"].indexOf(field) < 0;
-          });
-          var stagingCreated = ensureRecord_("Staging_Images", "Staging_ID", staging, stagingFields, "STAGING_CONFLICT");
-          if (stagingCreated) counts.staging += 1;
-
-          var reviewId = stableId_("revimg", stagingId);
-          var review = {
-            Review_Queue_ID: reviewId,
-            Review_Type: "IMAGE_QUALITY",
-            Priority: "NORMAL",
-            Review_Status: "OPEN",
-            Proposed_Action: "Review image quality and decide whether it is suitable for use.",
-            Created_At: staging.Created_At,
-            Created_By: actor
-          };
-          // Review status and assignment may be changed by a human after creation;
-          // retries verify identity fields without resetting that human decision.
-          var reviewCreated = ensureRecord_("Review_Queue", "Review_Queue_ID", review,
-            ["Review_Type", "Priority", "Proposed_Action", "Created_By"], "REVIEW_QUEUE_CONFLICT");
-          if (reviewCreated) counts.reviews += 1;
-
-          var linkId = stableId_("rsl", reviewId + "|" + stagingId);
-          var link = {
-            Review_Staging_Link_ID: linkId,
-            Review_Queue_ID: reviewId,
-            Staging_ID: stagingId,
-            Review_Role: "PRIMARY",
-            Created_At: staging.Created_At,
-            Created_By: actor
-          };
-          var linkCreated = ensureRecord_("Review_Staging_Links", "Review_Staging_Link_ID", link,
-            ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"], "REVIEW_STAGING_LINK_CONFLICT");
-          if (linkCreated) counts.links += 1;
-
-          if (!stagingCreated && !reviewCreated && !linkCreated) counts.reused += 1;
-          results.push({
-            sha256: img.sha256, staging_id: stagingId, review_id: reviewId,
-            status: stagingCreated || reviewCreated || linkCreated ? "CREATED_OR_COMPLETED" : "REUSED"
-          });
-        } catch (err) {
-          var code = String(err && err.message ? err.message : "IMAGE_INTAKE_FAILED");
-          counts.failed += 1;
-          if (code.indexOf("CONFLICT") >= 0) counts.conflicts += 1;
-          results.push({ sha256: img.sha256, status: "FAILED", reason: code });
-        }
-      });
-      var finalStatus = counts.failed ? (counts.staging + counts.reviews + counts.links + counts.reused ? "PARTIAL" : "FAILED") : "COMPLETED";
-      return {
-        status: finalStatus,
-        catalog_id: catalogId,
-        run_id: runId,
-        counts: counts,
-        results: results
-      };
-    } finally {
-      lock.releaseLock();
-    }
-  }
-
-  return { intake: intake };
-})();
-
-
-// ===== domain/ImageReviewDecision.js =====
-/** Human image-review decision evidence writer.
- * The service derives the reviewed staging record from Review_Staging_Links;
- * clients cannot supply or replace the image metadata being approved.
- */
-var ImageReviewDecision = (function () {
-  function fail_(code) { throw new Error(code); }
-  function require_(ok, code) { if (!ok) fail_(code); }
-  function sha_(bytes) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
-      var n = b < 0 ? b + 256 : b, h = n.toString(16);
-      return h.length === 1 ? "0" + h : h;
-    }).join("");
-  }
-  function submit(options) {
-    require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
-    var allowedFields = ["reviewQueueId", "decision", "targetType", "targetId", "catalogApproved", "dataSheetApproved", "isPrimary", "catalogOrder", "dataSheetOrder"];
-    Object.keys(options).forEach(function (key) {
-      require_(allowedFields.indexOf(key) >= 0, "IMAGE_REVIEW_UNKNOWN_FIELD");
-    });
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-    var decision = options.decision;
-    require_(decision === "APPROVED" || decision === "REJECTED", "IMAGE_REVIEW_DECISION_INVALID");
-    var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
-    require_(review && review.Review_Type === "IMAGE_QUALITY", "IMAGE_REVIEW_NOT_FOUND");
-    require_(review.Review_Status === "OPEN" || review.Review_Status === "IN_REVIEW", "IMAGE_REVIEW_NOT_OPEN");
-    var links = (SheetsRepository.listAll("Review_Staging_Links") || []).filter(function (r) {
-      return r.Review_Queue_ID === review.Review_Queue_ID && r.Review_Role === "PRIMARY";
-    });
-    require_(links.length === 1, "IMAGE_REVIEW_PRIMARY_STAGING_LINK_INVALID");
-    var staging = SheetsRepository.getBy("Staging_Images", "Staging_ID", links[0].Staging_ID);
-    require_(staging && /^[a-f0-9]{64}$/.test(String(staging.Staging_Record_Hash || "")), "IMAGE_STAGING_HASH_INVALID");
-
-    var actor = APP.ACTOR_ID;
-    var timestamp = new Date().toISOString();
-    var record = {
-      schema_version: 1,
-      review_queue_id: review.Review_Queue_ID,
-      staging_id: staging.Staging_ID,
-      reviewed_payload_sha256: staging.Staging_Record_Hash,
-      decision: decision,
-      reviewed_by: actor,
-      reviewed_at: timestamp
-    };
-    if (decision === "APPROVED") {
-      require_(options.targetType === "PRODUCT" || options.targetType === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
-      require_(typeof options.targetId === "string" && options.targetId.trim(), "IMAGE_TARGET_ID_REQUIRED");
-      require_(typeof options.catalogApproved === "boolean" && typeof options.dataSheetApproved === "boolean", "IMAGE_APPROVAL_FLAGS_REQUIRED");
-      require_(options.catalogApproved || options.dataSheetApproved, "IMAGE_APPROVAL_USAGE_REQUIRED");
-      record.target_type = options.targetType;
-      record.target_id = options.targetId.trim();
-      record.catalog_approved = options.catalogApproved;
-      record.datasheet_approved = options.dataSheetApproved;
-      record.is_primary = options.isPrimary === true;
-      record.catalog_order = Number.isSafeInteger(options.catalogOrder) ? options.catalogOrder : 0;
-      record.datasheet_order = Number.isSafeInteger(options.dataSheetOrder) ? options.dataSheetOrder : 0;
-      // Validate target existence and parent-product integrity before recording approval.
-      if (record.target_type === "PRODUCT") {
-        var product = SheetsRepository.getBy("Products", "Product_ID", record.target_id);
-        require_(product && product.Lifecycle_Status === "ACTIVE", "IMAGE_TARGET_PRODUCT_INVALID");
-      } else {
-        var variant = SheetsRepository.getBy("Variants", "Variant_ID", record.target_id);
-        var parent = variant && SheetsRepository.getBy("Products", "Product_ID", variant.Product_ID);
-        require_(variant && variant.Lifecycle_Status === "ACTIVE" && parent && parent.Lifecycle_Status === "ACTIVE", "IMAGE_TARGET_VARIANT_INVALID");
-      }
-    }
-    var raw = JSON.stringify(record);
-    var blob = Utilities.newBlob(raw, "application/json", "image-review-" + review.Review_Queue_ID + ".json");
-    var file = DriveApp.createFile(blob);
-    var digest = sha_(file.getBlob().getBytes());
-    SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", review.Review_Queue_ID, {
-      Review_Status: decision === "APPROVED" ? "APPROVED" : "REJECTED",
-      Decision_JSON_File_ID: file.getId(),
-      Decision_SHA256: digest,
-      Reviewed_Payload_Hash: staging.Staging_Record_Hash,
-      Reviewed_At: timestamp,
-      Reviewed_By: actor
-    });
-    return { status: decision, reviewQueueId: review.Review_Queue_ID, decisionFileId: file.getId(), decisionSha256: digest };
-    } finally {
-      lock.releaseLock();
-    }
-  }
-  return { submit: submit };
-})();
-
-
-// ===== domain/ImageManagement.js =====
-/** Image Management — Phase 4
- *
- * Manages links and independent catalog/datasheet approval without changing
- * extracted source assets. Only ACTIVE links with the relevant approval are
- * returned for a publication use.
- */
-var ImageManagement = (function () {
-  function now_() { return new Date().toISOString(); }
-  function require_(condition, code) { if (!condition) throw new Error(code); }
-  function text_(value, limit) {
-    var t = value === undefined || value === null ? "" : String(value).trim();
-    require_(t.length > 0, "IMAGE_TEXT_REQUIRED");
-    require_(!limit || t.length <= limit, "IMAGE_TEXT_INVALID");
-    return t;
-  }
-  function sha_(value) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value)).map(function (b) {
-      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
-      return hex.length === 1 ? "0" + hex : hex;
-    }).join("");
-  }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(seed).slice(0, 16); }
-  function actor_(value) { return text_(value || APP.ACTOR_ID, 120); }
-
-  function getAsset_(imageId) {
-    var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", text_(imageId, 120));
-    require_(asset, "IMAGE_ASSET_NOT_FOUND");
-    require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
-    return asset;
-  }
-  function resolveTarget_(targetType, targetId) {
-    require_(targetType === "PRODUCT" || targetType === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
-    targetId = text_(targetId, 120);
-    if (targetType === "PRODUCT") {
-      var product = SheetsRepository.getBy("Products", "Product_ID", targetId);
-      require_(product, "PRODUCT_NOT_FOUND");
-      require_(product.Lifecycle_Status === "ACTIVE", "PRODUCT_NOT_ACTIVE");
-    } else {
-      var variant = SheetsRepository.getBy("Variants", "Variant_ID", targetId);
-      require_(variant, "VARIANT_NOT_FOUND");
-      require_(variant.Lifecycle_Status === "ACTIVE", "VARIANT_NOT_ACTIVE");
-      var parent = SheetsRepository.getBy("Products", "Product_ID", variant.Product_ID);
-      require_(parent && parent.Lifecycle_Status === "ACTIVE", "VARIANT_PARENT_PRODUCT_NOT_ACTIVE");
-    }
-    return { type: targetType, id: targetId };
-  }
-  function linkToTarget(imageId, targetType, targetId, options) {
-    options = options || {};
-    var asset = getAsset_(imageId);
-    var target = resolveTarget_(targetType, targetId);
-    var linkId = stableId_("imgl", asset.Image_ID + "|" + target.type + "|" + target.id);
-    var existing = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    if (existing) return { status: "EXISTS", linkId: linkId, imageId: asset.Image_ID, target: target };
-    var catalogApproved = options.catalogApproved === true;
-    var dataSheetApproved = options.dataSheetApproved === true;
-    var linkStatus = options.linkStatus || "CANDIDATE";
-    require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
-    if (linkStatus === "ACTIVE") {
-      require_(catalogApproved || dataSheetApproved, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
-    }
-    require_(!options.isPrimary || (linkStatus === "ACTIVE" && (catalogApproved || dataSheetApproved)),
-      "IMAGE_PRIMARY_REQUIRES_ACTIVE_APPROVAL");
-    var actor = actor_(options.actor);
-    SheetsRepository.append("Image_Links", {
-      Image_Link_ID: linkId, Image_ID: asset.Image_ID,
-      Target_Type: target.type, Target_ID: target.id,
-      Is_Primary: false,
-      Catalog_Approved: catalogApproved, DataSheet_Approved: dataSheetApproved,
-      Catalog_Order: Number(options.catalogOrder) || 0,
-      DataSheet_Order: Number(options.dataSheetOrder) || 0,
-      Link_Status: linkStatus, Created_At: now_(), Created_By: actor,
-      Updated_At: now_(), Updated_By: actor
-    });
-    if (options.isPrimary) setPrimary(linkId, actor);
-    return { status: "CREATED", linkId: linkId, imageId: asset.Image_ID, target: target };
-  }
-
-  function setApproval(linkId, approval) {
-    linkId = text_(linkId, 120);
-    approval = approval || {};
-    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    require_(link, "IMAGE_LINK_NOT_FOUND");
-    var asset = getAsset_(link.Image_ID);
-    var patch = { Updated_At: now_(), Updated_By: actor_(approval.actor) };
-    if (typeof approval.catalogApproved === "boolean") patch.Catalog_Approved = approval.catalogApproved;
-    if (typeof approval.dataSheetApproved === "boolean") patch.DataSheet_Approved = approval.dataSheetApproved;
-    if (approval.linkStatus !== undefined && approval.linkStatus !== null && approval.linkStatus !== "") {
-      require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(approval.linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
-      patch.Link_Status = approval.linkStatus;
-    }
-    var nextCatalog = Object.prototype.hasOwnProperty.call(patch, "Catalog_Approved") ? patch.Catalog_Approved : link.Catalog_Approved === true;
-    var nextSheet = Object.prototype.hasOwnProperty.call(patch, "DataSheet_Approved") ? patch.DataSheet_Approved : link.DataSheet_Approved === true;
-    var nextStatus = patch.Link_Status || link.Link_Status;
-    if (nextStatus === "ACTIVE") {
-      require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
-      require_(nextCatalog || nextSheet, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
-    }
-    if (nextStatus === "REJECTED" || nextStatus === "ARCHIVED") {
-      patch.Catalog_Approved = false;
-      patch.DataSheet_Approved = false;
-      patch.Is_Primary = false;
-    } else if (!nextCatalog && !nextSheet) {
-      patch.Is_Primary = false;
-    }
-    SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, patch);
-    return { status: "UPDATED", linkId: linkId, linkStatus: nextStatus };
-  }
-
-  function setPrimary(linkId, actor) {
-    linkId = text_(linkId, 120);
-    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    require_(link, "IMAGE_LINK_NOT_FOUND");
-    getAsset_(link.Image_ID);
-    require_(link.Link_Status === "ACTIVE", "IMAGE_LINK_NOT_ACTIVE");
-    require_(link.Catalog_Approved === true || link.DataSheet_Approved === true, "IMAGE_PRIMARY_REQUIRES_APPROVAL");
-    resolveTarget_(link.Target_Type, link.Target_ID);
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      var rows = SheetsRepository.listAll("Image_Links") || [];
-      var actorId = actor_(actor);
-      rows.forEach(function (row) {
-        if (row.Target_Type === link.Target_Type && row.Target_ID === link.Target_ID &&
-            row.Is_Primary === true && row.Image_Link_ID !== linkId) {
-          SheetsRepository.updateBy("Image_Links", "Image_Link_ID", row.Image_Link_ID, {
-            Is_Primary: false, Updated_At: now_(), Updated_By: actorId
-          });
-        }
-      });
-      SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, {
-        Is_Primary: true, Updated_At: now_(), Updated_By: actorId
-      });
-    } finally {
-      lock.releaseLock();
-    }
-    return { status: "PRIMARY_SET", linkId: linkId };
-  }
-
-  function sortImages_(items, orderField) {
-    items.sort(function (a, b) {
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      var diff = (Number(a[orderField]) || 0) - (Number(b[orderField]) || 0);
-      if (diff) return diff;
-      return String(a.imageId).localeCompare(String(b.imageId));
-    });
-    return items;
-  }
-  function project_(links, approvedField, orderField) {
-    var result = [];
-    links.forEach(function (link) {
-      if (link.Link_Status !== "ACTIVE" || link[approvedField] !== true) return;
-      var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", link.Image_ID);
-      if (!asset || asset.Lifecycle_Status !== "ACTIVE") return;
-      result.push({
-        imageId: asset.Image_ID, driveFileId: asset.Original_File_ID,
-        name: asset.Original_File_Name, mimeType: asset.MIME_Type,
-        width: asset.Width_PX, height: asset.Height_PX, sha256: asset.SHA256,
-        isPrimary: link.Is_Primary === true, catalogApproved: link.Catalog_Approved === true,
-        dataSheetApproved: link.DataSheet_Approved === true, linkStatus: link.Link_Status,
-        source: link.Target_Type, catalogOrder: Number(link.Catalog_Order) || 0,
-        dataSheetOrder: Number(link.DataSheet_Order) || 0
-      });
-    });
-    return sortImages_(result, orderField);
-  }
-  function getImagesForProduct(productId, variantId, usage) {
-    var product = resolveTarget_("PRODUCT", productId);
-    usage = usage || "ALL";
-    require_(["ALL", "CATALOG", "DATASHEET"].indexOf(usage) >= 0, "IMAGE_USAGE_INVALID");
-    var allLinks = SheetsRepository.listAll("Image_Links") || [];
-    var productLinks = allLinks.filter(function (l) {
-      return l.Target_Type === "PRODUCT" && l.Target_ID === product.id;
-    });
-    var variantLinks = [];
-    if (variantId) {
-      var variant = resolveTarget_("VARIANT", variantId);
-      require_(variant.id && SheetsRepository.getBy("Variants", "Variant_ID", variant.id).Product_ID === product.id,
-        "VARIANT_PRODUCT_MISMATCH");
-      variantLinks = allLinks.filter(function (l) {
-        return l.Target_Type === "VARIANT" && l.Target_ID === variant.id;
-      });
-    }
-    function select_(field, order) {
-      var variantImages = project_(variantLinks, field, order);
-      return variantImages.length ? variantImages : project_(productLinks, field, order);
-    }
-    var catalog = select_("Catalog_Approved", "catalogOrder");
-    var dataSheet = select_("DataSheet_Approved", "dataSheetOrder");
-    var images = usage === "CATALOG" ? catalog : usage === "DATASHEET" ? dataSheet :
-      catalog.concat(dataSheet.filter(function (item) {
-        return !catalog.some(function (c) { return c.imageId === item.imageId; });
-      }));
-    return { productId: product.id, variantId: variantId || null, usage: usage,
-      images: images, catalogImages: catalog, dataSheetImages: dataSheet, count: images.length };
-  }
-
-  function findDuplicateBySha256(sha256) {
-    require_(/^[a-f0-9]{64}$/i.test(String(sha256 || "")), "IMAGE_SHA256_INVALID");
-    var digest = String(sha256).toLowerCase();
-    var all = SheetsRepository.listAll("Image_Assets") || [];
-    for (var i = 0; i < all.length; i++) {
-      if (String(all[i].SHA256 || "").toLowerCase() === digest && all[i].Lifecycle_Status === "ACTIVE") {
-        return { duplicate: true, imageId: all[i].Image_ID, driveFileId: all[i].Original_File_ID };
-      }
-    }
-    return { duplicate: false };
-  }
-  return { linkToTarget: linkToTarget, setApproval: setApproval, setPrimary: setPrimary,
-    getImagesForProduct: getImagesForProduct, findDuplicateBySha256: findDuplicateBySha256 };
-})();
-
-
-// ===== domain/ReviewDashboard.js =====
-/** Read-only browser projection for the human review queue. */
-var ReviewDashboard = (function () {
-  function safeUrl_(fileId) {
-    if (!fileId || typeof fileId !== "string") return "";
-    try { return DriveApp.getFileById(fileId).getUrl(); } catch (err) { return ""; }
-  }
-  function index_(rows, key) {
-    var out = {};
-    (rows || []).forEach(function (row) { if (row && row[key]) out[String(row[key])] = row; });
-    return out;
-  }
-  function short_(value, limit) {
-    var s = value === null || value === undefined ? "" : String(value);
-    return s.length > limit ? s.slice(0, limit) + "…" : s;
-  }
-  function candidateSummary_(artifact) {
-    var set = artifact && artifact.product_candidates || {};
-    function pick(list, fields) {
-      return (Array.isArray(list) ? list : []).slice(0, 30).map(function (item) {
-        var out = {};
-        fields.forEach(function (field) {
-          if (item && item[field] !== undefined && item[field] !== null) out[field] = short_(item[field], 500);
-        });
-        return out;
-      });
-    }
-    return {
-      products: pick(set.products, ["proposed_product_name", "proposed_product_reference", "source_quote", "confidence"]),
-      variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
-      specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
-      extractedText: short_(artifact && artifact.extracted_text, 1800),
-      pageText: short_(artifact && artifact.extracted_text, 1800),
-      pageNumber: artifact && artifact.page_number || "",
-      extractionMethod: artifact && artifact.extraction_method || ""
-    };
-  }
-  function getQueue() {
-    var reviews = SheetsRepository.listRecent("Review_Queue", 250).filter(function (review) { return review.Review_Type !== "IMAGE_QUALITY"; });
-    var links = SheetsRepository.listAll("Review_Staging_Links");
-    var products = index_(SheetsRepository.listAll("Staging_Products"), "Staging_ID");
-    var variants = index_(SheetsRepository.listAll("Staging_Variants"), "Staging_ID");
-    var specs = index_(SheetsRepository.listAll("Staging_Specifications"), "Staging_ID");
-    var images = index_(SheetsRepository.listAll("Staging_Images"), "Staging_ID");
-    var docs = index_(SheetsRepository.listAll("Staging_Documents"), "Staging_ID");
-    var catalogs = index_(SheetsRepository.listAll("Catalogs"), "Catalog_ID");
-    var pages = index_(SheetsRepository.listAll("Catalog_Pages"), "Catalog_Page_ID");
-    var units = SheetsRepository.listAll("Run_Units");
-    var artifacts = {};
-    var linksByReview = {};
-    links.forEach(function (link) {
-      (linksByReview[link.Review_Queue_ID] || (linksByReview[link.Review_Queue_ID] = [])).push(link);
-    });
-    function artifactSummary_(id) {
-      if (!id) return null;
-      if (Object.prototype.hasOwnProperty.call(artifacts, id)) return artifacts[id];
-      try {
-        var data = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString("UTF-8"));
-        artifacts[id] = candidateSummary_(data);
-      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE", warning: true }; }
-      return artifacts[id];
-    }
-    var items = reviews.map(function (review) {
-      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 200);
-      var evidence = [], artifactId = "", runId = "", catalogId = "";
-      linked.forEach(function (link) {
-        var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
-        if (!row) return;
-        var type = products[link.Staging_ID] ? "PRODUCT" : variants[link.Staging_ID] ? "VARIANT" :
-          specs[link.Staging_ID] ? "SPECIFICATION" : images[link.Staging_ID] ? "IMAGE" : "DOCUMENT";
-        if (!artifactId && row.Raw_Extract_File_ID) artifactId = row.Raw_Extract_File_ID;
-        runId = runId || row.Run_ID || "";
-        catalogId = catalogId || row.Catalog_ID || "";
-        var page = pages[row.Catalog_Page_ID] || {};
-        evidence.push({
-          stagingId: row.Staging_ID, type: type, table: type, role: link.Review_Role || "",
-          pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
-          productName: row.Proposed_Product_Name_EN || "", productReference: row.Proposed_Product_Reference || "",
-          modelNumber: row.Proposed_Model_Number || "", modelName: row.Proposed_Model_Name || "",
-          attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
-          value: row.Value_Raw || row.Normalized_Value_JSON || "", unit: row.Unit_Raw || row.Normalized_Unit || "",
-          imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
-          fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
-          imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
-          parentProductStagingId: row.Parent_Staging_Product_ID || "",
-          parentVariantStagingId: row.Parent_Staging_Variant_ID || "",
-          scope: row.Scope || "", parseStatus: row.Parse_Status || "",
-          proposedStatus: row.Proposed_Status || "",
-          confidence: row.Confidence === undefined ? "" : row.Confidence,
-          extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
-          quote: short_(row.Extracted_Text, 700),
-          sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
-        });
-      });
-      var pageId = "";
-      var match = String(review.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
-      if (match) { pageId = match[1]; runId = runId || match[2]; }
-      var unit = units.find(function (u) { return u.Run_ID === runId && u.Catalog_Page_ID === pageId; });
-      if (!artifactId && unit) artifactId = unit.Output_Manifest_File_ID || "";
-      if (!catalogId && runId) {
-        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
-        catalogId = run && run.Catalog_ID || "";
-      }
-      var catalog = catalogs[catalogId] || {}, page = pages[pageId] || {};
-      var artifact = artifactSummary_(artifactId);
-      if (artifact && !page.Page_Number && artifact.pageNumber) page = { Page_Number: artifact.pageNumber };
-      if (artifact) artifact.fileUrl = safeUrl_(artifactId);
-      return {
-        id: review.Review_Queue_ID, reviewId: review.Review_Queue_ID,
-        type: review.Review_Type, status: review.Review_Status,
-        priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
-        action: short_(review.Proposed_Action, 1800),
-        notes: short_(review.Decision_Notes || "", 1500),
-        decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
-        runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
-        catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
-        sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
-        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId),
-        evidence: evidence, links: evidence, artifact: artifact, pageArtifact: artifact
-      };
-    });
-    var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
-    items.forEach(function (item) {
-      if (item.status === "OPEN") counts.open += 1;
-      else if (item.status === "IN_REVIEW") counts.inReview += 1;
-      else if (item.status === "DEFERRED") counts.deferred += 1;
-      else counts.closed += 1;
-    });
-    return { items: items, counts: counts, limit: 250, readOnly: true };
-  }
-  return { getQueue: getQueue };
-})();
-
-
-// ===== domain/ReviewWorkspace.js =====
-/** Human review actions and immutable decision/Staging Set generation.
- * Product approval is explicit and limited to PRODUCT_MATCH tasks.
- * Variant/specification decisions are not inferred; the builder validates parent references if supplied later.
- */
-var ReviewWorkspace = (function () {
-  var ALLOWED = { OPEN: true, IN_REVIEW: true, DEFERRED: true, REJECTED: true };
-  var TRANSITIONS = {
-    OPEN: { IN_REVIEW: true, DEFERRED: true, REJECTED: true },
-    IN_REVIEW: { OPEN: true, DEFERRED: true, REJECTED: true },
-    DEFERRED: { OPEN: true, IN_REVIEW: true, REJECTED: true },
-    REJECTED: {}
-  };
-  function fail_(code) { throw new Error(code); }
-  function text_(value, limit) {
-    var s = value === null || value === undefined ? "" : String(value).trim();
-    if (s.length > limit) fail_("REVIEW_TEXT_TOO_LONG");
-    return s;
-  }
-  function sha_(value) {
-    var bytes = typeof value === "string" ? Utilities.newBlob(value, "application/json").getBytes() : value;
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
-      var n = b < 0 ? b + 256 : b, h = n.toString(16);
-      return h.length === 1 ? "0" + h : h;
-    }).join("");
-  }
-  function runFolder_(runId) {
-    var rootId = (PropertiesService.getScriptProperties().getProperty("DEV_RUNS_FOLDER_ID") || "").trim();
-    if (!rootId) fail_("CONFIG_MISSING_DEV_RUNS_FOLDER_ID");
-    var folders = DriveApp.getFolderById(rootId).getFoldersByName(runId);
-    if (!folders.hasNext()) fail_("REVIEW_RUN_FOLDER_NOT_FOUND");
-    return folders.next();
-  }
-  function immutableJsonFile_(folder, name, payload) {
-    var content = JSON.stringify(payload), files = folder.getFilesByName(name);
-    if (files.hasNext()) {
-      var existing = files.next();
-      if (existing.getBlob().getDataAsString("UTF-8") !== content) fail_("REVIEW_DECISION_IMMUTABLE_CONFLICT");
-      return { file: existing, content: content, sha256: sha_(content), reused: true };
-    }
-    var file = folder.createFile(name, content, MimeType.JSON);
-    return { file: file, content: content, sha256: sha_(content), reused: false };
-  }
-  function array_(value, code) {
-    if (value === undefined || value === null) return [];
-    if (!Array.isArray(value) || value.length > 200) fail_(code);
-    return value;
-  }
-  function buildCandidateDecisions_(options, reviewId, primary, links) {
-    var allowed = {};
-    links.forEach(function (link) {
-      if (link.Review_Role === "EVIDENCE") allowed[String(link.Staging_ID)] = true;
-    });
-    var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
-    var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
-    var expectedVariants = {}, expectedSpecifications = {};
-    links.forEach(function (link) {
-      if (link.Review_Role !== "EVIDENCE") return;
-      if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
-      if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
-    });
-    var seen = {};
-    function claim_(id, kind) {
-      id = text_(id, 160);
-      if (!id || !allowed[id]) fail_("REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE");
-      if (seen[id]) fail_("REVIEW_CANDIDATE_DUPLICATE");
-      seen[id] = true;
-      var table = kind === "VARIANT" ? "Staging_Variants" : "Staging_Specifications";
-      var row = SheetsRepository.getBy(table, "Staging_ID", id);
-      if (!row || row.Run_ID !== primary.Run_ID || row.Catalog_ID !== primary.Catalog_ID) fail_("REVIEW_CANDIDATE_CONTEXT_MISMATCH");
-      return row;
-    }
-    var variants = variantInputs.map(function (input) {
-      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_VARIANT_DECISION_INVALID");
-      var row = claim_(input.stagingId, "VARIANT");
-      var parent = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
-      if (input.reviewStatus === "ACCEPTED" && parent !== primary.Staging_ID) fail_("REVIEW_VARIANT_PARENT_INVALID");
-      if (input.reviewStatus === "ACCEPTED" && !text_(row.Proposed_Model_Number, 160)) fail_("REVIEW_VARIANT_MODEL_NUMBER_REQUIRED");
-      return {
-        staging_id: row.Staging_ID, parent_staging_product_id: parent,
-        proposed_model_number: text_(row.Proposed_Model_Number, 160),
-        proposed_model_name: text_(row.Proposed_Model_Name, 250),
-        source_quote: text_(row.Extracted_Text, 4000),
-        review_status: input.reviewStatus
-      };
-    });
-    var acceptedVariants = {};
-    variants.forEach(function (v) { if (v.review_status === "ACCEPTED") acceptedVariants[v.staging_id] = true; });
-    var specifications = specInputs.map(function (input) {
-      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_SPECIFICATION_DECISION_INVALID");
-      var row = claim_(input.stagingId, "SPECIFICATION");
-      var parentProduct = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
-      var scope = input.reviewStatus === "ACCEPTED" ? text_(input.scope, 20).toUpperCase() : "";
-      var parentVariant = input.reviewStatus === "ACCEPTED" ? text_(input.parentVariantStagingId, 160) : "";
-      if (input.reviewStatus === "ACCEPTED" && parentProduct !== primary.Staging_ID) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_INVALID");
-      if (input.reviewStatus === "ACCEPTED" && ["PRODUCT", "VARIANT"].indexOf(scope) < 0) fail_("REVIEW_SPECIFICATION_SCOPE_REQUIRED");
-      if (scope === "PRODUCT" && parentVariant) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
-      if (scope === "VARIANT" && (!parentVariant || !acceptedVariants[parentVariant])) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_INVALID");
-      var originalValue = text_(row.Value_Raw, 1000);
-      var originalUnit = text_(row.Unit_Raw, 80);
-      var finalValue = input.reviewStatus === "ACCEPTED" && input.valueRaw !== undefined
-        ? text_(input.valueRaw, 1000) : originalValue;
-      if (input.reviewStatus === "ACCEPTED" && !finalValue) fail_("REVIEW_SPECIFICATION_VALUE_REQUIRED");
-      var reason = text_(input.editReason || "", 500);
-      var unit = input.reviewStatus === "ACCEPTED" && input.unitRaw !== undefined
-        ? text_(input.unitRaw, 80) : originalUnit;
-      if ((finalValue !== originalValue || unit !== originalUnit) && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
-      return {
-        staging_id: row.Staging_ID, parent_staging_product_id: parentProduct,
-        parent_staging_variant_id: parentVariant, scope: scope,
-        attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
-        original_value_raw: originalValue, value_raw: finalValue,
-        original_unit_raw: originalUnit, unit_raw: unit,
-        edited: finalValue !== originalValue || unit !== originalUnit,
-        edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
-        source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
-      };
-    });
-    if (variants.length !== Object.keys(expectedVariants).length ||
-        specifications.length !== Object.keys(expectedSpecifications).length) {
-      fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
-    }
-    return { variants: variants, specifications: specifications };
-  }
-  function updateStatus(options, actor) {
-    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
-    var next = String(options.status || "");
-    if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
-    var notes = text_(options.notes || "", 1500);
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
-      if (!current) fail_("REVIEW_NOT_FOUND");
-      var from = String(current.Review_Status || "");
-      if (current.Review_Type === "IMAGE_QUALITY" && next === "REJECTED") fail_("IMAGE_REVIEW_REQUIRES_DECISION_SERVICE");
-      if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
-      var now = new Date().toISOString(), patch = { Review_Status: next, Decision_Notes: notes };
-      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = String(actor);
-      if (next === "REJECTED" || next === "DEFERRED") { patch.Reviewed_At = now; patch.Reviewed_By = String(actor); }
-      if (next === "OPEN") { patch.Assigned_Actor_ID = ""; patch.Reviewed_At = ""; patch.Reviewed_By = ""; }
-      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, patch);
-      return { reviewId: options.reviewId, previousStatus: from, status: next };
-    } finally { lock.releaseLock(); }
-  }
-  function approveProductReview(options, actor) {
-    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
-    var productName = text_(options.productName, 300);
-    if (!productName) fail_("REVIEW_PRODUCT_NAME_REQUIRED");
-    if (/[\u0600-\u06FF]/.test(productName)) fail_("REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH");
-    var identityResolution = text_(options.identityResolution || "", 30).toUpperCase();
-    if (["CREATE_NEW", "MATCH_EXISTING"].indexOf(identityResolution) < 0) fail_("REVIEW_IDENTITY_RESOLUTION_REQUIRED");
-    var canonicalProductId = text_(options.canonicalProductId || "", 160);
-    var matchRationale = text_(options.matchRationale || "", 1000);
-    if (identityResolution === "MATCH_EXISTING") {
-      var matchedProduct = SheetsRepository.getBy("Products", "Product_ID", canonicalProductId);
-      if (!matchedProduct || matchedProduct.Lifecycle_Status !== "ACTIVE") fail_("REVIEW_MATCH_PRODUCT_NOT_ACTIVE");
-      if (!matchRationale) fail_("REVIEW_MATCH_RATIONALE_REQUIRED");
-    } else if (canonicalProductId) fail_("REVIEW_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
-    if (identityResolution === "CREATE_NEW" && !matchRationale) matchRationale = "Reviewer confirmed a new canonical product identity.";
-    var notes = text_(options.notes || "", 1500);
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var requestFingerprint = sha_(JSON.stringify({
-      productName: productName, identityResolution: identityResolution,
-      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
-      notes: notes, variants: options.variants || [], specifications: options.specifications || []
-    }));
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
-      if (!review) fail_("REVIEW_NOT_FOUND");
-      if (review.Review_Type !== "PRODUCT_MATCH") fail_("REVIEW_PRODUCT_TASK_REQUIRED");
-      if (review.Review_Status === "APPROVED") {
-        var approvedFile = DriveApp.getFileById(review.Decision_JSON_File_ID);
-        var approved = JSON.parse(approvedFile.getBlob().getDataAsString("UTF-8"));
-        if (approved.products && approved.products[0] &&
-            approved.products[0].proposed_product_name === productName &&
-            approved.products[0].identity_resolution === identityResolution &&
-            String(approved.products[0].canonical_product_id || "") === canonicalProductId &&
-            approved.products[0].review_request_sha256 === requestFingerprint) {
-          return { status: "APPROVED", decisionFileId: review.Decision_JSON_File_ID, decisionSha256: review.Decision_SHA256, reused: true };
-        }
-        fail_("REVIEW_DECISION_ALREADY_APPROVED");
-      }
-      if (["OPEN", "IN_REVIEW"].indexOf(review.Review_Status) < 0) fail_("REVIEW_TASK_NOT_ACTIONABLE");
-      var links = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
-        return link.Review_Queue_ID === options.reviewId && link.Review_Role === "PRIMARY";
-      });
-      if (links.length !== 1) fail_("REVIEW_PRIMARY_STAGING_LINK_INVALID");
-      var staging = SheetsRepository.getBy("Staging_Products", "Staging_ID", links[0].Staging_ID);
-      if (!staging) fail_("REVIEW_STAGING_PRODUCT_NOT_FOUND");
-      var reviewLinks = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
-        return link.Review_Queue_ID === options.reviewId;
-      });
-      var candidateDecisions = buildCandidateDecisions_(options, options.reviewId, staging, reviewLinks);
-      var payload = {
-        schema_version: 1,
-        run_id: staging.Run_ID,
-        catalog_id: staging.Catalog_ID,
-        source_key_algorithm_version: "source-key-v1",
-        products: [{
-          staging_id: staging.Staging_ID,
-          catalog_page_id: staging.Catalog_Page_ID,
-          proposed_product_name: productName,
-          identity_resolution: identityResolution,
-          canonical_product_id: canonicalProductId,
-          match_rationale: matchRationale,
-          review_request_sha256: requestFingerprint,
-          source_quote: text_(staging.Extracted_Text || "", 2000),
-          review_status: "ACCEPTED",
-          staging_record_hash: staging.Staging_Record_Hash
-        }],
-        variants: candidateDecisions.variants,
-        specifications: candidateDecisions.specifications
-      };
-      var saved = immutableJsonFile_(runFolder_(staging.Run_ID), "review-decision-" + options.reviewId + ".json", payload);
-      var now = new Date().toISOString();
-      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, {
-        Review_Status: "APPROVED", Decision_JSON_File_ID: saved.file.getId(),
-        Decision_SHA256: saved.sha256, Reviewed_Payload_Hash: saved.sha256,
-        Decision_Notes: notes, Reviewed_At: now, Reviewed_By: String(actor)
-      });
-      return { status: "APPROVED", decisionFileId: saved.file.getId(), decisionSha256: saved.sha256, reused: saved.reused };
-    } finally { lock.releaseLock(); }
-  }
-  function buildStagingSetForRun(runId, actor) {
-    var id = text_(runId, 120);
-    if (!id) fail_("REVIEW_RUN_ID_REQUIRED");
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var queue = SheetsRepository.listAll("Review_Queue");
-      var products = [], variants = [], specifications = [], included = [], catalogId = "";
-      queue.filter(function (q) { return q.Review_Status === "APPROVED" && q.Decision_JSON_File_ID; }).forEach(function (q) {
-        var file = DriveApp.getFileById(q.Decision_JSON_File_ID);
-        if (!file) fail_("REVIEW_DECISION_FILE_NOT_FOUND");
-        var blob = file.getBlob(), bytes = blob.getBytes();
-        if (sha_(bytes) !== q.Decision_SHA256) fail_("REVIEW_DECISION_SHA_MISMATCH");
-        var decision;
-        try { decision = JSON.parse(blob.getDataAsString("UTF-8")); } catch (e) { fail_("REVIEW_DECISION_INVALID_JSON"); }
-        if (!decision || decision.run_id !== id) return;
-        if (!catalogId) catalogId = decision.catalog_id;
-        if (catalogId !== decision.catalog_id) fail_("REVIEW_DECISION_CATALOG_MISMATCH");
-        if (!Array.isArray(decision.products) || !Array.isArray(decision.variants) || !Array.isArray(decision.specifications)) fail_("REVIEW_DECISION_STRUCTURE_INVALID");
-        products = products.concat(decision.products);
-        variants = variants.concat(decision.variants);
-        specifications = specifications.concat(decision.specifications);
-        included.push(q);
-      });
-      if (!included.length || !products.length) fail_("REVIEW_NO_APPROVED_PRODUCTS_FOR_RUN");
-      function unique_(records, label) {
-        var seen = {};
-        records.forEach(function (record) {
-          if (!record || !record.staging_id || seen[record.staging_id]) fail_("REVIEW_DUPLICATE_OR_INVALID_" + label);
-          seen[record.staging_id] = true;
-        });
-        return seen;
-      }
-      var productIds = unique_(products, "PRODUCT");
-      var variantIds = unique_(variants, "VARIANT");
-      var variantsByStagingId = {};
-      variants.forEach(function (v) {
-        if (!v || v.review_status !== "ACCEPTED") return;
-        if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
-        variantsByStagingId[v.staging_id] = v;
-      });
-      specifications.forEach(function (s) {
-        if (!s || s.review_status !== "ACCEPTED") return;
-        if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
-        if (s.scope === "PRODUCT") {
-          if (s.parent_staging_variant_id) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
-          return;
-        }
-        if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
-        if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
-        var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
-        if (!parentVariant || parentVariant.parent_staging_product_id !== s.parent_staging_product_id) {
-          fail_("REVIEW_SPECIFICATION_PARENT_MISMATCH");
-        }
-      });
-      var stagingSet = {
-        run_id: id, catalog_id: catalogId, source_key_algorithm_version: "source-key-v1",
-        products: products, variants: variants, specifications: specifications
-      };
-      var content = JSON.stringify(stagingSet), digest = sha_(content);
-      var saved = immutableJsonFile_(runFolder_(id), "staging-set-" + digest.slice(0, 16) + ".json", stagingSet);
-      included.forEach(function (q) {
-        SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", q.Review_Queue_ID, {
-          Staging_Set_Manifest_File_ID: saved.file.getId(), Staging_Set_SHA256: digest
-        });
-      });
-      return { status: "READY_FOR_PROMOTION", runId: id, catalogId: catalogId,
-        products: products.length, variants: variants.length, specifications: specifications.length,
-        stagingSetFileId: saved.file.getId(), stagingSetSha256: digest, reused: saved.reused };
-    } finally { lock.releaseLock(); }
-  }
-  return {
-    updateStatus: updateStatus,
-    approveProductReview: approveProductReview,
-    buildStagingSetForRun: buildStagingSetForRun
-  };
-})();
-
-
-// ===== domain/DocumentService.js =====
-
-/**
- * Shared document library: immutable versions, explicit links and deterministic inheritance.
- * Binary originals live in the private DEV_DOCUMENTS_FOLDER_ID Drive folder.
- */
-var DocumentService = (function () {
-  function text_(value, max, code, required) {
-    var s = value === null || value === undefined ? "" : String(value).trim();
-    if (required && !s) throw new Error(code + "_REQUIRED");
-    if (s.length > max) throw new Error(code + "_TOO_LONG");
-    return s;
-  }
-  function id_(prefix) { return prefix + "_" + Utilities.getUuid().replace(/-/g, ""); }
-  function now_() { return new Date().toISOString(); }
-  function actor_(value) { return value || APP.ACTOR_ID; }
-  function lock_() {
-    var lock = LockService.getScriptLock();
-    if (!lock.tryLock(10000)) throw new Error("DOCUMENT_LOCK_BUSY");
-    return lock;
-  }
-  function rows_(table) { return SheetsRepository.listAll(table); }
-  function one_(table, key, value) {
-    var row = SheetsRepository.getBy(table, key, value);
-    return row || null;
-  }
-  function digest_(bytes) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes)
-      .map(function (b) { var v = (b < 0 ? b + 256 : b).toString(16); return v.length === 1 ? "0" + v : v; }).join("");
-  }
-  function audit_(action, type, entityId, beforeValue, afterValue, reason) {
-    var payload = JSON.stringify({ action: action, entity_type: type, entity_id: entityId,
-      before: beforeValue || null, after: afterValue || null, reason: reason || "" });
-    var hash = digest_(Utilities.newBlob(payload).getBytes());
-    SheetsRepository.append("Audit_Log", {
-      Audit_ID: id_("aud"), Event_Idempotency_Key: "document|" + action + "|" + entityId + "|" + hash.slice(0, 32),
-      Payload_SHA256: hash, Event_At: now_(), Actor_ID: APP.ACTOR_ID, Action: action,
-      Entity_Type: type, Entity_ID: entityId, Before_Value_JSON: beforeValue ? JSON.stringify(beforeValue).slice(0, 3000) : "",
-      After_Value_JSON: afterValue ? JSON.stringify(afterValue).slice(0, 3000) : "", Reason: reason || ""
-    });
-  }
-  function validateTarget_(type, targetId) {
-    if (type === "PRODUCT") {
-      if (!one_("Products", "Product_ID", targetId)) throw new Error("DOCUMENT_TARGET_NOT_FOUND");
-      return { productId: targetId, variantId: "" };
-    }
-    if (type === "VARIANT") {
-      var variant = one_("Variants", "Variant_ID", targetId);
-      if (!variant) throw new Error("DOCUMENT_TARGET_NOT_FOUND");
-      return { productId: String(variant.Product_ID), variantId: targetId };
-    }
-    throw new Error("DOCUMENT_TARGET_TYPE_INVALID");
-  }
-  function validateVersion_(docId, versionId) {
-    if (!versionId) return null;
-    var version = one_("Document_Versions", "Version_ID", versionId);
-    if (!version || String(version.Doc_ID) !== String(docId)) throw new Error("DOCUMENT_VERSION_OWNERSHIP_MISMATCH");
-    if (version.Lifecycle_Status !== "AVAILABLE") throw new Error("DOCUMENT_VERSION_NOT_AVAILABLE");
-    return version;
-  }
-  function fileMetadata_(fileId) {
-    if (!/^[A-Za-z0-9_-]{10,200}$/.test(String(fileId || ""))) throw new Error("DOCUMENT_FILE_ID_INVALID");
-    var file = DriveApp.getFileById(fileId);
-    var blob = file.getBlob();
-    var bytes = blob.getBytes();
-    if (!bytes.length || bytes.length > 12 * 1024 * 1024) throw new Error("DOCUMENT_FILE_SIZE_INVALID");
-    var mime = String(file.getMimeType() || blob.getContentType() || "").toLowerCase();
-    if (mime !== "application/pdf") throw new Error("DOCUMENT_FILE_TYPE_UNSUPPORTED");
-    if (bytes.length < 8 || bytes.slice(0, 5).map(function (b) { return String.fromCharCode(b < 0 ? b + 256 : b); }).join("") !== "%PDF-") {
-      throw new Error("DOCUMENT_PDF_SIGNATURE_INVALID");
-    }
-    return { file: file, name: file.getName(), mime: mime, size: bytes.length, sha: digest_(bytes) };
-  }
-  function create_(payload, actor) {
-    var p = payload || {};
-    var title = text_(p.title, 250, "DOCUMENT_TITLE", true);
-    var type = text_(p.documentType, 40, "DOCUMENT_TYPE", true);
-    if (!ENUMS["Documents.Document_Type"] || ENUMS["Documents.Document_Type"].indexOf(type) < 0) throw new Error("DOCUMENT_TYPE_INVALID");
-    var meta = fileMetadata_(p.driveFileId);
-    var duplicate = rows_("Documents").filter(function (d) {
-      return rows_("Document_Versions").some(function (v) { return v.Doc_ID === d.Doc_ID && v.SHA256 === meta.sha; });
-    })[0];
-    if (duplicate) throw new Error("DOCUMENT_DUPLICATE_FILE:" + duplicate.Doc_ID);
-    var at = now_(), docId = id_("doc"), versionId = id_("docv");
-    var doc = {
-      Doc_ID: docId, Document_Type: type, Title: title,
-      Language_Code: text_(p.languageCode, 10, "DOCUMENT_LANGUAGE", false),
-      Description: text_(p.description, 1500, "DOCUMENT_DESCRIPTION", false),
-      Current_Version_ID: "", Lifecycle_Status: "DRAFT",
-      Created_At: at, Created_By: actor_(actor), Updated_At: at, Updated_By: actor_(actor)
-    };
-    var version = {
-      Version_ID: versionId, Doc_ID: docId, Version_Label: text_(p.versionLabel || "Version 1", 80, "DOCUMENT_VERSION_LABEL", true),
-      Drive_File_ID: String(p.driveFileId), Original_File_Name: meta.name, MIME_Type: meta.mime,
-      File_Size_Bytes: meta.size, SHA256: meta.sha, Uploaded_At: at, Uploaded_By: actor_(actor),
-      Version_Notes: text_(p.versionNotes, 1000, "DOCUMENT_VERSION_NOTES", false),
-      Source_Type: "MANUAL_UPLOAD", Source_Catalog_ID: "", Source_Catalog_Page_ID: "",
-      Source_Product_Source_Record_ID: "", Source_Variant_Source_Record_ID: "", Source_Quote: "",
-      Source_URL: "", Extraction_Run_ID: "", Extraction_Record_ID: "", Supersedes_Version_ID: "",
-      Lifecycle_Status: "AVAILABLE"
-    };
-    SheetsRepository.append("Documents", doc);
-    try {
-      SheetsRepository.append("Document_Versions", version);
-      SheetsRepository.updateBy("Documents", "Doc_ID", docId, {
-        Current_Version_ID: versionId, Lifecycle_Status: "ACTIVE", Updated_At: now_(), Updated_By: actor_(actor)
-      });
-    } catch (err) {
-      throw new Error("DOCUMENT_CREATE_PARTIAL:" + docId + ":" + String(err && err.message || err));
-    }
-    audit_("CREATE", "DOCUMENT", docId, null, { document: doc, version: version }, "Initial document upload");
-    return { document: one_("Documents", "Doc_ID", docId), version: one_("Document_Versions", "Version_ID", versionId) };
-  }
-  function addVersion_(docId, payload, actor) {
-    var p = payload || {}, doc = one_("Documents", "Doc_ID", docId);
-    if (!doc || doc.Lifecycle_Status === "ARCHIVED") throw new Error("DOCUMENT_NOT_AVAILABLE");
-    var meta = fileMetadata_(p.driveFileId);
-    var versions = rows_("Document_Versions").filter(function (v) { return String(v.Doc_ID) === String(docId); });
-    if (versions.some(function (v) { return v.SHA256 === meta.sha; })) throw new Error("DOCUMENT_VERSION_DUPLICATE");
-    var current = validateVersion_(docId, doc.Current_Version_ID);
-    var at = now_(), versionId = id_("docv");
-    var version = {
-      Version_ID: versionId, Doc_ID: docId, Version_Label: text_(p.versionLabel, 80, "DOCUMENT_VERSION_LABEL", true),
-      Drive_File_ID: String(p.driveFileId), Original_File_Name: meta.name, MIME_Type: meta.mime,
-      File_Size_Bytes: meta.size, SHA256: meta.sha, Uploaded_At: at, Uploaded_By: actor_(actor),
-      Version_Notes: text_(p.versionNotes, 1000, "DOCUMENT_VERSION_NOTES", false),
-      Source_Type: "MANUAL_UPLOAD", Source_Catalog_ID: "", Source_Catalog_Page_ID: "",
-      Source_Product_Source_Record_ID: "", Source_Variant_Source_Record_ID: "", Source_Quote: "",
-      Source_URL: "", Extraction_Run_ID: "", Extraction_Record_ID: "",
-      Supersedes_Version_ID: current ? current.Version_ID : "", Lifecycle_Status: "AVAILABLE"
-    };
-    SheetsRepository.append("Document_Versions", version);
-    SheetsRepository.updateBy("Documents", "Doc_ID", docId, {
-      Current_Version_ID: versionId, Lifecycle_Status: "ACTIVE", Updated_At: at, Updated_By: actor_(actor)
-    });
-    audit_("UPDATE", "DOCUMENT", docId, { Current_Version_ID: doc.Current_Version_ID }, { Current_Version_ID: versionId }, "New immutable document version");
-    return version;
-  }
-  function link_(payload, actor) {
-    var p = payload || {}, docId = text_(p.docId, 120, "DOCUMENT_ID", true);
-    var type = text_(p.targetType, 20, "DOCUMENT_TARGET_TYPE", true);
-    var targetId = text_(p.targetId, 120, "DOCUMENT_TARGET_ID", true);
-    var mode = text_(p.linkMode || "INCLUDE", 20, "DOCUMENT_LINK_MODE", true);
-    var doc = one_("Documents", "Doc_ID", docId);
-    if (!doc || doc.Lifecycle_Status !== "ACTIVE") throw new Error("DOCUMENT_NOT_ACTIVE");
-    var target = validateTarget_(type, targetId);
-    if (type === "PRODUCT" && mode !== "INCLUDE") throw new Error("PRODUCT_DOCUMENT_EXCLUDE_FORBIDDEN");
-    if (mode !== "INCLUDE" && mode !== "EXCLUDE") throw new Error("DOCUMENT_LINK_MODE_INVALID");
-    var existing = rows_("Document_Links").filter(function (l) {
-      return l.Doc_ID === docId && l.Target_Type === type && l.Target_ID === targetId && l.Link_Mode === mode;
-    })[0];
-    if (existing) return existing;
-    if (mode === "EXCLUDE") {
-      var inherited = rows_("Document_Links").some(function (l) {
-        return l.Doc_ID === docId && l.Target_Type === "PRODUCT" && l.Target_ID === target.productId && l.Link_Mode === "INCLUDE";
-      });
-      if (!inherited) throw new Error("DOCUMENT_EXCLUDE_WITHOUT_INHERITED_LINK");
-    }
-    var pinned = validateVersion_(docId, p.pinnedVersionId || "");
-    var link = {
-      Link_ID: id_("docl"), Doc_ID: docId, Target_Type: type, Target_ID: targetId,
-      Link_Mode: mode, Pinned_Version_ID: pinned ? pinned.Version_ID : "",
-      Display_Order: Number.isInteger(p.displayOrder) ? p.displayOrder : 0,
-      Created_At: now_(), Created_By: actor_(actor), Link_Notes: text_(p.notes, 500, "DOCUMENT_LINK_NOTES", false)
-    };
-    SheetsRepository.append("Document_Links", link);
-    audit_("LINK", "DOCUMENT_LINK", link.Link_ID, null, link, "Document linked to " + type);
-    return link;
-  }
-  function resolve_(type, targetId) {
-    var target = validateTarget_(type, targetId);
-    var docs = rows_("Documents"), versions = rows_("Document_Versions"), links = rows_("Document_Links");
-    var productLinks = links.filter(function (l) {
-      return l.Target_Type === "PRODUCT" && l.Target_ID === target.productId && l.Link_Mode === "INCLUDE";
-    });
-    var directLinks = type === "VARIANT" ? links.filter(function (l) {
-      return l.Target_Type === "VARIANT" && l.Target_ID === targetId;
-    }) : [];
-    var excludes = {};
-    directLinks.filter(function (l) { return l.Link_Mode === "EXCLUDE"; }).forEach(function (l) { excludes[l.Doc_ID] = true; });
-    var chosen = {};
-    productLinks.forEach(function (l) { if (!excludes[l.Doc_ID]) chosen[l.Doc_ID] = { link: l, inherited: true }; });
-    directLinks.filter(function (l) { return l.Link_Mode === "INCLUDE"; }).forEach(function (l) {
-      chosen[l.Doc_ID] = { link: l, inherited: false };
-    });
-    return Object.keys(chosen).map(function (docId) {
-      var doc = docs.filter(function (d) { return d.Doc_ID === docId && d.Lifecycle_Status === "ACTIVE"; })[0];
-      if (!doc) return null;
-      var selected = chosen[docId], link = selected.link;
-      var versionId = link.Pinned_Version_ID || doc.Current_Version_ID;
-      var version = versions.filter(function (v) { return v.Version_ID === versionId && v.Doc_ID === docId && v.Lifecycle_Status === "AVAILABLE"; })[0];
-      if (!version) return null;
-      return { document: doc, version: version, link: link, inherited: selected.inherited };
-    }).filter(Boolean).sort(function (a, b) {
-      return Number(a.link.Display_Order || 0) - Number(b.link.Display_Order || 0) || String(a.document.Title).localeCompare(String(b.document.Title));
-    });
-  }
-  function list_() {
-    var docs = rows_("Documents"), versions = rows_("Document_Versions"), links = rows_("Document_Links");
-    return docs.map(function (doc) {
-      return { document: doc, versions: versions.filter(function (v) { return v.Doc_ID === doc.Doc_ID; }),
-        links: links.filter(function (l) { return l.Doc_ID === doc.Doc_ID; }) };
-    }).sort(function (a, b) { return String(b.document.Updated_At).localeCompare(String(a.document.Updated_At)); });
-  }
-  function archive_(docId, reason, actor) {
-    var doc = one_("Documents", "Doc_ID", docId);
-    if (!doc) throw new Error("DOCUMENT_NOT_FOUND");
-    if (doc.Lifecycle_Status === "ARCHIVED") return doc;
-    SheetsRepository.updateBy("Documents", "Doc_ID", docId, {
-      Lifecycle_Status: "ARCHIVED", Updated_At: now_(), Updated_By: actor_(actor)
-    });
-    audit_("ARCHIVE", "DOCUMENT", docId, { Lifecycle_Status: doc.Lifecycle_Status },
-      { Lifecycle_Status: "ARCHIVED" }, text_(reason, 1000, "DOCUMENT_ARCHIVE_REASON", true));
-    return one_("Documents", "Doc_ID", docId);
-  }
-  function withLock_(fn) { var lock = lock_(); try { return fn(); } finally { lock.releaseLock(); } }
-  return {
-    create: function (p, a) { return withLock_(function () { return create_(p, a); }); },
-    addVersion: function (id, p, a) { return withLock_(function () { return addVersion_(id, p, a); }); },
-    link: function (p, a) { return withLock_(function () { return link_(p, a); }); },
-    resolve: resolve_, list: list_,
-    archive: function (id, reason, a) { return withLock_(function () { return archive_(id, reason, a); }); }
-  };
-})();
-
-/** Owner-only browser actions. Files are stored privately; no public Drive URL is returned. */
-function createDocumentFromBrowser(payload) {
-  assertPrimaryUser_();
-  var p = payload || {};
-  var name = String(p.fileName || "").trim();
-  var encoded = String(p.base64 || "");
-  if (!name || name.length > 255 || !/^[A-Za-z0-9._ ()\-\u0600-\u06FF]+$/.test(name)) throw new Error("DOCUMENT_FILE_NAME_INVALID");
-  if (encoded.length > 16777216) throw new Error("DOCUMENT_FILE_TOO_LARGE");
-  var bytes = Utilities.base64Decode(encoded);
-  if (bytes.length < 8 || bytes.length > 12 * 1024 * 1024) throw new Error("DOCUMENT_FILE_SIZE_INVALID");
-  var signature = bytes.slice(0, 5).map(function (b) { return String.fromCharCode(b < 0 ? b + 256 : b); }).join("");
-  if (signature !== "%PDF-") throw new Error("DOCUMENT_PDF_SIGNATURE_INVALID");
-  var folderId = PropertiesService.getScriptProperties().getProperty("DEV_DOCUMENTS_FOLDER_ID");
-  if (!folderId) throw new Error("CONFIG_MISSING: DEV_DOCUMENTS_FOLDER_ID");
-  var file = DriveApp.getFolderById(folderId).createFile(Utilities.newBlob(bytes, "application/pdf", name));
-  return DocumentService.create({
-    title: p.title, documentType: p.documentType, languageCode: p.languageCode,
-    description: p.description, versionLabel: p.versionLabel || "Version 1",
-    versionNotes: p.versionNotes, driveFileId: file.getId()
-  }, APP.ACTOR_ID);
-}
-function addDocumentVersionFromBrowser(payload) {
-  assertPrimaryUser_();
-  var p = payload || {}, name = String(p.fileName || "").trim(), encoded = String(p.base64 || "");
-  if (!name || name.length > 255 || encoded.length > 16777216) throw new Error("DOCUMENT_UPLOAD_INVALID");
-  var bytes = Utilities.base64Decode(encoded);
-  if (bytes.length < 8 || bytes.length > 12 * 1024 * 1024) throw new Error("DOCUMENT_FILE_SIZE_INVALID");
-  var signature = bytes.slice(0, 5).map(function (b) { return String.fromCharCode(b < 0 ? b + 256 : b); }).join("");
-  if (signature !== "%PDF-") throw new Error("DOCUMENT_PDF_SIGNATURE_INVALID");
-  var folderId = PropertiesService.getScriptProperties().getProperty("DEV_DOCUMENTS_FOLDER_ID");
-  if (!folderId) throw new Error("CONFIG_MISSING: DEV_DOCUMENTS_FOLDER_ID");
-  var file = DriveApp.getFolderById(folderId).createFile(Utilities.newBlob(bytes, "application/pdf", name));
-  return DocumentService.addVersion(p.docId, {
-    driveFileId: file.getId(), versionLabel: p.versionLabel, versionNotes: p.versionNotes
-  }, APP.ACTOR_ID);
-}
-function listDocumentsForBrowser() { assertPrimaryUser_(); return DocumentService.list(); }
-function linkDocumentFromBrowser(payload) { assertPrimaryUser_(); return DocumentService.link(payload, APP.ACTOR_ID); }
-function resolveDocumentsForBrowser(targetType, targetId) { assertPrimaryUser_(); return DocumentService.resolve(targetType, targetId); }
-function archiveDocumentFromBrowser(docId, reason) { assertPrimaryUser_(); return DocumentService.archive(docId, reason, APP.ACTOR_ID); }
-
-
-// ===== domain/BackupService.js =====
-
-var BackupService=(function(){
- function now_(){return new Date().toISOString();}
- function sha_(v){var b=typeof v==="string"?Utilities.newBlob(v).getBytes():v;return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,b).map(function(x){var h=(x<0?x+256:x).toString(16);return h.length===1?"0"+h:h;}).join("");}
- function parent_(){var id=PropertiesService.getScriptProperties().getProperty("DEV_BACKUP_FOLDER_ID");if(!id)throw new Error("CONFIG_MISSING: DEV_BACKUP_FOLDER_ID");return DriveApp.getFolderById(id);}
- function refs_(){var out={};Object.keys(TABLES).forEach(function(t){var hs=TABLES[t];SheetsRepository.listAll(t).forEach(function(r){hs.forEach(function(c){var rule=FIELD_RULES[t+"."+c],v=r[c];if(!rule||!(rule.type==="DRIVE_FILE_ID"||rule.type==="JSON_FILE_ID")||!v)return;var x=out[String(v)]||(out[String(v)]={file_id:String(v),source_refs:[],expected_sha256:""});x.source_refs.push(t+"."+c);var d=r.SHA256||r.Config_SHA256||r.PDF_SHA256||r.Snapshot_SHA256||"";if(/^[a-f0-9]{64}$/.test(String(d||"")))x.expected_sha256=String(d);});});});return Object.keys(out).sort().map(function(k){return out[k];});}
- function create(){var lock=LockService.getScriptLock();if(!lock.tryLock(10000))throw new Error("BACKUP_LOCK_BUSY");try{
-  var stamp=now_(),folder=parent_().createFolder("backup_"+Utilities.getUuid().replace(/-/g,"")),tables=[],errors=[],files=[];
-  Object.keys(TABLES).sort().forEach(function(t){var rows=SheetsRepository.listAll(t),body=JSON.stringify({schema_version:APP.SCHEMA_VERSION,table:t,exported_at:stamp,record_count:rows.length,records:rows}),f=folder.createFile(t+".json",body,"application/json");tables.push({table:t,file_id:f.getId(),sha256:sha_(body),record_count:rows.length});});
-  refs_().forEach(function(ref){try{var src=DriveApp.getFileById(ref.file_id),copy=src.makeCopy(src.getName(),folder);files.push({file_id:ref.file_id,backup_file_id:copy.getId(),name:src.getName(),mime_type:src.getMimeType(),size_bytes:src.getSize(),expected_sha256:ref.expected_sha256,source_refs:ref.source_refs});}catch(e){errors.push({file_id:ref.file_id,source_refs:ref.source_refs,error_code:"DRIVE_FILE_BACKUP_FAILED"});}});
-  var manifest={manifest_version:"1",backup_id:folder.getName(),schema_version:APP.SCHEMA_VERSION,created_at:stamp,backup_status:errors.length?"INCOMPLETE":"COMPLETE",table_count:tables.length,drive_reference_count:tables.length?files.length+errors.length:0,drive_copy_count:files.length,errors:errors,tables:tables,drive_files:files};
-  var mf=folder.createFile("backup-manifest.json",JSON.stringify(manifest),"application/json");
-  return {backup_id:manifest.backup_id,folder_id:folder.getId(),manifest_file_id:mf.getId(),status:manifest.backup_status,table_count:tables.length,drive_copy_count:files.length,error_count:errors.length};
- }finally{lock.releaseLock();}}
- function verify(folderId){if(!/^[A-Za-z0-9_-]{10,200}$/.test(String(folderId||"")))throw new Error("BACKUP_FOLDER_ID_INVALID");var folder=DriveApp.getFolderById(folderId),it=folder.getFilesByName("backup-manifest.json");if(!it.hasNext())throw new Error("BACKUP_MANIFEST_NOT_FOUND");var m=JSON.parse(it.next().getBlob().getDataAsString("UTF-8"));if(!m||m.manifest_version!=="1"||!Array.isArray(m.tables)||!Array.isArray(m.drive_files))throw new Error("BACKUP_MANIFEST_INVALID");var failures=[],ct=0,cf=0;
-  m.tables.forEach(function(e){try{var f=DriveApp.getFileById(e.file_id),raw=f.getBlob().getDataAsString("UTF-8"),p=JSON.parse(raw);if(sha_(raw)!==e.sha256||p.table!==e.table||p.record_count!==e.record_count||!Array.isArray(p.records)||p.records.length!==e.record_count)throw new Error("INVALID");ct++;}catch(x){failures.push({item:e.table,error_code:"TABLE_BACKUP_INVALID"});}});
-  m.drive_files.forEach(function(e){try{var src=DriveApp.getFileById(e.file_id),copy=DriveApp.getFileById(e.backup_file_id);if(Number(src.getSize())!==Number(copy.getSize()))throw new Error("SIZE");if(e.expected_sha256&&sha_(copy.getBlob().getBytes())!==e.expected_sha256)throw new Error("HASH");cf++;}catch(x){failures.push({item:e.file_id,error_code:"DRIVE_COPY_INVALID"});}});
-  return {backup_id:m.backup_id,status:failures.length?"FAILED":(m.backup_status==="COMPLETE"?"VERIFIED":"INCOMPLETE"),checked_tables:ct,expected_tables:m.tables.length,checked_drive_files:cf,expected_drive_files:m.drive_files.length,failures:failures,restore_performed:false,notice:"Verification only; no live data was modified."};
- }
- return {create:create,verify:verify};
-})();
-function createDevBackup(){assertPrimaryUser_();return BackupService.create();}
-function verifyDevBackup(folderId){assertPrimaryUser_();return BackupService.verify(folderId);}
-
-
-// ===== domain/DesignService.js =====
-
-/** Version-pinned identity, paper and template configuration management. */
-var DesignService=(function(){
- function now_(){return new Date().toISOString();}
- function id_(p){return p+"_"+Utilities.getUuid().replace(/-/g,"");}
- function rows_(t){return SheetsRepository.listAll(t);}
- function one_(t,k,v){return SheetsRepository.getBy(t,k,v);}
- function text_(v,n,code,required){var s=v===undefined||v===null?"":String(v).trim();if(required&&!s)throw new Error(code+"_REQUIRED");if(s.length>n)throw new Error(code+"_TOO_LONG");return s;}
- function canonical_(v){if(Array.isArray(v))return v.map(canonical_);if(v&&typeof v==="object"){var o={};Object.keys(v).sort().forEach(function(k){o[k]=canonical_(v[k]);});return o;}return v;}
- function hash_(bytes){return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,bytes).map(function(b){var h=(b<0?b+256:b).toString(16);return h.length===1?"0"+h:h;}).join("");}
- function folder_(){var f=PropertiesService.getScriptProperties().getProperty("DEV_DESIGN_FOLDER_ID");if(!f)throw new Error("CONFIG_MISSING: DEV_DESIGN_FOLDER_ID");return DriveApp.getFolderById(f);}
- function saveConfig_(kind,entityId,config){
-  if(!config||Object.prototype.toString.call(config)!=="[object Object]")throw new Error("DESIGN_CONFIG_INVALID");
-  var normalized=canonical_(config);normalized.config_schema_version=normalized.config_schema_version||"1";
-  var body=JSON.stringify(normalized);if(body.length>100000)throw new Error("DESIGN_CONFIG_TOO_LARGE");
-  var digest=hash_(Utilities.newBlob(body).getBytes());
-  var file=folder_().createFile(kind.toLowerCase()+"-"+entityId+"-"+digest.slice(0,12)+".json",body,"application/json");
-  return {file_id:file.getId(),sha256:digest,config:normalized};
- }
- function checkAssetRefs_(config){
-  var refs=config.asset_refs||[];
-  if(!Array.isArray(refs))throw new Error("DESIGN_ASSET_REFS_INVALID");
-  refs.forEach(function(ref){
-   if(!ref||typeof ref.design_asset_id!=="string")throw new Error("DESIGN_ASSET_REF_INVALID");
-   var asset=one_("Design_Assets","Design_Asset_ID",ref.design_asset_id);
-   if(!asset)throw new Error("DESIGN_ASSET_NOT_FOUND");
-   if(ref.sha256&&String(ref.sha256)!==String(asset.SHA256))throw new Error("DESIGN_ASSET_HASH_MISMATCH");
-  });
- }
- function nextVersion_(table,key,id){return rows_(table).filter(function(r){return r[key]===id;}).reduce(function(m,r){return Math.max(m,Number(r.Version_Number)||0);},0)+1;}
- function audit_(action,type,entityId,before,after){
-  var body=JSON.stringify({action:action,type:type,id:entityId,before:before||null,after:after||null});
-  SheetsRepository.append("Audit_Log",{Audit_ID:id_("aud"),Event_Idempotency_Key:"design|"+action+"|"+entityId+"|"+hash_(Utilities.newBlob(body).getBytes()).slice(0,32),Payload_SHA256:hash_(Utilities.newBlob(body).getBytes()),Event_At:now_(),Actor_ID:APP.ACTOR_ID,Action:action,Entity_Type:type,Entity_ID:entityId,Before_Value_JSON:before?JSON.stringify(before).slice(0,3000):"",After_Value_JSON:after?JSON.stringify(after).slice(0,3000):""});
- }
- function registerAsset(p){
-  var file=DriveApp.getFileById(p.driveFileId),bytes=file.getBlob().getBytes(),mime=String(file.getMimeType()||"");
-  var type=text_(p.assetType,40,"DESIGN_ASSET_TYPE",true);
-  if(!ENUMS["Design_Assets.Asset_Type"]||ENUMS["Design_Assets.Asset_Type"].indexOf(type)<0)throw new Error("DESIGN_ASSET_TYPE_INVALID");
-  var digest=hash_(bytes),dupe=rows_("Design_Assets").filter(function(a){return a.SHA256===digest&&a.MIME_Type===mime;})[0];
-  if(dupe)return dupe;
-  var asset={Design_Asset_ID:id_("dasset"),Asset_Type:type,Asset_Name:text_(p.assetName||file.getName(),180,"DESIGN_ASSET_NAME",true),Drive_File_ID:file.getId(),MIME_Type:mime,File_Size_Bytes:bytes.length,SHA256:digest,License_Notes:text_(p.licenseNotes,1000,"DESIGN_ASSET_LICENSE",false),Created_At:now_(),Created_By:APP.ACTOR_ID};
-  SheetsRepository.append("Design_Assets",asset);audit_("CREATE","DESIGN_ASSET",asset.Design_Asset_ID,null,asset);return asset;
- }
- function createLogical_(table,idField,nameField,name,description,typeField,typeValue,identityType){
-  var label=text_(name,160,"DESIGN_NAME",true);
-  if(rows_(table).some(function(r){return String(r[nameField]).toLowerCase()===label.toLowerCase();}))throw new Error("DESIGN_NAME_DUPLICATE");
-  var row={};row[idField]=id_(idField.toLowerCase());row[nameField]=label;
-  if(description!==undefined&&TABLES[table].indexOf("Description")>=0)row.Description=text_(description,1000,"DESIGN_DESCRIPTION",false);
-  if(typeField)row[typeField]=typeValue;
-  if(table==="Brands"){row.Identity_Type=identityType||"COMPANY";row.Lifecycle_Status="ACTIVE";}
-  else row.Lifecycle_Status="ACTIVE";
-  row.Created_At=now_();row.Created_By=APP.ACTOR_ID;SheetsRepository.append(table,row);return row;
- }
- function createBrand(p){
-  var brand=createLogical_("Brands","Brand_ID","Brand_Name",p.name,p.description,"Identity_Type",p.identityType||"COMPANY",p.identityType||"COMPANY");
-  var cfg=saveConfig_("BRAND",brand.Brand_ID,p.config||{config_schema_version:"1",palette:{},typography:{},logos:{},layout:{},asset_refs:[]});
-  checkAssetRefs_(cfg.config);
-  var ver={Brand_Version_ID:id_("bver"),Brand_ID:brand.Brand_ID,Version_Number:1,Version_Status:"DRAFT",Design_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Published_At:"",Published_By:"",Change_Notes:text_(p.changeNotes,1500,"DESIGN_CHANGE_NOTES",false),Created_At:now_(),Created_By:APP.ACTOR_ID};
-  SheetsRepository.append("Brand_Versions",ver);audit_("CREATE","BRAND",brand.Brand_ID,null,{brand:brand,version:ver});return {brand:brand,version:ver};
- }
- function createTemplate(p){
-  var docType=text_(p.documentType,40,"TEMPLATE_DOCUMENT_TYPE",true);
-  if(ENUMS["Templates.Document_Type"].indexOf(docType)<0)throw new Error("TEMPLATE_DOCUMENT_TYPE_INVALID");
-  var row=createLogical_("Templates","Template_ID","Template_Name",p.name,p.description,"Document_Type",docType);
-  var cfg=saveConfig_("TEMPLATE",row.Template_ID,p.config||{config_schema_version:"1",page:{size:"A4",orientation:"portrait"},sections:[],asset_refs:[]});checkAssetRefs_(cfg.config);
-  var ver={Template_Version_ID:id_("tver"),Template_ID:row.Template_ID,Version_Number:1,Version_Status:"DRAFT",Template_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Preview_File_ID:"",Published_At:"",Published_By:"",Change_Notes:text_(p.changeNotes,1500,"DESIGN_CHANGE_NOTES",false),Created_At:now_(),Created_By:APP.ACTOR_ID};
-  SheetsRepository.append("Template_Versions",ver);audit_("CREATE","TEMPLATE",row.Template_ID,null,{template:row,version:ver});return {template:row,version:ver};
- }
- function createPaper(p){
-  var row=createLogical_("Papers","Paper_ID","Paper_Name",p.name,"");
-  var config=p.config||{config_schema_version:"1",page_size:"A4",orientation:"portrait",background:{type:"solid",color:"#FFFFFF"},margins_mm:{top:12,right:12,bottom:12,left:12}};
-  var cfg=saveConfig_("PAPER",row.Paper_ID,config);checkAssetRefs_(cfg.config);
-  var textureId=text_(p.textureAssetId,120,"PAPER_TEXTURE_ASSET",false),texture=textureId?one_("Design_Assets","Design_Asset_ID",textureId):null;
-  if(textureId&&!texture)throw new Error("DESIGN_ASSET_NOT_FOUND");
-  var ver={Paper_Version_ID:id_("pver"),Paper_ID:row.Paper_ID,Version_Number:1,Version_Status:"DRAFT",Paper_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Texture_Asset_ID:textureId,Texture_SHA256:texture?texture.SHA256:"",Published_At:"",Published_By:"",Created_At:now_(),Created_By:APP.ACTOR_ID};
-  SheetsRepository.append("Paper_Versions",ver);audit_("CREATE","PAPER",row.Paper_ID,null,{paper:row,version:ver});return {paper:row,version:ver};
- }
- function updateDraft_(table,idField,id,config,notes){
-  var version=one_(table,idField,id);if(!version)throw new Error("DESIGN_VERSION_NOT_FOUND");
-  if(version.Version_Status!=="DRAFT")throw new Error("PUBLISHED_DESIGN_VERSION_IMMUTABLE");
-  var kind=table==="Brand_Versions"?"BRAND":table==="Template_Versions"?"TEMPLATE":"PAPER";
-  var cfg=saveConfig_(kind,id,config);checkAssetRefs_(cfg.config);
-  if(table==="Brand_Versions")SheetsRepository.updateBy(table,idField,id,{Design_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Change_Notes:text_(notes,1500,"DESIGN_CHANGE_NOTES",false)});
-  if(table==="Template_Versions")SheetsRepository.updateBy(table,idField,id,{Template_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256,Change_Notes:text_(notes,1500,"DESIGN_CHANGE_NOTES",false)});
-  if(table==="Paper_Versions")SheetsRepository.updateBy(table,idField,id,{Paper_Config_File_ID:cfg.file_id,Config_SHA256:cfg.sha256});
-  audit_("UPDATE","DESIGN_VERSION",id,{Config_SHA256:version.Config_SHA256},{Config_SHA256:cfg.sha256});return one_(table,idField,id);
- }
- function publish_(table,idField,id,configField,hashField){
-  var v=one_(table,idField,id);if(!v)throw new Error("DESIGN_VERSION_NOT_FOUND");
-  if(v.Version_Status!=="DRAFT")throw new Error("DESIGN_VERSION_NOT_DRAFT");
-  var f=DriveApp.getFileById(v[configField]),body=f.getBlob().getDataAsString("UTF-8"),digest=hash_(Utilities.newBlob(body).getBytes());
-  if(digest!==v[hashField])throw new Error("DESIGN_CONFIG_HASH_MISMATCH");
-  var config=JSON.parse(body);checkAssetRefs_(config);
-  var patch={Version_Status:"PUBLISHED",Published_At:now_(),Published_By:APP.ACTOR_ID};
-  SheetsRepository.updateBy(table,idField,id,patch);audit_("PUBLISH","DESIGN_VERSION",id,{Version_Status:"DRAFT"},{Version_Status:"PUBLISHED",Config_SHA256:digest});return one_(table,idField,id);
- }
- function newDraft_(table,entityTable,entityKey,entityId,idField,configField,hashField,prefix){
-  if(!one_(entityTable,entityKey,entityId))throw new Error("DESIGN_ENTITY_NOT_FOUND");
-  var versions=rows_(table).filter(function(v){return String(v[entityKey])===String(entityId);});
-  if(!versions.length)throw new Error("DESIGN_VERSION_NOT_FOUND");
-  var latest=versions.sort(function(a,b){return Number(b.Version_Number)-Number(a.Version_Number);})[0];
-  if(latest.Version_Status==="DRAFT")throw new Error("DESIGN_DRAFT_ALREADY_EXISTS");
-  var source=versions.filter(function(v){return v.Version_Status==="PUBLISHED";}).sort(function(a,b){return Number(b.Version_Number)-Number(a.Version_Number);})[0];
-  if(!source)throw new Error("DESIGN_PUBLISHED_VERSION_REQUIRED");
-  var raw=DriveApp.getFileById(source[configField]).getBlob().getDataAsString("UTF-8");
-  if(hash_(Utilities.newBlob(raw).getBytes())!==source[hashField])throw new Error("DESIGN_CONFIG_HASH_MISMATCH");
-  var config=JSON.parse(raw);checkAssetRefs_(config);var cfg=saveConfig_(prefix,entityId,config);
-  var version={};version[idField]=id_(idField.toLowerCase());version[entityKey]=entityId;
-  version.Version_Number=Number(latest.Version_Number)+1;version.Version_Status="DRAFT";
-  version[configField]=cfg.file_id;version[hashField]=cfg.sha256;
-  if(table==="Brand_Versions"||table==="Template_Versions")version.Change_Notes="New draft cloned from published version "+source.Version_Number;
-  if(table==="Template_Versions")version.Preview_File_ID="";
-  if(table==="Brand_Versions"||table==="Template_Versions"){version.Published_At="";version.Published_By="";}
-  version.Created_At=now_();version.Created_By=APP.ACTOR_ID;
-  SheetsRepository.append(table,version);audit_("CREATE","DESIGN_VERSION",version[idField],null,version);return version;
- }
- function attachBrandAsset(p){
-  var brand=one_("Brands","Brand_ID",p.brandId),asset=one_("Design_Assets","Design_Asset_ID",p.designAssetId);
-  if(!brand||!asset)throw new Error("DESIGN_ASSET_LINK_TARGET_MISSING");
-  var role=text_(p.usageRole,40,"BRAND_ASSET_ROLE",true);
-  if(!ENUMS["Brand_Assets.Usage_Role"]||ENUMS["Brand_Assets.Usage_Role"].indexOf(role)<0)throw new Error("BRAND_ASSET_ROLE_INVALID");
-  var existing=rows_("Brand_Assets").filter(function(x){return x.Brand_ID===p.brandId&&x.Design_Asset_ID===p.designAssetId&&x.Usage_Role===role;})[0];
-  if(existing)return existing;
-  var row={Brand_Asset_ID:id_("basset"),Brand_ID:p.brandId,Design_Asset_ID:p.designAssetId,Usage_Role:role,Lifecycle_Status:"ACTIVE",Created_At:now_(),Created_By:APP.ACTOR_ID};
-  SheetsRepository.append("Brand_Assets",row);audit_("LINK","BRAND_ASSET",row.Brand_Asset_ID,null,row);return row;
- }
- function linkTemplateIdentity(p){
-  var t=one_("Templates","Template_ID",p.templateId),b=one_("Brands","Brand_ID",p.brandId);if(!t||!b)throw new Error("DESIGN_IDENTITY_LINK_TARGET_MISSING");
-  var active=rows_("Template_Identity_Links").filter(function(x){return x.Template_ID===p.templateId&&x.Brand_ID===p.brandId&&x.Status==="ACTIVE";})[0];
-  if(active){if(p.isDefault&&!active.Is_Default)SheetsRepository.updateBy("Template_Identity_Links","Template_Identity_Link_ID",active.Template_Identity_Link_ID,{Is_Default:true});return active;}
-  if(p.isDefault)rows_("Template_Identity_Links").filter(function(x){return x.Template_ID===p.templateId&&x.Status==="ACTIVE"&&x.Is_Default;}).forEach(function(x){SheetsRepository.updateBy("Template_Identity_Links","Template_Identity_Link_ID",x.Template_Identity_Link_ID,{Is_Default:false});});
-  var link={Template_Identity_Link_ID:id_("til"),Template_ID:p.templateId,Brand_ID:p.brandId,Is_Default:Boolean(p.isDefault),Status:"ACTIVE",Created_At:now_()};
-  SheetsRepository.append("Template_Identity_Links",link);audit_("LINK","TEMPLATE_IDENTITY",link.Template_Identity_Link_ID,null,link);return link;
- }
- function list(){return {assets:rows_("Design_Assets"),brands:rows_("Brands"),brandVersions:rows_("Brand_Versions"),papers:rows_("Papers"),paperVersions:rows_("Paper_Versions"),templates:rows_("Templates"),templateVersions:rows_("Template_Versions"),templateIdentityLinks:rows_("Template_Identity_Links")};}
- return {registerAsset:registerAsset,createBrand:createBrand,createTemplate:createTemplate,createPaper:createPaper,updateBrandDraft:function(id,c,n){return updateDraft_("Brand_Versions","Brand_Version_ID",id,c,n);},updateTemplateDraft:function(id,c,n){return updateDraft_("Template_Versions","Template_Version_ID",id,c,n);},updatePaperDraft:function(id,c){return updateDraft_("Paper_Versions","Paper_Version_ID",id,c,"");},publishBrand:function(id){return publish_("Brand_Versions","Brand_Version_ID",id,"Design_Config_File_ID","Config_SHA256");},publishTemplate:function(id){return publish_("Template_Versions","Template_Version_ID",id,"Template_Config_File_ID","Config_SHA256");},publishPaper:function(id){return publish_("Paper_Versions","Paper_Version_ID",id,"Paper_Config_File_ID","Config_SHA256");},linkTemplateIdentity:linkTemplateIdentity,attachBrandAsset:attachBrandAsset,newBrandDraft:function(id){return newDraft_("Brand_Versions","Brands","Brand_ID",id,"Brand_Version_ID","Design_Config_File_ID","Config_SHA256","BRAND");},newTemplateDraft:function(id){return newDraft_("Template_Versions","Templates","Template_ID",id,"Template_Version_ID","Template_Config_File_ID","Config_SHA256","TEMPLATE");},newPaperDraft:function(id){return newDraft_("Paper_Versions","Papers","Paper_ID",id,"Paper_Version_ID","Paper_Config_File_ID","Config_SHA256","PAPER");},list:list};
-})();
-function listDesignStudioForBrowser(){assertPrimaryUser_();return DesignService.list();}
-function createBrandFromBrowser(p){assertPrimaryUser_();return DesignService.createBrand(p);}
-function createTemplateFromBrowser(p){assertPrimaryUser_();return DesignService.createTemplate(p);}
-function createPaperFromBrowser(p){assertPrimaryUser_();return DesignService.createPaper(p);}
-function publishDesignVersionFromBrowser(kind,id){assertPrimaryUser_();if(kind==="BRAND")return DesignService.publishBrand(id);if(kind==="TEMPLATE")return DesignService.publishTemplate(id);if(kind==="PAPER")return DesignService.publishPaper(id);throw new Error("DESIGN_KIND_INVALID");}
-function linkTemplateIdentityFromBrowser(p){assertPrimaryUser_();return DesignService.linkTemplateIdentity(p);}
-
-
-// ===== domain/DesignStudio.js =====
-
-/** Integrated Design Studio (DEV).
- * Brand identities + templates + domain-aware snapshot generation.
- * Uses Script Properties only. No new Sheets tables.
- * Reads EffectiveSpecificationResolver for real product data.
- * Populates approved images from existing Image_Links / Image_Assets.
- */
-var DesignStudio = (function () {
-  var BRAND_KEY = "DS_BRANDS";
-  var TEMPLATE_KEY = "DS_TEMPLATES";
-  var ISSUE_KEY = "DS_ISSUES";
-
-  var BUILTIN_BRANDS = [
-    {
-      name: "Apple",
-      identityType: "BUILTIN",
-      isDefault: true,
-      companyName: "Apple",
-      primary: "#000000",
-      secondary: "#555555",
-      accent: "#0071E3",
-      text: "#1D1D1F",
-      background: "#FFFFFF",
-      headerColor: "#000000",
-      tableHeader: "#1D1D1F",
-      border: "#E5E5E7",
-      paperSize: "A4",
-      orientation: "portrait",
-      logoPreference: "COMPANY",
-      fontRegularPath: "",
-      fontBoldPath: "",
-      watermarkText: "",
-      watermarkOpacity: 0.08,
-      contact: { phone: "", email: "", website: "https://www.apple.com" }
-    },
-    {
-      name: "6D",
-      identityType: "BUILTIN",
-      isDefault: false,
-      companyName: "6D",
-      primary: "#0A2540",
-      secondary: "#1A6B8A",
-      accent: "#00C2B8",
-      text: "#17212B",
-      background: "#FFFFFF",
-      headerColor: "#0A2540",
-      tableHeader: "#0A2540",
-      border: "#D9E0E7",
-      paperSize: "A4",
-      orientation: "portrait",
-      logoPreference: "COMPANY",
-      fontRegularPath: "",
-      fontBoldPath: "",
-      watermarkText: "",
-      watermarkOpacity: 0.08,
-      contact: { phone: "", email: "", website: "" }
-    },
-    {
-      name: "Industrial",
-      identityType: "BUILTIN",
-      isDefault: false,
-      companyName: "Industrial Catalog",
-      primary: "#173F5F",
-      secondary: "#2D6B83",
-      accent: "#E8A838",
-      text: "#17212B",
-      background: "#FFFFFF",
-      headerColor: "#173F5F",
-      tableHeader: "#173F5F",
-      border: "#D9E0E7",
-      paperSize: "A4",
-      orientation: "portrait",
-      logoPreference: "COMPANY",
-      fontRegularPath: "",
-      fontBoldPath: "",
-      watermarkText: "",
-      watermarkOpacity: 0.08,
-      contact: { phone: "", email: "", website: "" }
-    },
-    {
-      name: "Minimal",
-      identityType: "BUILTIN",
-      isDefault: false,
-      companyName: "",
-      primary: "#222222",
-      secondary: "#666666",
-      accent: "#222222",
-      text: "#111111",
-      background: "#FFFFFF",
-      headerColor: "#222222",
-      tableHeader: "#333333",
-      border: "#CCCCCC",
-      paperSize: "A4",
-      orientation: "portrait",
-      logoPreference: "NONE",
-      fontRegularPath: "",
-      fontBoldPath: "",
-      watermarkText: "",
-      watermarkOpacity: 0.05,
-      contact: { phone: "", email: "", website: "" }
-    },
-    {
-      name: "Supplier",
-      identityType: "BUILTIN",
-      isDefault: false,
-      companyName: "",
-      primary: "#173F5F",
-      secondary: "#2D6B83",
-      accent: "#173F5F",
-      text: "#17212B",
-      background: "#FFFFFF",
-      headerColor: "#173F5F",
-      tableHeader: "#173F5F",
-      border: "#D9E0E7",
-      paperSize: "A4",
-      orientation: "portrait",
-      logoPreference: "SUPPLIER",
-      fontRegularPath: "",
-      fontBoldPath: "",
-      watermarkText: "",
-      watermarkOpacity: 0.08,
-      contact: { phone: "", email: "", website: "" }
-    }
-  ];
-
-  function load_(key) {
-    var raw = PropertiesService.getScriptProperties().getProperty(key);
-    if (!raw) return [];
-    try { return JSON.parse(raw); } catch (e) { return []; }
-  }
-  function save_(key, data) {
-    PropertiesService.getScriptProperties().setProperty(key, JSON.stringify(data));
-  }
-
-  function ensureBuiltins_() {
-    var brands = load_(BRAND_KEY);
-    var changed = false;
-    BUILTIN_BRANDS.forEach(function (b) {
-      if (!brands.some(function (x) { return x.name === b.name; })) {
-        brands.push(Object.assign({}, b, { updatedAt: new Date().toISOString() }));
-        changed = true;
-      }
-    });
-    if (changed) save_(BRAND_KEY, brands);
-    return brands;
-  }
-
-  function listBrands() {
-    return ensureBuiltins_();
-  }
-
-  function getBrand(name) {
-    return ensureBuiltins_().find(function (b) { return b.name === name; }) || null;
-  }
-
-  function saveBrand(preset) {
-    if (!preset || !preset.name) throw new Error("VALIDATION_REQUIRED: name");
-    var brands = ensureBuiltins_();
-    var idx = brands.findIndex(function (b) { return b.name === preset.name; });
-    var record = {
-      name: String(preset.name).slice(0, 80),
-      identityType: "COMPANY",
-      isDefault: false,
-      companyName: String(preset.companyName || "").slice(0, 120),
-      primary: preset.primary || "#173F5F",
-      secondary: preset.secondary || "#2D6B83",
-      accent: preset.accent || preset.primary || "#173F5F",
-      text: preset.text || "#17212B",
-      background: preset.background || "#FFFFFF",
-      headerColor: preset.headerColor || preset.primary || "#173F5F",
-      tableHeader: preset.tableHeader || preset.primary || "#173F5F",
-      border: preset.border || "#D9E0E7",
-      paperSize: preset.paperSize || "A4",
-      orientation: preset.orientation || "portrait",
-      logoPreference: preset.logoPreference || "COMPANY",
-      fontRegularPath: String(preset.fontRegularPath || "").slice(0, 500),
-      fontBoldPath: String(preset.fontBoldPath || "").slice(0, 500),
-      watermarkText: String(preset.watermarkText || "").slice(0, 60),
-      watermarkOpacity: Math.max(0.03, Math.min(0.35, Number(preset.watermarkOpacity) || 0.1)),
-      contact: {
-        phone: String(preset.phone || "").slice(0, 40),
-        email: String(preset.email || "").slice(0, 80),
-        website: String(preset.website || "").slice(0, 120)
-      },
-      updatedAt: new Date().toISOString()
-    };
-    if (idx >= 0) brands[idx] = record;
-    else brands.push(record);
-    save_(BRAND_KEY, brands);
-    return record;
-  }
-
-  function listTemplates() {
-    return load_(TEMPLATE_KEY);
-  }
-
-  function saveTemplate(t) {
-    if (!t || !t.name) throw new Error("VALIDATION_REQUIRED: name");
-    if (!["TECHNICAL_DATASHEET", "PRODUCT_CATALOG", "MASTER_CATALOG"].includes(t.documentType)) {
-      throw new Error("DOCUMENT_TYPE_UNSUPPORTED");
-    }
-    var items = load_(TEMPLATE_KEY);
-    var existing = items.find(function (x) { return x.name === t.name; });
-    var version = existing ? (existing.version || 1) + 1 : 1;
-    var history = existing && existing.history ? existing.history.slice() : [];
-    if (existing && existing.status === "PUBLISHED") {
-      history.push({ version: existing.version, snapshot: Object.assign({}, existing), archivedAt: new Date().toISOString() });
-    }
-    var record = {
-      name: String(t.name).slice(0, 80),
-      documentType: t.documentType,
-      description: String(t.description || "").slice(0, 300),
-      status: t.status || "DRAFT",
-      includeIndex: t.includeIndex !== false,
-      groupByFamily: !!t.groupByFamily,
-      showProvenance: !!t.showProvenance,
-      excludeUnpublished: !!t.excludeUnpublished,
-      blockOnConflict: true,
-      defaultBrandName: String(t.defaultBrandName || "Apple").slice(0, 80),
-      version: version,
-      history: history.slice(-5),
-      updatedAt: new Date().toISOString()
-    };
-    if (existing) {
-      var idx = items.findIndex(function (x) { return x.name === t.name; });
-      items[idx] = record;
-    } else {
-      items.push(record);
-    }
-    save_(TEMPLATE_KEY, items);
-    return record;
-  }
-
-  function publishTemplate(name) {
-    var items = load_(TEMPLATE_KEY);
-    var idx = items.findIndex(function (x) { return x.name === name; });
-    if (idx < 0) throw new Error("TEMPLATE_NOT_FOUND");
-    items[idx].status = "PUBLISHED";
-    items[idx].publishedAt = new Date().toISOString();
-    save_(TEMPLATE_KEY, items);
-    return items[idx];
-  }
-
-  function copyTemplate(sourceName, newName) {
-    var src = load_(TEMPLATE_KEY).find(function (x) { return x.name === sourceName; });
-    if (!src) throw new Error("TEMPLATE_NOT_FOUND");
-    return saveTemplate(Object.assign({}, src, { name: newName, status: "DRAFT" }));
-  }
-
-  function collectApprovedImages_(productId, variantId) {
-    var images = [];
-    function addLinks(targetType, targetId) {
-      if (!targetId) return;
-      var links = SheetsRepository.findAll("Image_Links", function (row) {
-        return row.Target_Type === targetType && row.Target_ID === targetId &&
-               row.Link_Status === "ACTIVE" && (row.Catalog_Approved || row.DataSheet_Approved);
-      }) || [];
-      links.forEach(function (link) {
-        var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", link.Image_ID);
-        if (!asset || asset.Lifecycle_Status !== "ACTIVE") return;
-        images.push({
-          image_id: asset.Image_ID,
-          drive_file_id: asset.Original_File_ID,
-          path: asset.Local_Path || "", // filled by a later Drive sync if needed
-          display_width_mm: 70,
-          is_primary: !!link.Is_Primary,
-          catalog_approved: !!link.Catalog_Approved,
-          datasheet_approved: !!link.DataSheet_Approved
-        });
-      });
-    }
-    addLinks("VARIANT", variantId);
-    addLinks("PRODUCT", productId);
-    return images;
-  }
-
-  function resolveItem_(productId, variantId) {
-    var product = SheetsRepository.getBy("Products", "Product_ID", productId);
-    if (!product) throw new Error("PRODUCT_NOT_FOUND: " + productId);
-    var company = SheetsRepository.getBy("Product_Company", "Product_ID", productId) || {};
-    var variant = variantId ? SheetsRepository.getBy("Variants", "Variant_ID", variantId) : null;
-    if (variantId && (!variant || variant.Product_ID !== productId)) {
-      throw new Error("VARIANT_NOT_FOUND_OR_PRODUCT_MISMATCH: " + variantId);
-    }
-    var variantCompany = variantId
-      ? (SheetsRepository.getBy("Variant_Company", "Variant_ID", variantId) || {})
-      : {};
-    var family = company.Product_Family_ID
-      ? SheetsRepository.getBy("Product_Families", "Product_Family_ID", company.Product_Family_ID)
-      : null;
-    var resolved = EffectiveSpecificationResolver.resolveEffectiveSpecifications(productId, variantId || null);
-    var specs = (resolved.source_specifications || []).map(function (s) {
-      return {
-        key: s.attribute_key,
-        label: s.attribute_key,
-        value: s.effective_value,
-        unit: s.unit || "",
-        provenance: s.provenance,
-        scope: s.scope
-      };
-    });
-    (resolved.company_attributes || []).forEach(function (a) {
-      if (a.effective_value != null) {
-        specs.push({
-          key: a.attribute_id,
-          label: a.attribute_id,
-          value: a.effective_value,
-          unit: "",
-          provenance: a.mode || "COMPANY",
-          scope: "ATTRIBUTE"
-        });
-      }
-    });
-    var productNameEn = company.Product_Name_EN || productId;
-    var productNameAr = company.Product_Name_AR || "";
-    var variantNameEn = variantCompany.Model_Name_EN || "";
-    var variantNameAr = variantCompany.Model_Name_AR || "";
-    return {
-      productId: productId,
-      variantId: variantId || null,
-      product_name: productNameEn,
-      product_name_ar: productNameAr,
-      name: variantNameEn || productNameEn,
-      name_ar: variantNameAr || productNameAr,
-      description: company.Company_Description || "",
-      family: family ? (family.Family_Name_EN || family.Family_Name_AR || "") : "",
-      model_number: variantNameEn || variantNameAr || "",
-      specifications: specs,
-      images: collectApprovedImages_(productId, variantId),
-      publishable: product.Lifecycle_Status === "ACTIVE",
-      conflicts: resolved.conflicts || [],
-      validation_errors: resolved.validation_errors || []
-    };
-  }
-
-  function buildSnapshotFromDomain(config) {
-    if (!config || !config.documentType) throw new Error("VALIDATION_REQUIRED: documentType");
-    var productIds = config.productIds || [];
-    if (!productIds.length) throw new Error("ISSUE_SCOPE_EMPTY");
-
-    var brand = config.brandName ? getBrand(config.brandName) : getBrand("Apple");
-    if (!brand) brand = BUILTIN_BRANDS[0];
-
-    var template = config.templateName
-      ? load_(TEMPLATE_KEY).find(function (t) { return t.name === config.templateName; })
-      : null;
-
-    var items = [];
-    var allConflicts = [];
-    var allValidationErrors = [];
-    productIds.forEach(function (pid) {
-      var variantId = config.variantMap && config.variantMap[pid] ? config.variantMap[pid] : null;
-      var item = resolveItem_(pid, variantId);
-      items.push(item);
-      if (item.conflicts && item.conflicts.length) allConflicts = allConflicts.concat(item.conflicts);
-      if (item.validation_errors && item.validation_errors.length) {
-        allValidationErrors = allValidationErrors.concat(item.validation_errors);
-      }
-    });
-
-    var isFinal = String(config.documentStatus || "ORIGINAL").toUpperCase() === "FINAL";
-    if (isFinal && allValidationErrors.length) {
-      throw new Error("SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL: " + allValidationErrors.length);
-    }
-    if (isFinal && allConflicts.length) {
-      throw new Error("CONFLICTS_BLOCK_FINAL_ISSUE: " + allConflicts.length);
-    }
-
-    var snap = {
-      snapshot_version: "1",
-      document_type: config.documentType,
-      title: config.title || brand.companyName || "Industrial Catalog",
-      subtitle: config.subtitle || "",
-      items: items,
-      brand: {
-        palette: {
-          primary: brand.primary,
-          secondary: brand.secondary,
-          accent: brand.accent,
-          text: brand.text,
-          header: brand.headerColor,
-          tableHeader: brand.tableHeader,
-          border: brand.border
-        },
-        fonts: {
-          regular: brand.fontRegularPath || null,
-          bold: brand.fontBoldPath || null
-        },
-        logoPreference: brand.logoPreference
-      },
-      paper: {
-        page: {
-          size: brand.paperSize || "A4",
-          orientation: brand.orientation || "portrait",
-          margins_mm: { top: 18, right: 12, bottom: 16, left: 12 }
-        },
-        background: { color: brand.background }
-      },
-      watermark: brand.watermarkText ? {
-        text: brand.watermarkText,
-        opacity: brand.watermarkOpacity,
-        color: "#777777",
-        rotation_degrees: -35
-      } : {},
-      export_profile: { output_class: "DIGITAL_PDF", minimum_dpi_warning: 150, minimum_dpi_block: 72 },
-      contact: brand.contact || {},
-      document_status: String(config.documentStatus || "ORIGINAL").toUpperCase(),
-      block_on_conflict: true,
-      revision: config.revision || "1.0",
-      issue_date: config.issueDate || new Date().toISOString().slice(0, 10),
-      show_provenance: template ? !!template.showProvenance : !!config.showProvenance,
-      group_by_family: template ? !!template.groupByFamily : !!config.groupByFamily,
-      include_index: template ? template.includeIndex !== false : config.includeIndex !== false,
-      exclude_unpublished: template ? !!template.excludeUnpublished : !!config.excludeUnpublished,
-      conflicts: allConflicts,
-      generatedAt: new Date().toISOString(),
-      brandName: brand.name,
-      templateName: template ? template.name : null
-    };
-
-    var issues = load_(ISSUE_KEY);
-    issues.unshift({
-      id: Utilities.getUuid(),
-      documentType: snap.document_type,
-      title: snap.title,
-      brandName: snap.brandName,
-      templateName: snap.templateName,
-      itemCount: items.length,
-      conflictCount: allConflicts.length,
-      createdAt: snap.generatedAt
-    });
-    save_(ISSUE_KEY, issues.slice(0, 50));
-
-    return snap;
-  }
-
-  function listIssues() {
-    return load_(ISSUE_KEY);
-  }
-
-  return {
-    listBrands: listBrands,
-    getBrand: getBrand,
-    saveBrand: saveBrand,
-    listTemplates: listTemplates,
-    saveTemplate: saveTemplate,
-    publishTemplate: publishTemplate,
-    copyTemplate: copyTemplate,
-    buildSnapshotFromDomain: buildSnapshotFromDomain,
-    listIssues: listIssues
-  };
-})();
-
-function listBrandsForBrowser() { assertPrimaryUser_(); return DesignStudio.listBrands(); }
-function saveBrandFromBrowser(p) { assertPrimaryUser_(); return DesignStudio.saveBrand(p); }
-function listTemplatesForBrowser() { assertPrimaryUser_(); return DesignStudio.listTemplates(); }
-function saveTemplateFromBrowser(t) { assertPrimaryUser_(); return DesignStudio.saveTemplate(t); }
-function publishTemplateFromBrowser(name) { assertPrimaryUser_(); return DesignStudio.publishTemplate(name); }
-function copyTemplateFromBrowser(src, dest) { assertPrimaryUser_(); return DesignStudio.copyTemplate(src, dest); }
-function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); return DesignStudio.buildSnapshotFromDomain(config); }
-function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
-
-
-// ===== api/Api.js =====
-var Api = (function () {
-  function requestId_(body) {
-    var supplied = body && typeof body.request_id === "string" ? body.request_id.trim() : "";
-    return supplied && supplied.length <= 100 ? supplied : Utilities.getUuid();
-  }
-  function success_(requestId, data) {
-    return jsonResponse_({
-      protocol_version: "1",
-      request_id: requestId,
-      correlation_id: requestId,
-      ok: true,
-      data: data,
-      error: null
-    });
-  }
-  function failure_(requestId, code) {
-    return jsonResponse_({
-      protocol_version: "1",
-      request_id: requestId,
-      correlation_id: requestId,
-      ok: false,
-      data: null,
-      error: { code: code, message: "Request could not be completed.", retryable: false }
-    });
-  }
-  function safeCode_(err) {
-    var message = String(err && err.message ? err.message : "");
-    var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
-    return match ? match[1] : "REQUEST_FAILED";
-  }
-  function health(e) {
-    var requestId = Utilities.getUuid();
-    try {
-      assertPrimaryUser_();
-      var props = PropertiesService.getScriptProperties();
-      return success_(requestId, {
-        appVersion: APP.VERSION,
-        schemaVersion: APP.SCHEMA_VERSION,
-        environment: APP.ENVIRONMENT,
-        spreadsheetConfigured: Boolean(props.getProperty("DEV_SPREADSHEET_ID")),
-        schemaInitialized: props.getProperty("APP_SCHEMA_VERSION") === APP.SCHEMA_VERSION
-      });
-    } catch (err) {
-      return failure_(requestId, safeCode_(err));
-    }
-  }
-  function post(e) {
-    var body = {};
-    var requestId = Utilities.getUuid();
-    try {
-      var raw = e && e.postData && e.postData.contents ? e.postData.contents : "{}";
-      if (raw.length > 20000) return failure_(requestId, "REQUEST_TOO_LARGE");
-      body = JSON.parse(raw);
-      if (!body || Object.prototype.toString.call(body) !== "[object Object]") {
-        return failure_(requestId, "INVALID_REQUEST");
-      }
-      requestId = requestId_(body);
-      assertPrimaryUser_();
-      if (body.protocol_version && body.protocol_version !== "1") {
-        return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
-      }
-      var p = body.payload || {};
-      var actor = APP.ACTOR_ID;
-
-      if (body.action === "catalog.register") {
-        var payload = InputValidation.catalogPayload(p);
-        var registered = CatalogService.register(payload);
-        registered.workerDispatch = dispatchRegisteredCatalog_(registered);
-        return success_(requestId, registered);
-      }
-      if (body.action === "staging.promote") {
-        var promoPayload = InputValidation.promotionPayload(p);
-        var promoted = StagingPromotion.promoteReviewedStaging({
-          stagingSetFileId: promoPayload.stagingSetFileId,
-          stagingSetSha256: promoPayload.stagingSetSha256,
-          actor: actor
-        });
-        return success_(requestId, promoted);
-      }
-      if (body.action === "images.promoteReviewed") {
-        var reviewPayload = InputValidation.idOnlyPayload(p, "reviewQueueId");
-        var imgResult = ImagePromotion.promoteReviewedImage({
-          reviewQueueId: reviewPayload.reviewQueueId,
-          actor: actor
-        });
-        return success_(requestId, imgResult);
-      }
-      if (body.action === "images.reviewDecision") {
-        var decisionResult = ImageReviewDecision.submit({
-          reviewQueueId: p.reviewQueueId,
-          decision: p.decision,
-          targetType: p.targetType,
-          targetId: p.targetId,
-          catalogApproved: p.catalogApproved,
-          dataSheetApproved: p.dataSheetApproved,
-          isPrimary: p.isPrimary,
-          catalogOrder: p.catalogOrder,
-          dataSheetOrder: p.dataSheetOrder,
-        });
-        return success_(requestId, decisionResult);
-      }
-      if (body.action === "images.intake") {
-        var intakeResult = ImageReviewIntake.intake({
-          imageManifestFileId: p.imageManifestFileId,
-          imageManifestSha256: p.imageManifestSha256,
-          driveManifestFileId: p.driveManifestFileId,
-          driveManifestSha256: p.driveManifestSha256,
-          actor: actor
-        });
-        return success_(requestId, intakeResult);
-      }
-
-      // Phase 4 — Image Management
-      if (body.action === "image.link") {
-        if (!p.imageId || !p.targetType || !p.targetId) throw new Error("IMAGE_LINK_ARGUMENTS_REQUIRED");
-        return success_(requestId, ImageManagement.linkToTarget(p.imageId, p.targetType, p.targetId, {
-          actor: actor,
-          isPrimary: Boolean(p.isPrimary),
-          catalogApproved: Boolean(p.catalogApproved),
-          dataSheetApproved: Boolean(p.dataSheetApproved),
-          linkStatus: p.linkStatus || "CANDIDATE",
-          catalogOrder: p.catalogOrder,
-          dataSheetOrder: p.dataSheetOrder
-        }));
-      }
-      if (body.action === "image.setApproval") {
-        if (!p.linkId) throw new Error("IMAGE_LINK_ID_REQUIRED");
-        return success_(requestId, ImageManagement.setApproval(p.linkId, {
-          actor: actor,
-          catalogApproved: p.catalogApproved,
-          dataSheetApproved: p.dataSheetApproved,
-          linkStatus: p.linkStatus
-        }));
-      }
-      if (body.action === "image.setPrimary") {
-        if (!p.linkId) throw new Error("IMAGE_LINK_ID_REQUIRED");
-        return success_(requestId, ImageManagement.setPrimary(p.linkId));
-      }
-      if (body.action === "image.getForProduct") {
-        if (!p.productId) throw new Error("PRODUCT_ID_REQUIRED");
-        return success_(requestId, ImageManagement.getImagesForProduct(p.productId, p.variantId || null, p.usage || "ALL"));
-      }
-      if (body.action === "image.findDuplicate") {
-        if (!p.sha256) throw new Error("IMAGE_SHA256_REQUIRED");
-        return success_(requestId, ImageManagement.findDuplicateBySha256(p.sha256));
-      }
-
-      // Product domain — all validated at boundary
-      if (body.action === "product.createCompanyRecord") {
-        var pc = InputValidation.productCreatePayload(p);
-        return success_(requestId, ProductService.create(Object.assign({ actor: actor }, pc)));
-      }
-      if (body.action === "product.getWorkspace") {
-        var gw = InputValidation.idOnlyPayload(p, "productId");
-        return success_(requestId, ProductService.getWorkspace(gw.productId));
-      }
-      if (body.action === "product.search") {
-        var ps = InputValidation.productSearchPayload(p);
-        return success_(requestId, { results: ProductService.search(ps.query) });
-      }
-      if (body.action === "product.updateCompanyFields") {
-        var pu = InputValidation.productUpdatePayload(p);
-        return success_(requestId, ProductService.updateCompany(pu.productId, pu, actor));
-      }
-      if (body.action === "product.archive" || body.action === "product.reactivate") {
-        var pid = InputValidation.idOnlyPayload(p, "productId");
-        var fn = body.action === "product.archive" ? ProductService.archive : ProductService.reactivate;
-        return success_(requestId, fn(pid.productId, actor));
-      }
-      if (body.action === "family.create" || body.action === "family.updateParent" || body.action === "family.archive" || body.action === "family.reactivate") {
-        var fp = InputValidation.familyPayload(p);
-        if (body.action === "family.create") return success_(requestId, ProductFamilyService.create(fp.nameEn, fp.nameAr, fp.parentId, actor));
-        if (body.action === "family.updateParent") return success_(requestId, ProductFamilyService.updateParent(fp.familyId, fp.newParentId, actor));
-        if (body.action === "family.archive") return success_(requestId, ProductFamilyService.archive(fp.familyId, actor));
-        return success_(requestId, ProductFamilyService.reactivate(fp.familyId, actor));
-      }
-      if (body.action === "variant.createCompanyRecord") {
-        var vc = InputValidation.variantCreatePayload(p);
-        return success_(requestId, VariantService.create(vc.productId, Object.assign({ actor: actor }, vc)));
-      }
-      if (body.action === "variant.updateCompanyFields") {
-        var vu = InputValidation.variantUpdatePayload(p);
-        return success_(requestId, VariantService.updateCompany(vu.variantId, vu, actor));
-      }
-      if (body.action === "variant.archive" || body.action === "variant.reactivate") {
-        var vid = InputValidation.idOnlyPayload(p, "variantId");
-        var vfn = body.action === "variant.archive" ? VariantService.archive : VariantService.reactivate;
-        return success_(requestId, vfn(vid.variantId, actor));
-      }
-      if (body.action === "attribute.setProductValue") {
-        var ap = InputValidation.attributeSetPayload(p);
-        return success_(requestId, AttributeService.setProductValue(ap.productId, ap.attributeId, ap.valueJson, actor));
-      }
-      if (body.action === "attribute.setVariantOverride") {
-        var ao = InputValidation.attributeSetPayload(p);
-        return success_(requestId, AttributeService.setVariantOverride(ao.variantId, ao.attributeId, ao.mode, ao.valueJson, actor));
-      }
-      if (body.action === "attribute.clearVariantOverride") {
-        var ac = InputValidation.attributeSetPayload(p);
-        return success_(requestId, AttributeService.clearVariantOverride(ac.variantId, ac.attributeId, actor));
-      }
-      if (body.action === "specification.appendChange") {
-        var sc = InputValidation.specificationChangePayload(p);
-        return success_(requestId, SpecificationService.appendDraft(Object.assign({ actor: actor }, sc)));
-      }
-      if (body.action === "specification.approveChange" || body.action === "specification.rejectChange") {
-        var sid = InputValidation.idOnlyPayload(p, "changeId");
-        var sfn = body.action === "specification.approveChange" ? SpecificationService.approve : SpecificationService.reject;
-        return success_(requestId, sfn(sid.changeId, actor));
-      }
-      if (body.action === "specification.getEffective") {
-        var se = InputValidation.effectiveSpecPayload(p);
-        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(se.productId, se.variantId || null));
-      }
-
-      return failure_(requestId, "UNSUPPORTED_ACTION");
-    } catch (err) {
-      return failure_(requestId, safeCode_(err));
-    }
-  }
-  return { health: health, post: post };
-})();
-
-function doGet(e) {
-  var action = e && e.parameter ? e.parameter.action : "";
-  if (action === "health") return Api.health(e);
-  assertPrimaryUser_();
-  return HtmlService.createHtmlOutputFromFile("Index")
-    .setTitle("Industrial Catalog Studio")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1");
-}
-
-/** Browser upload endpoint. The deployed web app is restricted to the primary owner. */
-function uploadCatalogFromBrowser(payload) {
-  assertPrimaryUser_();
-  var upload = InputValidation.uploadMetadata(payload);
-  var name = upload.fileName;
-  var bytesEncoded = upload.base64;
-  var bytesLength = bytesEncoded.length;
-  if (bytesLength > 16777216) throw new Error("INVALID_BASE64_OR_FILE_TOO_LARGE");
-  var bytes = Utilities.base64Decode(bytesEncoded);
-  if (bytes.length < 8 || bytes.length > 12 * 1024 * 1024) throw new Error("FILE_SIZE_OUT_OF_RANGE");
-  var signature = bytes.slice(0, 5).map(function (byte) { return String.fromCharCode(byte < 0 ? byte + 256 : byte); }).join("");
-  if (signature !== "%PDF-") throw new Error("INVALID_PDF_SIGNATURE");
-  var folderId = PropertiesService.getScriptProperties().getProperty("DEV_CATALOG_FOLDER_ID");
-  if (!folderId) throw new Error("CONFIG_MISSING: DEV_CATALOG_FOLDER_ID");
-  var blob = Utilities.newBlob(bytes, "application/pdf", name);
-  var file = DriveApp.getFolderById(folderId).createFile(blob);
-  var catalogPayload = InputValidation.catalogPayload({
-    driveFileId: file.getId(),
-    supplierName: upload.supplierName,
-    catalogTitle: upload.catalogTitle,
-    catalogRevision: upload.catalogRevision
-  });
-  var registered = CatalogService.register(catalogPayload);
-  var workerDispatch = dispatchRegisteredCatalog_(registered);
-  return {
-    catalogId: registered.catalogId,
-    runId: registered.runId,
-    fileName: file.getName(),
-    sha256: registered.sha256,
-    status: registered.status,
-    idempotentReplay: registered.idempotentReplay,
-    workerDispatch: workerDispatch
-  };
-}
-
-/** Owner-only data endpoint called by the HtmlService dashboard. */
-function getCatalogDashboard() {
-  assertPrimaryUser_();
-  var catalogs = SheetsRepository.listRecent("Catalogs", 30);
-  var runs = SheetsRepository.listRecent("Run_Log", 60);
-  var sheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty("DEV_SPREADSHEET_ID")).getSheetByName("Catalogs");
-  return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
-}
-
-/** Run manually from the Apps Script editor after DEV properties are configured. */
-function initializeDevSchema() {
-  assertPrimaryUser_();
-  return SheetsRepository.initialize();
-}
-
-/** Owner-only endpoint for promoting a reviewed staging set from Drive. */
-function promoteStagingFromBrowser(payload) {
-  assertPrimaryUser_();
-  var validated = InputValidation.promotionPayload(payload || {});
-  return StagingPromotion.promoteReviewedStaging({
-    stagingSetFileId: validated.stagingSetFileId,
-    stagingSetSha256: validated.stagingSetSha256,
-    actor: APP.ACTOR_ID
-  });
-}
-
-/** Owner-only endpoint for image review intake. */
-function intakeImagesFromBrowser(payload) {
-  assertPrimaryUser_();
-  return ImageReviewIntake.intake({
-    imageManifestFileId: payload.imageManifestFileId,
-    imageManifestSha256: payload.imageManifestSha256,
-    driveManifestFileId: payload.driveManifestFileId,
-    driveManifestSha256: payload.driveManifestSha256,
-    actor: APP.ACTOR_ID
-  });
-}
-
-/** Owner-only image review queue projection for the browser UI. */
-function getImageReviewQueueForBrowser() {
-  assertPrimaryUser_();
-  var reviews = (SheetsRepository.listAll("Review_Queue") || []).filter(function (r) {
-    return r.Review_Type === "IMAGE_QUALITY" &&
-      ["OPEN", "IN_REVIEW", "APPROVED"].indexOf(r.Review_Status) >= 0;
-  });
-  var links = SheetsRepository.listAll("Review_Staging_Links") || [];
-  var targets = [];
-  (SheetsRepository.listAll("Products") || []).forEach(function (p) {
-    if (p.Lifecycle_Status !== "ACTIVE") return;
-    var company = SheetsRepository.getBy("Product_Company", "Product_ID", p.Product_ID) || {};
-    targets.push({ type: "PRODUCT", id: p.Product_ID, label: company.Product_Name_EN || p.Product_ID });
-  });
-  (SheetsRepository.listAll("Variants") || []).forEach(function (v) {
-    if (v.Lifecycle_Status !== "ACTIVE") return;
-    var company = SheetsRepository.getBy("Variant_Company", "Variant_ID", v.Variant_ID) || {};
-    var parent = SheetsRepository.getBy("Product_Company", "Product_ID", v.Product_ID) || {};
-    targets.push({ type: "VARIANT", id: v.Variant_ID,
-      label: (parent.Product_Name_EN || v.Product_ID) + " / " + (company.Model_Name_EN || v.Variant_ID) });
-  });
-  return reviews.map(function (review) {
-    var primary = links.filter(function (x) {
-      return x.Review_Queue_ID === review.Review_Queue_ID && x.Review_Role === "PRIMARY";
-    });
-    var staging = primary.length === 1
-      ? SheetsRepository.getBy("Staging_Images", "Staging_ID", primary[0].Staging_ID) : null;
-    var previewDataUrl = "";
-    var driveUrl = "";
-    if (staging && staging.Proposed_Image_File_ID) {
-      try {
-        var file = DriveApp.getFileById(staging.Proposed_Image_File_ID);
-        driveUrl = file.getUrl();
-        var thumbnail = file.getThumbnail();
-        if (thumbnail) {
-          previewDataUrl = "data:" + thumbnail.getContentType() + ";base64," +
-            Utilities.base64Encode(thumbnail.getBytes());
-        }
-      } catch (e) {}
-    }
-    return {
-      reviewQueueId: review.Review_Queue_ID,
-      reviewStatus: review.Review_Status,
-      stagingId: staging ? staging.Staging_ID : "",
-      proposedStatus: staging ? staging.Proposed_Status : "",
-      fileName: staging ? staging.Original_File_Name : "",
-      mimeType: staging ? staging.MIME_Type : "",
-      width: staging ? staging.Width_PX : "",
-      height: staging ? staging.Height_PX : "",
-      size: staging ? staging.File_Size_Bytes : "",
-      sha256: staging ? staging.SHA256 : "",
-      previewDataUrl: previewDataUrl,
-      driveUrl: driveUrl
-    };
-  }).filter(function (x) { return Boolean(x.stagingId); }).map(function (x) {
-    x.targets = targets;
-    return x;
-  });
-}
-
-/** Owner-only decision endpoint; server derives staging from the review link. */
-function submitImageReviewDecisionFromBrowser(payload) {
-  assertPrimaryUser_();
-  payload = payload || {};
-  return ImageReviewDecision.submit({
-    reviewQueueId: payload.reviewQueueId,
-    decision: payload.decision,
-    targetType: payload.targetType,
-    targetId: payload.targetId,
-    catalogApproved: payload.catalogApproved,
-    dataSheetApproved: payload.dataSheetApproved,
-    isPrimary: payload.isPrimary,
-    catalogOrder: payload.catalogOrder,
-    dataSheetOrder: payload.dataSheetOrder,
-  });
-}
-
-/** Owner-only retry-safe promotion endpoint. */
-function promoteReviewedImageFromBrowser(reviewQueueId) {
-  assertPrimaryUser_();
-  return ImagePromotion.promoteReviewedImage({
-    reviewQueueId: reviewQueueId,
-    actor: APP.ACTOR_ID
-  });
-}
-
-function getReviewQueueForBrowser() {
-  assertPrimaryUser_();
-  return ReviewDashboard.getQueue();
-}
-
-/** Owner-only review queue state update; never approves or promotes staging data. */
-
-function updateReviewStatusFromBrowser(payload) {
-  assertPrimaryUser_();
-  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
-  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
-}
-
-/** Compatibility name used by the current review dashboard UI. */
-
-function getReviewInboxFromBrowser() {
-  assertPrimaryUser_();
-  return ReviewDashboard.getQueue();
-}
-
-/** Owner-only approval of a single extracted product candidate; writes an immutable decision file only. */
-
-function approveProductReviewFromBrowser(payload) {
-  assertPrimaryUser_();
-  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
-  return ReviewWorkspace.approveProductReview(payload, APP.ACTOR_ID);
-}
-
-/** Owner-only canonical product search used by the explicit review identity resolver. */
-
-function searchCanonicalProductsForReviewFromBrowser(query) {
-  assertPrimaryUser_();
-  var q = typeof query === "string" ? query.trim() : "";
-  if (q.length < 2) return [];
-  return ProductService.search(q).filter(function (item) {
-    return item && item.status === "ACTIVE";
-  }).slice(0, 30);
-}
-
-/** Owner-only aggregation of approved decisions into a Drive Staging Set; does not promote it. */
-
-function buildStagingSetFromBrowser(payload) {
-  assertPrimaryUser_();
-  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
-  return ReviewWorkspace.buildStagingSetForRun(payload.runId, APP.ACTOR_ID);
-}
-
-function doPost(e) {
-  return Api.post(e);
-}
