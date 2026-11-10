@@ -37,6 +37,49 @@ test("owner-executed poller ingests a Drive result manifest for active runs", ()
   assert.equal(calls[0].resultManifestFileId, "manifest-file-id");
 });
 
+test("poller automatically imports verified image manifests after candidate intake", () => {
+  const imageCalls = [];
+  const workerManifest = {
+    image_extraction: {
+      enabled: true, status: "COMPLETED",
+      manifest_file_id: "image-manifest-id",
+      manifest_sha256: "a".repeat(64),
+      drive_manifest_file_id: "drive-manifest-id",
+      drive_manifest_sha256: "b".repeat(64)
+    }
+  };
+  const manifestFile = {
+    getId: () => "manifest-file-id",
+    getBlob: () => ({ getDataAsString: () => JSON.stringify(workerManifest) })
+  };
+  const folder = { getFilesByName: () => ({
+    hasNext: () => true, next: () => manifestFile
+  }) };
+  const jobFile = { getParents: () => ({ hasNext: () => true, next: () => folder }) };
+  const context = {
+    APP: { ACTOR_ID: "actor_test" },
+    SheetsRepository: {
+      listAll: () => [{ Run_ID: "run-images", Run_Status: "RUNNING", Input_Manifest_File_ID: "job-file-id" }],
+      updateBy: () => {}
+    },
+    DriveApp: { getFileById: () => jobFile },
+    Ingest: { ingestManifest: () => ({ run_id: "run-images", run_status: "COMPLETED" }) },
+    CandidateReviewIntake: { intakeRun: () => ({ status: "COMPLETED" }) },
+    ImageReviewIntake: { intake: (options) => {
+      imageCalls.push(options);
+      return { status: "COMPLETED", run_id: "run-images", counts: { staging: 2, reviews: 2, links: 2 } };
+    } }
+  };
+  vm.runInNewContext(source, context);
+  const result = context.WorkerIntegration.processCompletedRuns();
+  assert.equal(result.processed.length, 1);
+  assert.equal(result.processed[0].image_review_intake.counts.staging, 2);
+  assert.equal(imageCalls.length, 1);
+  assert.equal(imageCalls[0].imageManifestFileId, "image-manifest-id");
+  assert.equal(imageCalls[0].driveManifestFileId, "drive-manifest-id");
+  assert.equal(imageCalls[0].actor, "actor_test");
+});
+
 test("poller ignores terminal runs and runs without an input manifest", () => {
   const context = {
     SheetsRepository: { listAll: () => [

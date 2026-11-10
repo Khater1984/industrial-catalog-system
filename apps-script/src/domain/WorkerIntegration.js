@@ -142,6 +142,48 @@ var WorkerIntegration = (function () {
       lock.releaseLock();
     }
   }
+  function intakeImagesFromResult_(resultFile, runId) {
+    var raw;
+    try {
+      raw = resultFile.getBlob().getDataAsString("UTF-8");
+    } catch (err) {
+      throw new Error("RESULT_MANIFEST_UNREADABLE");
+    }
+    var manifest;
+    try {
+      manifest = JSON.parse(raw);
+    } catch (err) {
+      throw new Error("RESULT_MANIFEST_JSON_INVALID");
+    }
+    var extraction = manifest && manifest.image_extraction;
+    if (!extraction || extraction.enabled !== true) {
+      return { status: "SKIPPED", reason: "IMAGE_EXTRACTION_DISABLED" };
+    }
+    if (extraction.status !== "COMPLETED") {
+      throw new Error("IMAGE_EXTRACTION_NOT_COMPLETED");
+    }
+    if (!extraction.manifest_file_id || !extraction.manifest_sha256 ||
+        !extraction.drive_manifest_file_id || !extraction.drive_manifest_sha256) {
+      throw new Error("IMAGE_MANIFEST_REFERENCES_MISSING");
+    }
+    if (typeof ImageReviewIntake === "undefined" || !ImageReviewIntake.intake) {
+      throw new Error("IMAGE_REVIEW_INTAKE_UNAVAILABLE");
+    }
+    var intake = ImageReviewIntake.intake({
+      imageManifestFileId: extraction.manifest_file_id,
+      imageManifestSha256: extraction.manifest_sha256,
+      driveManifestFileId: extraction.drive_manifest_file_id,
+      driveManifestSha256: extraction.drive_manifest_sha256,
+      actor: APP.ACTOR_ID
+    });
+    if (!intake || intake.status !== "COMPLETED") {
+      throw new Error("IMAGE_REVIEW_INTAKE_" + (intake && intake.status || "FAILED"));
+    }
+    if (intake.run_id && intake.run_id !== runId) {
+      throw new Error("IMAGE_REVIEW_INTAKE_RUN_MISMATCH");
+    }
+    return intake;
+  }
   function processCompletedRuns() {
     var runs = SheetsRepository.listAll("Run_Log"), processed = [], errors = [];
     runs.forEach(function (run) {
@@ -176,10 +218,14 @@ var WorkerIntegration = (function () {
           var reviewIntake = CandidateReviewIntake.intakeRun({
             runId: run.Run_ID, resultManifestFileId: resultFile.getId()
           });
+          var imageReviewIntake = intakeImagesFromResult_(resultFile, run.Run_ID);
           SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
             Current_Step: "REVIEW_READY", Error_Code: "", Error_Summary: ""
           });
-          processed.push(Object.assign({}, result, { review_intake: reviewIntake }));
+          processed.push(Object.assign({}, result, {
+            review_intake: reviewIntake,
+            image_review_intake: imageReviewIntake
+          }));
         } else {
           processed.push(result);
         }
@@ -189,7 +235,7 @@ var WorkerIntegration = (function () {
           try {
             SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
               Current_Step: "REVIEW_INTAKE_PENDING",
-              Error_Code: "CANDIDATE_REVIEW_INTAKE_FAILED", Error_Summary: code
+              Error_Code: "REVIEW_INTAKE_FAILED", Error_Summary: code
             });
           } catch (ignore) {}
         } else if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) < 0) {
