@@ -125,3 +125,30 @@ def test_probe_metadata_marks_unsupported_bytes_for_review():
     assert result["mime_type"] == "application/octet-stream"
     assert result["width_px"] is None
     assert result["height_px"] is None
+
+def test_extracts_full_page_scan_and_product_photo_from_same_page(tmp_path):
+    source = tmp_path / "scanned-catalog.pdf"
+    scan_buffer = BytesIO()
+    scan = Image.new("RGB", (900, 1200), "white")
+    scan_draw = __import__("PIL.ImageDraw", fromlist=["ImageDraw"]).Draw(scan)
+    scan_draw.text((60, 80), "INDUSTRIAL CATALOG PAGE 1", fill="black")
+    scan.save(scan_buffer, format="PNG")
+    scan_bytes = scan_buffer.getvalue()
+
+    photo_buffer = BytesIO()
+    Image.new("RGB", (80, 60), (20, 120, 180)).save(photo_buffer, format="PNG")
+    photo_bytes = photo_buffer.getvalue()
+
+    pdf = canvas.Canvas(str(source))
+    pdf.drawImage(ImageReader(BytesIO(scan_bytes)), 0, 0, width=612, height=792)
+    pdf.drawImage(ImageReader(BytesIO(photo_bytes)), 430, 500, width=80, height=60)
+    pdf.showPage()
+    pdf.save()
+
+    result = extract_embedded_images(source, tmp_path / "out", enabled=True)
+
+    assert result["image_count"] == 2
+    extracted_hashes = {row["sha256"] for row in result["images"]}
+    assert hashlib.sha256(scan_bytes).hexdigest() in extracted_hashes
+    assert hashlib.sha256(photo_bytes).hexdigest() in extracted_hashes
+    assert all((tmp_path / "out" / row["artifact_path"]).is_file() for row in result["images"])
