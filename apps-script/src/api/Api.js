@@ -299,6 +299,16 @@ function approveProductReviewFromBrowser(payload) {
   return ReviewWorkspace.approveProductReview(payload, APP.ACTOR_ID);
 }
 
+/** Owner-only canonical product search used by the explicit review identity resolver. */
+function searchCanonicalProductsForReviewFromBrowser(query) {
+  assertPrimaryUser_();
+  var q = typeof query === "string" ? query.trim() : "";
+  if (q.length < 2) return [];
+  return ProductService.search(q).filter(function (item) {
+    return item && item.status === "ACTIVE";
+  }).slice(0, 30);
+}
+
 /** Owner-only aggregation of approved decisions into a Drive Staging Set; does not promote it. */
 function buildStagingSetFromBrowser(payload) {
   assertPrimaryUser_();
