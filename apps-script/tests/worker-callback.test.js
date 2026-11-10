@@ -8,7 +8,7 @@ const source = fs.readFileSync("src/domain/WorkerIntegration.js", "utf8");
 
 test("owner-executed poller ingests a Drive result manifest for active runs", () => {
   const calls = [];
-  const manifestFile = { getId: () => "manifest-file-id" };
+  const manifestFile = { getId: () => "manifest-file-id", getBlob: () => ({ getDataAsString: () => JSON.stringify({ image_extraction: { enabled: false, status: "DISABLED" } }) }) };
   const folder = { getFilesByName: (name) => ({
     hasNext: () => name === "result-manifest.json",
     next: () => manifestFile
