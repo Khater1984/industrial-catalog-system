@@ -291,3 +291,17 @@ function getReviewInboxFromBrowser() {
   assertPrimaryUser_();
   return ReviewDashboard.getQueue();
 }
+
+/** Owner-only approval of a single extracted product candidate; writes an immutable decision file only. */
+function approveProductReviewFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.approveProductReview(payload, APP.ACTOR_ID);
+}
+
+/** Owner-only aggregation of approved decisions into a Drive Staging Set; does not promote it. */
+function buildStagingSetFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.buildStagingSetForRun(payload.runId, APP.ACTOR_ID);
+}
