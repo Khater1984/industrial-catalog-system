@@ -52,6 +52,14 @@ var ReviewWorkspace = (function () {
     });
     var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
     var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
+    var expectedVariants = {}, expectedSpecifications = {};
+    links.forEach(function (link) {
+      if (link.Review_Role !== "EVIDENCE") return;
+      if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
+      if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
+    });
+    if (variantInputs.length !== Object.keys(expectedVariants).length ||
+        specInputs.length !== Object.keys(expectedSpecifications).length) fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
     var seen = {};
     function claim_(id, kind) {
       id = text_(id, 160);
@@ -90,13 +98,14 @@ var ReviewWorkspace = (function () {
       if (scope === "PRODUCT" && parentVariant) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
       if (scope === "VARIANT" && (!parentVariant || !acceptedVariants[parentVariant])) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_INVALID");
       var originalValue = text_(row.Value_Raw, 1000);
+      var originalUnit = text_(row.Unit_Raw, 80);
       var finalValue = input.reviewStatus === "ACCEPTED" && input.valueRaw !== undefined
         ? text_(input.valueRaw, 1000) : originalValue;
       if (input.reviewStatus === "ACCEPTED" && !finalValue) fail_("REVIEW_SPECIFICATION_VALUE_REQUIRED");
       var reason = text_(input.editReason || "", 500);
-      if (finalValue !== originalValue && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
       var unit = input.reviewStatus === "ACCEPTED" && input.unitRaw !== undefined
-        ? text_(input.unitRaw, 80) : text_(row.Unit_Raw, 80);
+        ? text_(input.unitRaw, 80) : originalUnit;
+      if ((finalValue !== originalValue || unit !== originalUnit) && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
       return {
         staging_id: row.Staging_ID, parent_staging_product_id: parentProduct,
         parent_staging_variant_id: parentVariant, scope: scope,
