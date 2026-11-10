@@ -37,6 +37,7 @@ var CandidateReviewIntake = (function () {
   function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 24); }
   function text_(value, limit) {
     var result = typeof value === "string" ? value.trim() : "";
+    if (result.normalize) result = result.normalize("NFC");
     return result.length > limit ? result.slice(0, limit) : result;
   }
   function confidence_(value) {
@@ -145,6 +146,10 @@ var CandidateReviewIntake = (function () {
     try { manifest = JSON.parse(manifestBlob.getDataAsString("UTF-8")); } catch (e) { fail_("CANDIDATE_MANIFEST_INVALID_JSON"); }
     require_(manifest && manifest.run_id === run.Run_ID && manifest.catalog_id === run.Catalog_ID &&
       manifest.run_status === "COMPLETED" && Array.isArray(manifest.pages), "CANDIDATE_MANIFEST_IDENTITY_INVALID");
+    var manifestCopy = {};
+    Object.keys(manifest).forEach(function (key) { if (key !== "manifest_sha256") manifestCopy[key] = manifest[key]; });
+    require_(typeof manifest.manifest_sha256 === "string" && SHA_RE.test(manifest.manifest_sha256) &&
+      sha_(canonicalJson_(manifestCopy)) === manifest.manifest_sha256, "CANDIDATE_MANIFEST_CHECKSUM_INVALID");
     var actor = APP.ACTOR_ID;
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
