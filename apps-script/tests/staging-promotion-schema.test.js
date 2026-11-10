@@ -90,7 +90,7 @@ function stagingObject() {
     }],
     specifications: [{
       staging_id: "stg_spec_s1", parent_staging_product_id: "stg_prd_s1", parent_staging_variant_id: "stg_var_s1",
-      catalog_page_id: "cp_cat_schema_001_00001", attribute_key_raw: "Power", value_raw: "5.5", unit_raw: "kW",
+      catalog_page_id: "cp_cat_schema_001_00001", attribute_key_raw: "Power", value_raw: "5.5", unit_raw: "kW", scope: "VARIANT",
       source_quote: "SPEC", review_status: "ACCEPTED", confidence: "HIGH"
     }]
   };
