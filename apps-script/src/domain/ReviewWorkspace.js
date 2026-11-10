@@ -53,13 +53,13 @@ var ReviewWorkspace = (function () {
     var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
     var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
     var expectedVariants = {}, expectedSpecifications = {};
+    if (variantInputs.length !== Object.keys(expectedVariants).length ||
+        specInputs.length !== Object.keys(expectedSpecifications).length) fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
     links.forEach(function (link) {
       if (link.Review_Role !== "EVIDENCE") return;
       if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
       if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
     });
-    if (variantInputs.length !== Object.keys(expectedVariants).length ||
-        specInputs.length !== Object.keys(expectedSpecifications).length) fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
     var seen = {};
     function claim_(id, kind) {
       id = text_(id, 160);
