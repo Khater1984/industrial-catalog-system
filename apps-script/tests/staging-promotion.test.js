@@ -81,10 +81,10 @@ function stagingObject() {
       { staging_id: "stg_var_2", parent_staging_product_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001", proposed_model_number: "PC100", source_quote: "VARIANT: PC100", review_status: "REJECTED", staging_record_hash: "c".repeat(64) }
     ],
     specifications: [
-      { staging_id: "stg_spec_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
-      { staging_id: "stg_spec_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
-      { staging_id: "stg_spec_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
-      { staging_id: "stg_spec_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", source_quote: "SPEC: Weight | 110 | kg", review_status: "ACCEPTED", confidence: "HIGH" }
+      { staging_id: "stg_spec_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", scope: "VARIANT", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", scope: "VARIANT", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
+      { staging_id: "stg_spec_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 110 | kg", review_status: "ACCEPTED", confidence: "HIGH" }
     ]
   };
 }
@@ -163,4 +163,32 @@ test("connection failure leaves the operation in doubt and retry resumes without
   assert.equal(resumed.store.Products.length, before);
   assert.equal(resumed.store.Variants.length, 1);
   assert.equal(resumed.store.Specifications.length, 2);
+});
+
+
+test("promotion rejects specification parent mismatch even with a valid file hash", () => {
+  const staging = stagingObject();
+  staging.products.push({
+    staging_id: "stg_prd_2", catalog_page_id: "cp_cat_demo_001_00002",
+    proposed_product_name: "Second Product", source_quote: "PRODUCT: Second Product",
+    review_status: "ACCEPTED", staging_record_hash: "d".repeat(64)
+  });
+  staging.specifications[0].parent_staging_product_id = "stg_prd_2";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_PARENT_MISMATCH/
+  );
+});
+
+test("promotion refuses specifications without the supported explicit VARIANT scope", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_SCOPE_UNSUPPORTED/
+  );
 });
