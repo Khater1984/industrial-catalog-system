@@ -60,7 +60,7 @@ var ReviewDashboard = (function () {
       return artifacts[id];
     }
     var items = reviews.map(function (review) {
-      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 30);
+      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 200);
       var evidence = [], artifactId = "", runId = "", catalogId = "";
       linked.forEach(function (link) {
         var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
