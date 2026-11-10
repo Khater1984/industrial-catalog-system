@@ -120,6 +120,9 @@ test("dispatch writes an immutable job manifest and starts the GitHub Actions wo
   assert.equal(job.source_pdf_file_id, "source-file-id-123456");
   assert.equal(job.run_folder_id, "run-folder-id-123456");
   assert.equal(job.idempotency_key, run.Idempotency_Key);
+  assert.equal(job.extraction_profile, "text-ocr-candidates-v2");
+  assert.equal(job.ocr_languages, "ara+eng");
+  assert.equal(job.ocr_min_usable_chars, 40);
   assert.match(run.Idempotency_Key, /^[a-f0-9]{64}$/);
 });
 
