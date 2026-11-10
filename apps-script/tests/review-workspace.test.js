@@ -321,3 +321,33 @@ test("Staging Set keeps rejected unresolved candidates without requiring parent 
   assert.equal(result.variants, 1);
   assert.equal(result.specifications, 1);
 });
+
+
+test("review approval requires an explicit decision for every linked candidate", () => {
+  const ctx = fixture();
+  const variant = {
+    Staging_ID: "stg_variant_incomplete", Run_ID: ctx.staging.Run_ID, Catalog_ID: ctx.staging.Catalog_ID,
+    Proposed_Model_Number: "DG100-B", Proposed_Model_Name: "Enclosed", Extracted_Text: "Model DG100-B"
+  };
+  ctx.stagingRows.Staging_Variants = { [variant.Staging_ID]: variant };
+  ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: variant.Staging_ID, Review_Role: "EVIDENCE" });
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator"
+  }, "actor_primary"), /REVIEW_CANDIDATE_DECISIONS_INCOMPLETE/);
+});
+
+test("changing a specification unit requires a reviewer reason", () => {
+  const ctx = fixture();
+  const spec = {
+    Staging_ID: "stg_spec_unit_edit", Run_ID: ctx.staging.Run_ID, Catalog_ID: ctx.staging.Catalog_ID,
+    Attribute_Key_Raw: "Power", Value_Raw: "100", Unit_Raw: "kW"
+  };
+  ctx.stagingRows.Staging_Specifications = { [spec.Staging_ID]: spec };
+  ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" });
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED",
+      parentProductStagingId: ctx.staging.Staging_ID, scope: "PRODUCT",
+      valueRaw: "100", unitRaw: "kVA" }]
+  }, "actor_primary"), /REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED/);
+});
