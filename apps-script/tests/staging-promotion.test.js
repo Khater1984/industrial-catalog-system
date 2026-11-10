@@ -74,6 +74,7 @@ function stagingObject() {
     products: [{
       staging_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001",
       proposed_product_name: "Plate Compactor PC Series", source_quote: "PRODUCT: Plate Compactor PC Series",
+      identity_resolution: "CREATE_NEW", canonical_product_id: "", match_rationale: "Reviewer confirmed a new product identity",
       review_status: "ACCEPTED", staging_record_hash: "a".repeat(64)
     }],
     variants: [
@@ -81,10 +82,11 @@ function stagingObject() {
       { staging_id: "stg_var_2", parent_staging_product_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001", proposed_model_number: "PC100", source_quote: "VARIANT: PC100", review_status: "REJECTED", staging_record_hash: "c".repeat(64) }
     ],
     specifications: [
-      { staging_id: "stg_spec_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
-      { staging_id: "stg_spec_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
-      { staging_id: "stg_spec_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
-      { staging_id: "stg_spec_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", source_quote: "SPEC: Weight | 110 | kg", review_status: "ACCEPTED", confidence: "HIGH" }
+      { staging_id: "stg_spec_1", source_assertion_key: "assertion_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", scope: "VARIANT", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_2", source_assertion_key: "assertion_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_3", source_assertion_key: "assertion_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", scope: "VARIANT", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
+      { staging_id: "stg_spec_4", source_assertion_key: "assertion_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 110 | kg", review_status: "REJECTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_5", source_assertion_key: "assertion_5", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Output", value_raw: "100", original_value_raw: "100", unit_raw: "kVA", original_unit_raw: "kW", edited: true, edit_reason: "Corrected unit from source table", scope: "VARIANT", source_quote: "SPEC: Output | 100 | kW", review_status: "ACCEPTED", confidence: "HIGH" }
     ]
   };
 }
@@ -105,12 +107,72 @@ test("accepted records are written and rejected records are not", () => {
   const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Product_Company.length, 1);
+  assert.equal(ctx.store.Product_Company[0].Product_Name_EN, "");
   assert.equal(ctx.store.Variants.length, 1);
-  assert.equal(ctx.store.Specifications.length, 2);
-  assert.equal(ctx.store.Specification_Changes.length, 1);
+  assert.equal(ctx.store.Specifications.length, 3);
+  assert.equal(ctx.store.Specification_Changes.length, 2);
   assert.equal(ctx.store.Specification_Changes[0].Operation, "UPDATE");
   assert.equal(ctx.store.Specifications[1].Attribute_Value_Source, "90");
+  assert.equal(ctx.store.Specifications[1].Source_Assertion_Key, "assertion_2");
+  assert.equal(ctx.store.Specification_Changes[0].Logical_Specification_Key, "SRC:" + ctx.store.Specifications[1].Specification_ID);
   assert.equal(JSON.parse(ctx.store.Specification_Changes[0].Value_JSON), "91");
+  const unitOnlySource = ctx.store.Specifications.find(row => row.Source_Assertion_Key === "assertion_5");
+  const unitOnlyChange = ctx.store.Specification_Changes.find(row => row.Unit_Code === "kVA");
+  assert.equal(unitOnlySource.Unit_Source, "kW");
+  assert.equal(unitOnlySource.Attribute_Value_Source, "100");
+  assert.ok(unitOnlyChange, "unit-only edit must create a Specification_Changes row");
+  assert.equal(unitOnlyChange.Unit_Code, "kVA");
+  assert.match(unitOnlyChange.Reason, /Corrected unit/);
+});
+
+test("promotion refuses accepted products without an explicit identity resolution", () => {
+  const staging = stagingObject();
+  delete staging.products[0].identity_resolution;
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID/
+  );
+});
+
+test("MATCH_EXISTING promotion links source records to an active canonical product without creating a duplicate", () => {
+  const staging = stagingObject();
+  staging.products[0].identity_resolution = "MATCH_EXISTING";
+  staging.products[0].canonical_product_id = "prd_existing_001";
+  staging.products[0].match_rationale = "Same manufacturer and verified product reference";
+  const store = {
+    Products: [{ Product_ID: "prd_existing_001", Lifecycle_Status: "ACTIVE" }],
+    Product_Company: [{ Product_ID: "prd_existing_001", Product_Name_EN: "Existing Canonical Product" }]
+  };
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(Object.assign({ store }, opts));
+  const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Product_Company.length, 1);
+  const source = ctx.store.Product_Source_Records[0];
+  assert.equal(source.Product_ID, "prd_existing_001");
+  assert.equal(source.Identity_Resolution, "MATCH_EXISTING");
+  const match = ctx.store.Identity_Match_Decisions.find(row => row.Entity_Type === "PRODUCT");
+  assert.equal(match.Decision, "MATCH_EXISTING");
+  assert.equal(match.Candidate_Canonical_ID, "prd_existing_001");
+  assert.equal(match.Result_Canonical_ID, "prd_existing_001");
+});
+
+test("MATCH_EXISTING promotion refuses inactive or missing canonical products", () => {
+  const staging = stagingObject();
+  staging.products[0].identity_resolution = "MATCH_EXISTING";
+  staging.products[0].canonical_product_id = "prd_inactive";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(Object.assign({ store: {
+    Products: [{ Product_ID: "prd_inactive", Lifecycle_Status: "ARCHIVED" }]
+  } }, opts));
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_MATCH_PRODUCT_NOT_ACTIVE/
+  );
 });
 
 test("rejects client-supplied staging object", () => {
@@ -147,20 +209,80 @@ test("retry does not duplicate products, variants, or source specifications", ()
   assert.equal(again.skipped, true);
   assert.equal(ctx.store.Products.length, 1);
   assert.equal(ctx.store.Variants.length, 1);
-  assert.equal(ctx.store.Specifications.length, 2);
-  assert.equal(ctx.store.Specification_Changes.length, 1);
+  assert.equal(ctx.store.Specifications.length, 3);
+  assert.equal(ctx.store.Specification_Changes.length, 2);
 });
 
 test("connection failure leaves the operation in doubt and retry resumes without duplicates", () => {
   const opts = makeDriveOptions(stagingObject());
-  const first = buildContext(Object.assign({ failAfter: 4 }, opts));
+  const first = buildContext(Object.assign({ failAfter: 3 }, opts));
   assert.throws(() => first.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }), /SHEETS_CONNECTION_FAILED/);
   assert.equal(first.store.Promotion_Operations[0].Operation_Status, "IN_DOUBT");
+  assert.equal(first.store.Products.length, 1);
+  assert.equal(first.store.Product_Company.length, 0);
   const before = first.store.Products.length;
   const resumed = buildContext(Object.assign({ store: first.store }, opts));
   const result = resumed.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(resumed.store.Products.length, before);
+  assert.equal(resumed.store.Product_Company.length, 1);
   assert.equal(resumed.store.Variants.length, 1);
-  assert.equal(resumed.store.Specifications.length, 2);
+  assert.equal(resumed.store.Specifications.length, 3);
+});
+
+
+test("promotion rejects specification parent mismatch even with a valid file hash", () => {
+  const staging = stagingObject();
+  staging.products.push({
+    staging_id: "stg_prd_2", catalog_page_id: "cp_cat_demo_001_00002",
+    proposed_product_name: "Second Product", source_quote: "PRODUCT: Second Product",
+    identity_resolution: "CREATE_NEW", canonical_product_id: "", match_rationale: "Reviewer confirmed new product identity",
+    review_status: "ACCEPTED", staging_record_hash: "d".repeat(64)
+  });
+  staging.specifications[0].parent_staging_product_id = "stg_prd_2";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_PARENT_MISMATCH/
+  );
+});
+
+test("promotion refuses specifications without the supported explicit VARIANT scope", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_SCOPE_UNSUPPORTED/
+  );
+});
+
+
+test("promotion writes product-scope specifications against Product_Source_Records", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "PRODUCT";
+  staging.specifications[0].parent_staging_variant_id = "";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
+  assert.equal(result.counts.specifications, 3);
+  const spec = ctx.store.Specifications.find(row => row.Scope === "PRODUCT");
+  assert.ok(spec);
+  assert.ok(spec.Product_Source_Record_ID);
+  assert.equal(spec.Variant_Source_Record_ID, "");
+  assert.equal(spec.Variant_ID, "");
+});
+
+test("promotion rejects product-scope specifications with a variant parent", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "PRODUCT";
+  staging.specifications[0].parent_staging_variant_id = "stg_var_1";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_PRODUCT_SCOPE_VARIANT_FORBIDDEN/
+  );
 });

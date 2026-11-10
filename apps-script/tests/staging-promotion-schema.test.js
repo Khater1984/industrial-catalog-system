@@ -82,6 +82,7 @@ function stagingObject() {
     products: [{
       staging_id: "stg_prd_s1", catalog_page_id: "cp_cat_schema_001_00001",
       proposed_product_name: "Schema Test Product", source_quote: "PRODUCT",
+      identity_resolution: "CREATE_NEW", canonical_product_id: "", match_rationale: "Reviewer confirmed new product identity",
       review_status: "ACCEPTED", staging_record_hash: "d".repeat(64)
     }],
     variants: [{
@@ -90,7 +91,7 @@ function stagingObject() {
     }],
     specifications: [{
       staging_id: "stg_spec_s1", parent_staging_product_id: "stg_prd_s1", parent_staging_variant_id: "stg_var_s1",
-      catalog_page_id: "cp_cat_schema_001_00001", attribute_key_raw: "Power", value_raw: "5.5", unit_raw: "kW",
+      catalog_page_id: "cp_cat_schema_001_00001", attribute_key_raw: "Power", value_raw: "5.5", unit_raw: "kW", scope: "VARIANT",
       source_quote: "SPEC", review_status: "ACCEPTED", confidence: "HIGH"
     }]
   };

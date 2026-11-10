@@ -306,3 +306,47 @@ function intakeImagesFromBrowser(payload) {
 function doPost(e) {
   return Api.post(e);
 }
+
+
+/** Owner-only, read-only projection of the human review queue. */
+function getReviewQueueForBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
+/** Owner-only review queue state update; never approves or promotes staging data. */
+function updateReviewStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
+}
+
+/** Compatibility name used by the current review dashboard UI. */
+function getReviewInboxFromBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
+/** Owner-only approval of a single extracted product candidate; writes an immutable decision file only. */
+function approveProductReviewFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.approveProductReview(payload, APP.ACTOR_ID);
+}
+
+/** Owner-only canonical product search used by the explicit review identity resolver. */
+function searchCanonicalProductsForReviewFromBrowser(query) {
+  assertPrimaryUser_();
+  var q = typeof query === "string" ? query.trim() : "";
+  if (q.length < 2) return [];
+  return ProductService.search(q).filter(function (item) {
+    return item && item.status === "ACTIVE";
+  }).slice(0, 30);
+}
+
+/** Owner-only aggregation of approved decisions into a Drive Staging Set; does not promote it. */
+function buildStagingSetFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.buildStagingSetForRun(payload.runId, APP.ACTOR_ID);
+}

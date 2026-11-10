@@ -55,7 +55,7 @@
 
 | Field | Required | Allowed stored values |
 |---|---|---|
-| `Scope` | Yes | PRODUCT, VARIANT |
+| `Scope` | No | PRODUCT, VARIANT |
 
 ### `Product_Families`
 
@@ -266,7 +266,7 @@
 
 | Field | Required | Allowed stored values |
 |---|---|---|
-| `Scope` | Yes | PRODUCT, VARIANT |
+| `Scope` | No | PRODUCT, VARIANT |
 | `Parse_Status` | Yes | UNPARSED, PARSED, AMBIGUOUS, INVALID |
 
 ### `Staging_Images`
