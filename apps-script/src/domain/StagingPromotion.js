@@ -138,6 +138,7 @@ var StagingPromotion = (function () {
       var counts = { products: 0, variants: 0, specifications: 0, changes: 0, rejected: 0, skipped: 0 };
       var productIds = {};
       var variantIds = {};
+      var variantParentIds = {};
       var productSourceIds = {};
       var productDecisionIds = {};
 
@@ -190,6 +191,7 @@ var StagingPromotion = (function () {
         var existingSource = existingBy_("Variant_Source_Records", "Source_Record_Key", sourceKey);
         if (existingSource) {
           variantIds[variant.staging_id] = existingSource.Variant_ID;
+          variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
           counts.skipped += 1;
           return;
         }
@@ -219,13 +221,16 @@ var StagingPromotion = (function () {
         mapping_(operationId, "VARIANT", variant.staging_id, "VARIANT_SOURCE_RECORD", sourceId, "VARIANT", variantId, decision.Match_Decision_ID, variant);
         audit_(actor, "PROMOTE", "VARIANT", variantId, "Accepted staging variant", runId, variant);
         variantIds[variant.staging_id] = variantId;
+        variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
       });
 
       staging.specifications.forEach(function (spec) {
         if (!accepted_(spec)) { counts.rejected += 1; return; }
         var productId = productIds[spec.parent_staging_product_id];
         var variantId = variantIds[spec.parent_staging_variant_id];
-        if (!productId || !variantId) { counts.skipped += 1; return; }
+        require_(spec.scope === "VARIANT", "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
+        require_(productId && variantId, "PROMOTION_SPEC_PARENT_MISSING");
+        require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
         var original = text_(sourceValue_(spec), 2000);
         var assertionKey = text_(variantId + "|" + spec.attribute_key_raw, 160);
         if (original) {
