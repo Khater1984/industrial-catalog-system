@@ -285,3 +285,9 @@ function updateReviewStatusFromBrowser(payload) {
   if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
   return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
 }
+
+/** Compatibility name used by the current review dashboard UI. */
+function getReviewInboxFromBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
