@@ -21,6 +21,12 @@ export CATALOG_WORKER_IMAGE_DRIVE_FOLDER_ID=your-drive-folder-id
 
 Uses the existing `DriveClient` and Application Default Credentials. The service identity must have access to the configured folder.
 
+## PDF image enumeration
+
+- The extractor enumerates image blocks as they are placed on each PDF page using PyMuPDF. This records repeated placements of one shared PDF image object separately and retains each placement's page-space bounding box in PDF points.
+- Each occurrence gets a unique artifact path and unit key. Its bytes are hashed independently; identical bytes can still resolve to one Drive object.
+- This captures raster images represented in the PDF page content. Pure vector artwork is not an embedded raster image and is not converted into a product-image candidate by this stage. Page rendering for visual evidence is a separate capability.
+
 ## Placement identity and duplicate bytes
 
 - Each image occurrence on a PDF page has its own artifact path containing the page number and image index. Repeated placement of the same image therefore remains a distinct, auditable page occurrence.
