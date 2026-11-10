@@ -106,7 +106,7 @@ var ImageManagement = (function () {
     return { status: "UPDATED", linkId: linkId, linkStatus: nextStatus };
   }
 
-  function setPrimary(linkId, actor) {
+  function setPrimary(linkId, actor, lockAlreadyHeld) {
     linkId = text_(linkId, 120);
     var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
     require_(link, "IMAGE_LINK_NOT_FOUND");
@@ -114,8 +114,8 @@ var ImageManagement = (function () {
     require_(link.Link_Status === "ACTIVE", "IMAGE_LINK_NOT_ACTIVE");
     require_(link.Catalog_Approved === true || link.DataSheet_Approved === true, "IMAGE_PRIMARY_REQUIRES_APPROVAL");
     resolveTarget_(link.Target_Type, link.Target_ID);
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
+    var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
+    if (lock) lock.waitLock(30000);
     try {
       var rows = SheetsRepository.listAll("Image_Links") || [];
       var actorId = actor_(actor);
@@ -131,7 +131,7 @@ var ImageManagement = (function () {
         Is_Primary: true, Updated_At: now_(), Updated_By: actorId
       });
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
     return { status: "PRIMARY_SET", linkId: linkId };
   }
