@@ -286,9 +286,4 @@ function updateReviewStatusFromBrowser(payload) {
 }
 
 
-/** Owner-only review queue state update; this does not approve or promote staging data. */
-function updateReviewStatusFromBrowser(payload) {
-  assertPrimaryUser_();
-  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
-  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
-}
+
