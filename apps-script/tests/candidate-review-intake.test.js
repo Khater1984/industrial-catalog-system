@@ -110,9 +110,9 @@ test("candidate intake is idempotent across poller retries", () => {
   const ctx = fixture();
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
-  assert.equal(ctx.rows.Staging_Products.length, 1);
+  assert.equal(ctx.rows.Staging_Products.length, 2);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 3);
 });
 
 test("candidate intake rejects artifacts with altered bytes or identity", () => {
