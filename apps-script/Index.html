@@ -75,20 +75,6 @@
         <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
       </div>
     </section>
-    <section class="panel" style="margin-top:18px" id="reviewWorkspace">
-      <div class="toolbar"><h3>مركز مراجعة نتائج الاستخراج</h3><button class="refresh" id="reviewRefresh" type="button">تحديث المراجعات</button></div>
-      <p class="notice">هنا تظهر مرشحات المنتجات والموديلات والمواصفات والصور المرتبطة بصفحات الكتالوج. الإجراءات الحالية لتنظيم المراجعة فقط؛ لا تعتمد المنتجات ولا تنقلها إلى السجلات الأساسية.</p>
-      <div class="review-grid">
-        <div class="review-stat"><b id="reviewOpen">—</b><span>مفتوحة</span></div>
-        <div class="review-stat"><b id="reviewInProgress">—</b><span>قيد المراجعة</span></div>
-        <div class="review-stat"><b id="reviewDeferred">—</b><span>مؤجلة</span></div>
-        <div class="review-stat"><b id="reviewRejected">—</b><span>مرفوضة</span></div>
-      </div>
-      <div class="field"><label for="reviewFilter">تصفية المهام</label><select id="reviewFilter"><option value="ACTIVE">النشطة (مفتوحة وقيد المراجعة)</option><option value="ALL">كل الحالات</option><option value="OPEN">مفتوحة</option><option value="IN_REVIEW">قيد المراجعة</option><option value="DEFERRED">مؤجلة</option><option value="REJECTED">مرفوضة</option></select></div>
-      <div id="reviewList"><div class="empty">جارٍ تحميل قائمة المراجعة...</div></div>
-      <div class="notice">اعتماد المنتج النهائي وربط الموديلات والمواصفات يحتاجان خطوة اعتماد منفصلة؛ لم يتم تفعيلها قبل اختبار تكوين ملف Staging Set والتحقق من عقد الترحيل.</div>
-      <div class="status" id="reviewStatus" role="status" aria-live="polite"></div>
-    </section>
     <section class="panel" style="margin-top:18px" id="humanReviewPanel">
       <div class="review-toolbar">
         <div><h3 style="margin:0">مراجعة نتائج الاستخراج</h3><div class="notice">المرشحات المستخرجة وأدلتها قبل اعتماد أي بيانات.</div></div>
@@ -397,78 +383,6 @@
       }).createDocumentFromBrowser({title:el("docTitle").value,documentType:el("docType").value,languageCode:el("docLanguage").value,description:el("docDescription").value,versionLabel:el("docVersion").value,fileName:f.name,base64:String(reader.result||"").split(",")[1]||""});
     };reader.readAsDataURL(f);
   });
-  let reviewItems = [];
-  function reviewStatusMessage(message,type){
-    const box=el("reviewStatus");box.textContent=message;box.className="status show "+type;
-  }
-  function appendReviewText(parent,tag,value,className){
-    const node=document.createElement(tag);if(className)node.className=className;node.textContent=value||"";parent.appendChild(node);return node;
-  }
-  function renderReviewEvidence(parent,link){
-    const wrap=document.createElement("div");wrap.className="review-evidence";
-    const title=link.productName||link.modelNumber||link.attribute||link.table||"عنصر مرتبط";
-    appendReviewText(wrap,"strong",title);
-    const detail=[link.table,link.status,link.pageId?"الصفحة: "+link.pageId:"",link.confidence?"الثقة: "+link.confidence:""].filter(Boolean).join(" · ");
-    if(detail)appendReviewText(wrap,"div",detail,"review-meta");
-    if(link.quote)appendReviewText(wrap,"div","اقتباس الاستخراج: "+link.quote);
-    if(link.modelName)appendReviewText(wrap,"div","اسم الموديل: "+link.modelName);
-    if(link.value)appendReviewText(wrap,"div","المواصفة: "+link.attribute+" = "+link.value+" "+link.unit);
-    if(link.fileUrl){const a=document.createElement("a");a.className="review-link";a.href=link.fileUrl;a.target="_blank";a.rel="noopener";a.textContent="فتح الصورة/المستند في Drive";wrap.appendChild(a);}
-    const artifact=link.artifact;
-    if(artifact){
-      if(artifact.warning)appendReviewText(wrap,"div","تعذر قراءة ملف صفحة المصدر: "+artifact.warning);
-      else{
-        if(artifact.pageNumber)appendReviewText(wrap,"div","رقم الصفحة: "+artifact.pageNumber+" · طريقة الاستخراج: "+(artifact.extractionMethod||"—"));
-        const lists=[["مرشحات المنتجات",artifact.products||[]],["مرشحات الموديلات",artifact.variants||[]],["مرشحات المواصفات",artifact.specifications||[]]];
-        lists.forEach(([label,items])=>{
-          if(!items.length)return;appendReviewText(wrap,"strong",label);
-          items.forEach(item=>{
-            const bits=[item.proposed_product_name,item.proposed_model_number,item.proposed_model_name,item.attribute_key_raw,item.value_raw,item.unit_raw,item.source_quote,item.confidence].filter(Boolean);
-            appendReviewText(wrap,"div","• "+bits.join(" | "));
-          });
-        });
-        if(artifact.pageText){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="عرض النص المستخرج من الصفحة";details.appendChild(summary);appendReviewText(details,"pre",artifact.pageText);wrap.appendChild(details);}
-        if(artifact.fileUrl){const a=document.createElement("a");a.className="review-link";a.href=artifact.fileUrl;a.target="_blank";a.rel="noopener";a.textContent="فتح ملف بيانات الصفحة في Drive";wrap.appendChild(a);}
-      }
-    }
-    parent.appendChild(wrap);
-  }
-  function renderReviewInbox(data){
-    const counts=data.counts||{};el("reviewOpen").textContent=counts.open||0;el("reviewInProgress").textContent=counts.inReview||0;el("reviewDeferred").textContent=counts.deferred||0;el("reviewRejected").textContent=counts.rejected||0;
-    reviewItems=data.items||[];const filter=el("reviewFilter").value;const shown=reviewItems.filter(item=>filter==="ALL"|| (filter==="ACTIVE"&&["OPEN","IN_REVIEW"].includes(item.status))||item.status===filter);
-    const root=el("reviewList");root.textContent="";
-    if(!shown.length){appendReviewText(root,"div","لا توجد مهام مراجعة ضمن هذا التصفية.","empty");return;}
-    shown.forEach(item=>{
-      const card=document.createElement("article");card.className="review-card";
-      const head=document.createElement("div");head.className="review-head";appendReviewText(head,"div",item.type+" · "+item.id,"review-title");appendReviewText(head,"span",item.status,"pill");card.appendChild(head);
-      appendReviewText(card,"div",item.action,"review-meta");
-      if(item.notes)appendReviewText(card,"div","ملاحظات سابقة: "+item.notes,"review-meta");
-      (item.links||[]).forEach(link=>renderReviewEvidence(card,link));
-      const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.notes||"";card.appendChild(notes);
-      const actions=document.createElement("div");actions.className="review-actions";
-      function action(label,status,cls){
-        const btn=document.createElement("button");btn.type="button";btn.textContent=label;if(cls)btn.className=cls;
-        btn.addEventListener("click",()=>saveReviewStatus(item.id,status,notes.value,btn));actions.appendChild(btn);
-      }
-      if(item.status==="OPEN"||item.status==="DEFERRED")action("استلام للمراجعة","IN_REVIEW","primary");
-      if(item.status==="IN_REVIEW")action("إعادة فتح","OPEN","");
-      if(item.status!=="DEFERRED"&&item.status!=="REJECTED")action("تأجيل","DEFERRED","");
-      if(item.status!=="REJECTED")action("رفض المهمة","REJECTED","danger");
-      card.appendChild(actions);root.appendChild(card);
-    });
-  }
-  function loadReviewInbox(){
-    el("reviewList").textContent="جارٍ تحميل قائمة المراجعة...";
-    google.script.run.withSuccessHandler(renderReviewInbox).withFailureHandler(err=>{el("reviewList").textContent="تعذر تحميل المراجعات: "+(err&&err.message||"خطأ غير معروف");}).getReviewInboxFromBrowser();
-  }
-  function saveReviewStatus(reviewId,status,notes,button){
-    button.disabled=true;
-    google.script.run.withSuccessHandler(result=>{reviewStatusMessage("تم تحديث حالة المهمة إلى "+result.status+". لم يتم اعتماد أي سجل أساسي.","ok");loadReviewInbox();}).withFailureHandler(err=>{button.disabled=false;reviewStatusMessage("تعذر تحديث المهمة: "+(err&&err.message||"خطأ"),"err");}).updateReviewStatusFromBrowser({reviewId,status,notes});
-  }
-  el("reviewRefresh").addEventListener("click",loadReviewInbox);
-  el("reviewFilter").addEventListener("change",()=>renderReviewInbox({items:reviewItems,counts:{open:reviewItems.filter(x=>x.status==="OPEN").length,inReview:reviewItems.filter(x=>x.status==="IN_REVIEW").length,deferred:reviewItems.filter(x=>x.status==="DEFERRED").length,rejected:reviewItems.filter(x=>x.status==="REJECTED").length}}));
-  loadReviewInbox();
-
   loadDashboard();
   loadDocuments();
   el("promoteForm").addEventListener("submit", event => {
