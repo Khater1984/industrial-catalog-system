@@ -4,7 +4,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 worker = (ROOT / "worker/src/catalog_worker/resumable.py").read_text()
 runner = (ROOT / "worker/src/catalog_worker/runner.py").read_text()
-service = (ROOT / "worker/src/catalog_worker/service.py").read_text()
 integration = (ROOT / "apps-script/src/domain/WorkerIntegration.js").read_text()
 ingest = (ROOT / "apps-script/src/domain/Ingest.js").read_text()
 api = (ROOT / "apps-script/src/api/Api.js").read_text()
@@ -19,10 +18,11 @@ checks = {
     "runner streams page checkpoints to Drive": "artifact_callback=publish_checkpoint" in runner and "artifact_callback: Callable" in worker,
     "runner publishes artifact Drive IDs": 'row["artifact_file_id"] = artifact_id' in runner,
     "runner publishes raw artifact hashes": 'row["artifact_file_sha256"] = raw_sha' in runner,
-    "service exposes dispatch endpoint": '@app.post("/run")' in service,
-    "service exposes durable task endpoint": '@app.post("/tasks/run")' in service,
-    "Cloud Tasks dispatch has a bounded deadline": '"dispatch_deadline": {"seconds": 1800}' in service,
-    "Apps Script dispatch uses HTTPS": 'endpoint.indexOf("https://") !== 0' in integration,
+    "GitHub Actions dispatch workflow is manual": "workflow_dispatch:" in (ROOT / ".github/workflows/catalog-worker-dispatch.yml").read_text(),
+    "GitHub workflow accepts run and job IDs": "run_id:" in (ROOT / ".github/workflows/catalog-worker-dispatch.yml").read_text() and "job_file_id:" in (ROOT / ".github/workflows/catalog-worker-dispatch.yml").read_text(),
+    "GitHub worker entry point calls Drive runner": "runner.run_from_drive(" in (ROOT / "worker/src/catalog_worker/github_actions_cli.py").read_text(),
+    "Drive worker supports Workspace OAuth": "GOOGLE_OAUTH_CREDENTIALS_JSON" in (ROOT / "worker/src/catalog_worker/drive_io.py").read_text(),
+    "Apps Script dispatches GitHub workflow": "api.github.com/repos/Khater1984/industrial-catalog-system/actions/workflows/catalog-worker-dispatch.yml/dispatches" in integration,
     "Apps Script result polling reads Drive manifests": 'getFilesByName("result-manifest.json")' in integration,
     "Apps Script poller invokes validated ingestion": "Ingest.ingestManifest" in integration,
     "Apps Script expires abandoned worker leases": "WORKER_LEASE_EXPIRED" in integration and "Lease_Expires_At" in integration,
