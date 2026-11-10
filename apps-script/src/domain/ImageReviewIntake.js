@@ -188,6 +188,15 @@ var ImageReviewIntake = (function () {
     return true;
   }
 
+  function stagingHashPayload_(record) {
+    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
+      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
+      Candidate_Variant_ID: true, Image_Role: true };
+    var out = {};
+    Object.keys(record).forEach(function (key) { if (!mutable[key]) out[key] = record[key]; });
+    return out;
+  }
+
   function buildStaging_(img, driveImage, options, catalogId, runId, stagingId) {
     var name = requireText_(img.original_name, "IMAGE_ORIGINAL_NAME_MISSING", 255);
     var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
@@ -216,8 +225,7 @@ var ImageReviewIntake = (function () {
     }
     if (img.width_px !== null && img.width_px !== undefined) record.Width_PX = requireInteger_(img.width_px, "IMAGE_WIDTH_INVALID", 1);
     if (img.height_px !== null && img.height_px !== undefined) record.Height_PX = requireInteger_(img.height_px, "IMAGE_HEIGHT_INVALID", 1);
-    var hashPayload = withoutKey_(record, "Staging_Record_Hash");
-    record.Staging_Record_Hash = sha_(canonicalJson_(hashPayload));
+    record.Staging_Record_Hash = sha_(canonicalJson_(stagingHashPayload_(record)));
     record.Created_At = now_();
     record.Updated_At = record.Created_At;
     return record;
@@ -274,7 +282,8 @@ var ImageReviewIntake = (function () {
           var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
           var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
           var stagingFields = Object.keys(staging).filter(function (field) {
-            return field !== "Created_At" && field !== "Updated_At";
+            return ["Created_At", "Updated_At", "Proposed_Status", "Quality_Status",
+              "Candidate_Product_ID", "Candidate_Variant_ID", "Image_Role"].indexOf(field) < 0;
           });
           var stagingCreated = ensureRecord_("Staging_Images", "Staging_ID", staging, stagingFields, "STAGING_CONFLICT");
           if (stagingCreated) counts.staging += 1;
