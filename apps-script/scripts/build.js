@@ -30,6 +30,7 @@ const order = [
   "domain/ImagePromotion.js",
   "domain/ImageReviewIntake.js",
   "domain/ImageManagement.js",
+  "domain/ImageReviewService.js",
   "domain/ReviewDashboard.js",
   "domain/ReviewWorkspace.js",
 
