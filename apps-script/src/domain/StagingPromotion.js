@@ -139,6 +139,7 @@ var StagingPromotion = (function () {
       var productIds = {};
       var variantIds = {};
       var variantParentIds = {};
+      var variantSourceIds = {};
       var productSourceIds = {};
       var productDecisionIds = {};
 
@@ -192,6 +193,7 @@ var StagingPromotion = (function () {
         if (existingSource) {
           variantIds[variant.staging_id] = existingSource.Variant_ID;
           variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
+          variantSourceIds[variant.staging_id] = existingSource.Variant_Source_Record_ID;
           counts.skipped += 1;
           return;
         }
@@ -222,23 +224,43 @@ var StagingPromotion = (function () {
         audit_(actor, "PROMOTE", "VARIANT", variantId, "Accepted staging variant", runId, variant);
         variantIds[variant.staging_id] = variantId;
         variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
+        variantSourceIds[variant.staging_id] = sourceId;
       });
 
       staging.specifications.forEach(function (spec) {
         if (!accepted_(spec)) { counts.rejected += 1; return; }
         var productId = productIds[spec.parent_staging_product_id];
-        var variantId = variantIds[spec.parent_staging_variant_id];
-        require_(spec.scope === "VARIANT", "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
-        require_(productId && variantId, "PROMOTION_SPEC_PARENT_MISSING");
-        require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
+        var scope = text_(spec.scope, 20).toUpperCase();
+        var variantId = "";
+        var productSourceRecordId = "";
+        var variantSourceRecordId = "";
+        var canonicalEntityType = "PRODUCT";
+        var canonicalEntityId = productId;
+        require_(productId, "PROMOTION_SPEC_PRODUCT_PARENT_MISSING");
+        if (scope === "PRODUCT") {
+          require_(!spec.parent_staging_variant_id, "PROMOTION_SPEC_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+          productSourceRecordId = productSourceIds[spec.parent_staging_product_id];
+          require_(productSourceRecordId, "PROMOTION_SPEC_PRODUCT_SOURCE_MISSING");
+        } else if (scope === "VARIANT") {
+          variantId = variantIds[spec.parent_staging_variant_id];
+          require_(variantId, "PROMOTION_SPEC_VARIANT_PARENT_MISSING");
+          require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
+          variantSourceRecordId = variantSourceIds[spec.parent_staging_variant_id];
+          require_(variantSourceRecordId, "PROMOTION_SPEC_VARIANT_SOURCE_MISSING");
+          canonicalEntityType = "VARIANT";
+          canonicalEntityId = variantId;
+        } else {
+          require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
+        }
         var original = text_(sourceValue_(spec), 2000);
-        var assertionKey = text_(variantId + "|" + spec.attribute_key_raw, 160);
+        var assertionKey = text_(canonicalEntityId + "|" + spec.attribute_key_raw, 160);
         if (original) {
           var specId = stableId_("spec", assertionKey + "|" + original);
           if (!existingBy_("Specifications", "Specification_ID", specId)) {
             appendOnce_("Specifications", {
               Specification_ID: specId, Source_Assertion_Key: assertionKey,
-              Source_Key_Algorithm_Version: keyVersion, Scope: "VARIANT",
+              Source_Key_Algorithm_Version: keyVersion, Scope: scope,
+              Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
               Product_ID: productId, Variant_ID: variantId,
               Attribute_Key_Source: text_(spec.attribute_key_raw, 160),
               Attribute_Value_Source: original, Unit_Source: text_(spec.unit_raw, 80),
@@ -252,7 +274,7 @@ var StagingPromotion = (function () {
             counts.specifications += 1;
             audit_(actor, "PROMOTE", "SPECIFICATION", specId, "Accepted source specification", runId, spec);
           } else counts.skipped += 1;
-          mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, "VARIANT", variantId, "", spec);
+          mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
           if (spec.edited && text_(spec.value_raw, 2000) && text_(spec.value_raw, 2000) !== original) {
             var changePayload = { before: original, after: spec.value_raw };
             var changeId = stableId_("chg", assertionKey + "|" + original + "|" + spec.value_raw);
