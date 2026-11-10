@@ -2344,10 +2344,13 @@ var CandidateReviewIntake = (function () {
     if (Array.isArray(value)) return value.map(canonical_);
     if (value && Object.prototype.toString.call(value) === "[object Object]") {
       var out = {};
-      Object.keys(value).forEach(function (key) {
-        var normalizedKey = key.normalize ? key.normalize("NFC") : key;
-        if (Object.prototype.hasOwnProperty.call(out, normalizedKey)) fail_("CANDIDATE_CANONICAL_KEY_COLLISION");
-        out[normalizedKey] = canonical_(value[key]);
+      var keys = Object.keys(value).map(function (key) {
+        return { original: key, normalized: key.normalize ? key.normalize("NFC") : key };
+      });
+      keys.sort(function (a, b) { return a.normalized < b.normalized ? -1 : (a.normalized > b.normalized ? 1 : 0); });
+      keys.forEach(function (entry) {
+        if (Object.prototype.hasOwnProperty.call(out, entry.normalized)) fail_("CANDIDATE_CANONICAL_KEY_COLLISION");
+        out[entry.normalized] = canonical_(value[entry.original]);
       });
       return out;
     }
