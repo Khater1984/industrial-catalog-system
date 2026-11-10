@@ -2670,14 +2670,16 @@ var WorkerIntegration = (function () {
         if (result.run_status === "COMPLETED") {
           run.Run_Status = "COMPLETED";
           run.Current_Step = "INGESTED";
+          var reviewIntake = CandidateReviewIntake.intakeRun({
+            runId: run.Run_ID, resultManifestFileId: resultFile.getId()
+          });
+          SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
+            Current_Step: "REVIEW_READY", Error_Code: "", Error_Summary: ""
+          });
+          processed.push(Object.assign({}, result, { review_intake: reviewIntake }));
+        } else {
+          processed.push(result);
         }
-        var reviewIntake = CandidateReviewIntake.intakeRun({
-          runId: run.Run_ID, resultManifestFileId: resultFile.getId()
-        });
-        SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-          Current_Step: "REVIEW_READY", Error_Code: "", Error_Summary: ""
-        });
-        processed.push(Object.assign({}, result, { review_intake: reviewIntake }));
       } catch (err) {
         var code = String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120);
         if (run.Run_Status === "COMPLETED") {
