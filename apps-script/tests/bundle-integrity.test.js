@@ -49,6 +49,8 @@ test("browser-called Apps Script functions are present in deployment bundle", ()
     "getReviewQueueForBrowser",
     "getReviewInboxFromBrowser",
     "updateReviewStatusFromBrowser",
+    "approveProductReviewFromBrowser",
+    "buildStagingSetFromBrowser",
     "createDocumentFromBrowser",
     "addDocumentVersionFromBrowser",
     "listDocumentsForBrowser",
@@ -82,4 +84,6 @@ test("main UI exposes the existing review inbox and its owner-only actions", () 
   assert.match(html, /id="humanReviewPanel"/);
   assert.match(html, /getReviewInboxFromBrowser/);
   assert.match(html, /updateReviewStatusFromBrowser/);
+  assert.match(html, /approveProductReviewFromBrowser/);
+  assert.match(html, /buildStagingSetFromBrowser/);
 });
