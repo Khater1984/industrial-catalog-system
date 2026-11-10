@@ -1,4 +1,4 @@
-/** Cloud Run dispatch plus owner-executed Drive result polling. */
+/** GitHub Actions dispatch plus owner-executed Drive result polling. */
 var WorkerIntegration = (function () {
   var CONTRACT_VERSION = "1";
   function property_(name) {
@@ -38,11 +38,12 @@ var WorkerIntegration = (function () {
     return folder.createFile("job.json", content, MimeType.JSON);
   }
   function dispatchCatalogRun(catalogId, runId) {
-    var endpoint = property_("DEV_WORKER_ENDPOINT");
-    if (!endpoint) return { configured: false, accepted: false, reason: "WORKER_ENDPOINT_NOT_CONFIGURED" };
-    if (endpoint.indexOf("https://") !== 0) throw new Error("WORKER_ENDPOINT_HTTPS_REQUIRED");
-    var token = property_("DEV_WORKER_SHARED_TOKEN");
-    if (!token) throw new Error("WORKER_TOKEN_NOT_CONFIGURED");
+    var token = property_("GITHUB_ACTIONS_TOKEN");
+    if (!token) return { configured: false, accepted: false, reason: "GITHUB_ACTIONS_TOKEN_NOT_CONFIGURED" };
+    var workflowRef = property_("GITHUB_WORKFLOW_REF") || "dev/worker-v2.1-resumable";
+    if (!/^[A-Za-z0-9._\\/-]{1,120}$/.test(workflowRef) || workflowRef.indexOf("..") >= 0) {
+      throw new Error("GITHUB_WORKFLOW_REF_INVALID");
+    }
 
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
@@ -86,46 +87,54 @@ var WorkerIntegration = (function () {
         Lease_Expires_At: leaseExpiresAt, Error_Code: "", Error_Summary: ""
       });
 
-      var payload = { contract_version: CONTRACT_VERSION, run_id: runId,
-        job_file_id: jobFile.getId(), idempotency_key: idempotencyKey };
+      var url = "https://api.github.com/repos/Khater1984/industrial-catalog-system/actions/workflows/catalog-worker-dispatch.yml/dispatches";
+      var payload = {
+        ref: workflowRef,
+        inputs: { run_id: runId, job_file_id: jobFile.getId() }
+      };
       var lastError = "";
-      for (var attempt = 1; attempt <= 4; attempt++) {
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        var response;
         try {
-          var response = UrlFetchApp.fetch(endpoint, {
-            method: "post", contentType: "application/json",
+          response = UrlFetchApp.fetch(url, {
+            method: "post",
+            contentType: "application/json",
             headers: {
               Authorization: "Bearer " + token,
-              "Idempotency-Key": idempotencyKey,
-              "Content-Type": "application/json"
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28"
             },
-            payload: JSON.stringify(payload), muteHttpExceptions: true
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
           });
-          var code = response.getResponseCode(), parsed = null;
-          try { parsed = JSON.parse(response.getContentText()); } catch (ignore) {}
-          if (code >= 200 && code < 300 && parsed && parsed.accepted === true && parsed.run_id === runId) {
-            return { configured: true, accepted: true, run_id: runId, task: parsed.task || "" };
+        } catch (err) {
+          lastError = "GITHUB_NETWORK_ERROR";
+          response = null;
+        }
+        if (response) {
+          var code = response.getResponseCode();
+          if (code === 204) {
+            return { configured: true, accepted: true, run_id: runId, workflow: "catalog-worker-dispatch.yml" };
           }
-          lastError = "HTTP_" + code;
+          lastError = "GITHUB_HTTP_" + code;
           if (code >= 400 && code < 500 && code !== 408 && code !== 429) {
             SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
               Run_Status: "FAILED", Current_Step: "DISPATCH_REJECTED",
               Finished_At: new Date().toISOString(), Worker_Lease_ID: "", Lease_Expires_At: "",
-              Error_Code: "WORKER_REJECTED", Error_Summary: "Worker rejected dispatch (" + code + ")."
+              Error_Code: "GITHUB_WORKFLOW_REJECTED",
+              Error_Summary: "GitHub rejected the workflow dispatch (" + code + "). Check workflow availability and token permissions."
             });
-            throw new Error("WORKER_REJECTED: " + code);
+            throw new Error("GITHUB_WORKFLOW_REJECTED: " + code);
           }
-        } catch (err) {
-          lastError = String(err && err.message ? err.message : "NETWORK_ERROR").slice(0, 120);
-          if (lastError.indexOf("WORKER_REJECTED") === 0) throw err;
         }
-        if (attempt < 4) Utilities.sleep(1000 * Math.pow(2, attempt - 1));
+        if (attempt < 3) Utilities.sleep(1000 * Math.pow(2, attempt - 1));
       }
-      // A response can be lost after Cloud Tasks accepted the deterministic task.
-      // Keep the same Run_ID; Cloud Tasks task naming makes redispatch idempotent.
+      // Re-dispatch uses the same immutable Run_ID/job.json. The worker is idempotent
+      // and the workflow concurrency group prevents simultaneous execution per run.
       SheetsRepository.updateBy("Run_Log", "Run_ID", runId, {
         Run_Status: "RETRY_PENDING", Current_Step: "DISPATCH_UNCONFIRMED",
-        Error_Code: "WORKER_DISPATCH_UNCONFIRMED",
-        Error_Summary: "Dispatch response was not confirmed; retry with the same Run_ID. " + lastError
+        Error_Code: "GITHUB_DISPATCH_UNCONFIRMED",
+        Error_Summary: "GitHub did not confirm workflow dispatch; retry with the same Run_ID. " + lastError
       });
       return { configured: true, accepted: false, retryable: true, run_id: runId };
     } finally {
@@ -202,8 +211,9 @@ function dispatchRegisteredCatalog_(registered) {
     var message = String(err && err.message ? err.message : "WORKER_DISPATCH_FAILED");
     var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
     var code = match ? match[1] : "WORKER_DISPATCH_FAILED";
-    if (code === "WORKER_REJECTED") registered.status = "FAILED";
-    return { configured: true, accepted: false, retryable: code !== "WORKER_REJECTED", run_id: registered.runId,
+    var rejected = code === "WORKER_REJECTED" || code === "GITHUB_WORKFLOW_REJECTED";
+    if (rejected) registered.status = "FAILED";
+    return { configured: true, accepted: false, retryable: !rejected, run_id: registered.runId,
       error_code: code };
   }
 }

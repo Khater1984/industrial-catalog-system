@@ -101,3 +101,54 @@ def test_invalid_retry_environment_value_fails_fast(monkeypatch):
     monkeypatch.setenv("WORKER_DRIVE_MAX_RETRIES", "many")
     with pytest.raises(DriveError, match="DRIVE_RETRY_CONFIG_INVALID"):
         DriveClient(service=FakeService())
+
+
+
+def test_drive_client_uses_workspace_oauth_refresh_token(monkeypatch):
+    import json
+    from google.oauth2.credentials import Credentials
+    from catalog_worker import drive_io
+
+    class RefreshedCredentials:
+        def __init__(self):
+            self.refreshed = False
+
+        def refresh(self, request):
+            self.refreshed = True
+
+    credentials = RefreshedCredentials()
+    captured = {}
+
+    monkeypatch.setenv("GOOGLE_OAUTH_CREDENTIALS_JSON", json.dumps({
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+        "refresh_token": "refresh-token",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }))
+    monkeypatch.setattr(
+        Credentials, "from_authorized_user_info",
+        staticmethod(lambda info, scopes: (captured.update({"info": info, "scopes": scopes}) or credentials)),
+    )
+    monkeypatch.setattr(drive_io, "build", lambda *args, **kwargs: captured.update({
+        "build_args": args, "build_kwargs": kwargs
+    }) or FakeService())
+
+    client = DriveClient()
+
+    assert client.service is not None
+    assert credentials.refreshed is True
+    assert captured["scopes"] == ["https://www.googleapis.com/auth/drive"]
+    assert captured["build_args"] == ("drive", "v3")
+    assert captured["build_kwargs"]["credentials"] is credentials
+    assert captured["build_kwargs"]["cache_discovery"] is False
+
+
+def test_incomplete_workspace_oauth_secret_fails_closed(monkeypatch):
+    import json
+
+    monkeypatch.setenv("GOOGLE_OAUTH_CREDENTIALS_JSON", json.dumps({
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+    }))
+    with pytest.raises(DriveError, match="DRIVE_OAUTH_REFRESH_FAILED"):
+        DriveClient()

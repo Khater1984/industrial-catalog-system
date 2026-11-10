@@ -39,3 +39,10 @@ Set `CATALOG_WORKER_EXTRACT_IMAGES=1` or pass `extract_images: true` in the job 
 - Not a production service; local DEV prototype.
 
 See WORKER_SPEC.md and schema/02-documents-and-images.md for the target design.
+
+
+## Hosted DEV execution through GitHub Actions
+
+The Drive-backed worker can be started by Apps Script through the manual workflow. GitHub Actions checks out the selected DEV ref, runs the Drive worker, and publishes the same immutable Drive result manifest consumed by the existing Apps Script poller. Apps Script remains the only component that writes extraction results into Sheets.
+
+See [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md) for OAuth setup, GitHub token permissions, workflow dispatch requirements, and the live DEV smoke test. The legacy Cloud Run adapter remains in the repository for compatibility, but this DEV path does not require Cloud Run or Cloud Tasks.
