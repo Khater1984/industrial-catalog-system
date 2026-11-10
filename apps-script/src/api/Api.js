@@ -105,7 +105,8 @@ var Api = (function () {
           actor: actor,
           isPrimary: Boolean(p.isPrimary),
           catalogApproved: Boolean(p.catalogApproved),
-          dataSheetApproved: Boolean(p.dataSheetApproved)
+          dataSheetApproved: Boolean(p.dataSheetApproved),
+          linkStatus: p.linkStatus || "CANDIDATE"
         }));
       }
       if (body.action === "image.setApproval") {
@@ -123,7 +124,7 @@ var Api = (function () {
       }
       if (body.action === "image.getForProduct") {
         if (!p.productId) throw new Error("PRODUCT_ID_REQUIRED");
-        return success_(requestId, ImageManagement.getImagesForProduct(p.productId, p.variantId || null));
+        return success_(requestId, ImageManagement.getImagesForProduct(p.productId, p.variantId || null, p.usage || "ALL"));
       }
       if (body.action === "image.findDuplicate") {
         if (!p.sha256) throw new Error("IMAGE_SHA256_REQUIRED");
