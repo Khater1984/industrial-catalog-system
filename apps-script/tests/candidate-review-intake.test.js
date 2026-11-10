@@ -20,7 +20,10 @@ function fixture(imageExtraction) {
     catalog_page_id: "cp_cat_test_00001", page_number: 1,
     extraction_method: "EMBEDDED_TEXT", extraction_tool_version: "pypdf/6",
     product_candidates: {
-      products: [{ proposed_product_name: "Industrial Generator", source_quote: "Industrial Generator DG100", confidence: "LOW" }],
+      products: [
+        { proposed_product_name: "Industrial Generator", source_quote: "Industrial Generator DG100", confidence: "LOW" },
+        { proposed_product_name: "مولد كهربائي", source_quote: "مولد كهربائي", confidence: "LOW" }
+      ],
       variants: [{ proposed_model_number: "DG100", source_quote: "Model DG100", confidence: "MEDIUM" }],
       specifications: [{ attribute_key_raw: "Power", value_raw: "100", unit_raw: "kW", source_quote: "Power: 100 kW", confidence: "LOW" }]
     }
@@ -83,12 +86,14 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   const result = ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   assert.equal(result.status, "COMPLETED");
   assert.equal(result.counts.staging_products, 1);
+  assert.equal(result.counts.product_names_unassigned, 1);
   assert.equal(result.counts.review_items, 2);
   assert.equal(result.counts.variants_unassigned, 1);
   assert.equal(result.counts.specifications_unassigned, 1);
   assert.equal(ctx.rows.Staging_Products.length, 1);
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Status, "NEEDS_REVIEW");
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Product_Name_EN, "Industrial Generator");
+  assert.equal(ctx.rows.Staging_Products.some((row) => /[\\u0600-\\u06FF]/.test(row.Proposed_Product_Name_EN)), false);
   assert.equal(ctx.rows.Staging_Variants, undefined);
   assert.equal(ctx.rows.Staging_Specifications, undefined);
   assert.equal(ctx.rows.Review_Queue.length, 2);
