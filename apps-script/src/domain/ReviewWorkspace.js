@@ -127,6 +127,11 @@ var ReviewWorkspace = (function () {
     if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
     var notes = text_(options.notes || "", 1500);
     if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var requestFingerprint = sha_(JSON.stringify({
+      productName: productName, identityResolution: identityResolution,
+      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
+      notes: notes, variants: options.variants || [], specifications: options.specifications || []
+    }));
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
       var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
@@ -169,7 +174,8 @@ var ReviewWorkspace = (function () {
         if (approved.products && approved.products[0] &&
             approved.products[0].proposed_product_name === productName &&
             approved.products[0].identity_resolution === identityResolution &&
-            String(approved.products[0].canonical_product_id || "") === canonicalProductId) {
+            String(approved.products[0].canonical_product_id || "") === canonicalProductId &&
+            approved.products[0].review_request_sha256 === requestFingerprint) {
           return { status: "APPROVED", decisionFileId: review.Decision_JSON_File_ID, decisionSha256: review.Decision_SHA256, reused: true };
         }
         fail_("REVIEW_DECISION_ALREADY_APPROVED");
@@ -197,6 +203,7 @@ var ReviewWorkspace = (function () {
           identity_resolution: identityResolution,
           canonical_product_id: canonicalProductId,
           match_rationale: matchRationale,
+          review_request_sha256: requestFingerprint,
           source_quote: text_(staging.Extracted_Text || "", 2000),
           review_status: "ACCEPTED",
           staging_record_hash: staging.Staging_Record_Hash
