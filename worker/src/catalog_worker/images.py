@@ -231,7 +231,7 @@ def extract_embedded_images(
             original_name = str(getattr(image, "name", "") or f"image-{image_index}")
             probe = _probe_image(raw)
             extension = probe["extension"] if probe["metadata_status"] == "COMPLETED" else _safe_extension(original_name)
-            relative_path = Path("images") / f"page-{page_number:05d}" / f"{digest}{extension}"
+            relative_path = Path("images") / f"page-{page_number:05d}" / f"{image_index:04d}-{digest}{extension}"
             artifact_path = root / relative_path
             _write_immutable(artifact_path, raw)
 
