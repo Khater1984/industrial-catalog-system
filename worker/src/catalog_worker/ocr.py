@@ -57,7 +57,14 @@ def ocr_page_image(image_path: Path, languages: str = "eng") -> dict[str, Any]:
         # image_to_data gives confidence per word
         data = pytesseract.image_to_data(str(image_path), lang=langs, output_type=pytesseract.Output.DICT)
         text = pytesseract.image_to_string(str(image_path), lang=langs).strip()
-        confidences = [int(c) for c in data.get("conf", []) if c != "-1" and str(c).isdigit()]
+        confidences = []
+        for raw_confidence in data.get("conf", []):
+            try:
+                confidence_value = float(raw_confidence)
+            except (TypeError, ValueError):
+                continue
+            if confidence_value >= 0:
+                confidences.append(confidence_value)
         avg_conf = sum(confidences) / len(confidences) if confidences else None
         return {
             "extracted_text": text,

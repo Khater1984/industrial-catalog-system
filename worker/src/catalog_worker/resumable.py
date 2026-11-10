@@ -22,7 +22,19 @@ from typing import Any, Callable
 import pypdf
 from pypdf import PdfReader
 
-WORKER_VERSION = "0.2.1"
+try:
+    import pymupdf as fitz
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    fitz = None
+    PYMUPDF_AVAILABLE = False
+
+from .ocr import extract_page_text, is_text_usable
+from .product_extractor import extract_candidates
+
+OCR_RENDER_DPI = 160
+
+WORKER_VERSION = "0.2.4"
 PROTOCOL_VERSION = "1"
 MANIFEST_VERSION = 2
 RUN_TYPE = "CATALOG_EXTRACTION"
@@ -249,6 +261,50 @@ def _verify_completed_manifest(root: Path, manifest: dict[str, Any], run_id: str
             raise WorkerError("CHECKPOINT_OUTPUT_CORRUPT", "Completed artifact checksum does not match its manifest.")
 
 
+def _render_page_to_temp_image(source_pdf: Path, page_index: int) -> Path | None:
+    """Render one PDF page for OCR; the caller deletes the returned image."""
+    if not PYMUPDF_AVAILABLE:
+        return None
+    try:
+        document = fitz.open(str(source_pdf))
+        try:
+            if page_index < 0 or page_index >= document.page_count:
+                return None
+            pixmap = document[page_index].get_pixmap(dpi=OCR_RENDER_DPI, alpha=False)
+            fd, filename = tempfile.mkstemp(prefix=f"catalog-ocr-{page_index + 1:05d}-", suffix=".png")
+            os.close(fd)
+            image_path = Path(filename)
+            try:
+                pixmap.save(str(image_path))
+                return image_path
+            except Exception:
+                image_path.unlink(missing_ok=True)
+                return None
+        finally:
+            document.close()
+    except Exception:
+        return None
+
+
+def _extract_page_text(
+    source_pdf: Path, page_index: int, embedded_text: str, languages: str,
+    min_usable_chars: int,
+) -> dict[str, Any]:
+    """Use embedded text when usable; otherwise render and attempt configured OCR."""
+    if is_text_usable(embedded_text, min_usable_chars):
+        return extract_page_text(
+            embedded_text, None, languages=languages, min_usable_chars=min_usable_chars
+        )
+    image_path = _render_page_to_temp_image(source_pdf, page_index)
+    try:
+        return extract_page_text(
+            embedded_text, image_path, languages=languages, min_usable_chars=min_usable_chars
+        )
+    finally:
+        if image_path is not None:
+            image_path.unlink(missing_ok=True)
+
+
 def process_resumable_catalog_job(
     job: dict[str, Any],
     output_dir: str | Path,
@@ -315,7 +371,20 @@ def process_resumable_catalog_job(
     profile = job.get("extraction_profile", "embedded-text-v1")
     if not isinstance(profile, str) or not profile.strip():
         raise WorkerError("INVALID_JOB_MANIFEST", "extraction_profile must be a non-empty string.")
-    toolchain = f"pypdf/{getattr(pypdf, '__version__', 'unknown')}"
+    ocr_languages = job.get("ocr_languages") or os.environ.get("CATALOG_WORKER_OCR_LANGUAGES", "ara+eng")
+    if not isinstance(ocr_languages, str) or not ocr_languages.strip():
+        raise WorkerError("INVALID_OCR_LANGUAGE", "ocr_languages must be a non-empty string.")
+    ocr_languages = ocr_languages.strip().lower()
+    if ocr_languages not in {"ara", "eng", "ara+eng"}:
+        raise WorkerError("INVALID_OCR_LANGUAGE", "Supported OCR languages are ara, eng, and ara+eng.")
+    min_usable_chars = job.get("ocr_min_usable_chars", 40)
+    if isinstance(min_usable_chars, bool) or not isinstance(min_usable_chars, int) or min_usable_chars < 1:
+        raise WorkerError("INVALID_OCR_THRESHOLD", "ocr_min_usable_chars must be a positive integer.")
+    toolchain = (
+        f"pypdf/{getattr(pypdf, '__version__', 'unknown')}|"
+        f"pymupdf/{getattr(fitz, 'VersionBind', 'unavailable')}|"
+        f"ocr/{ocr_languages}/min-chars-{min_usable_chars}|product-extractor/heuristic-v1"
+    )
     logical_input = {
         "catalog_id": catalog_id, "source_sha256": actual_sha, "page_count": page_count,
         "run_type": RUN_TYPE, "unit_type": UNIT_TYPE, "profile": profile,
@@ -404,9 +473,19 @@ def process_resumable_catalog_job(
 
         for number, page in enumerate(reader.pages, 1):
             try:
-                text = page.extract_text() or ""
+                embedded_text = page.extract_text() or ""
             except Exception as exc:
                 raise WorkerError("PAGE_TEXT_EXTRACTION_FAILED", f"Text extraction failed on page {number}.") from exc
+            decision = _extract_page_text(
+                source, number - 1, embedded_text, ocr_languages, min_usable_chars
+            )
+            text = decision.get("extracted_text") or ""
+            candidates = extract_candidates(text, number, catalog_page_ids[number - 1] if catalog_page_ids else None)
+            candidate_counts = {
+                "products": len(candidates.get("products", [])),
+                "variants": len(candidates.get("variants", [])),
+                "specifications": len(candidates.get("specifications", [])),
+            }
             text_sha = sha256_bytes(text.encode("utf-8"))
             catalog_page_id = catalog_page_ids[number - 1] if catalog_page_ids else None
             unit_key = catalog_page_id or f"page:{number:05d}"
@@ -454,6 +533,11 @@ def process_resumable_catalog_job(
                         "extraction_method": old.get("extraction_method", "EMBEDDED_TEXT"),
                         "extraction_tool_version": toolchain, "text_char_count": old["text_char_count"],
                         "extracted_text": old["extracted_text"],
+                        "ocr_confidence": old.get("ocr_confidence"),
+                        "processing_status": old.get("processing_status", "COMPLETED"),
+                        "warnings": old.get("warnings", []),
+                        "product_candidates": old.get("product_candidates", {"products": [], "variants": [], "specifications": []}),
+                        "candidate_counts": old.get("candidate_counts", {"products": 0, "variants": 0, "specifications": 0}),
                         "reused_from_run_unit_id": old["run_unit_id"],
                     }
                     reused += 1
@@ -464,8 +548,14 @@ def process_resumable_catalog_job(
                         "page_number": number, "catalog_page_id": catalog_page_id,
                         "unit_status": "COMPLETED", "input_sha256": input_sha,
                         "source_pdf_sha256": actual_sha, "page_text_sha256": text_sha,
-                        "extraction_method": "EMBEDDED_TEXT", "extraction_tool_version": toolchain,
+                        "extraction_method": str(decision.get("extraction_method", "embedded_text")).upper(),
+                        "extraction_tool_version": toolchain,
                         "text_char_count": len(text), "extracted_text": text,
+                        "ocr_confidence": decision.get("confidence"),
+                        "processing_status": decision.get("processing_status", "COMPLETED"),
+                        "warnings": decision.get("warnings", []),
+                        "product_candidates": candidates,
+                        "candidate_counts": candidate_counts,
                     }
                 saved["output_sha256"] = _hash_payload(saved, "output_sha256")
                 created_new = _create_immutable_json(artifact, saved)
@@ -482,6 +572,10 @@ def process_resumable_catalog_job(
                 "catalog_page_id": catalog_page_id, "page_number": number, "unit_status": saved["unit_status"], "input_sha256": input_sha,
                 "output_sha256": saved["output_sha256"], "artifact_path": str(artifact.relative_to(root)),
                 "text_char_count": saved["text_char_count"],
+                "extraction_method": saved.get("extraction_method", "EMBEDDED_TEXT"),
+                "processing_status": saved.get("processing_status", "COMPLETED"),
+                "warnings": saved.get("warnings", []),
+                "candidate_counts": saved.get("candidate_counts", {"products": 0, "variants": 0, "specifications": 0}),
                 "reused_from_run_unit_id": saved.get("reused_from_run_unit_id"),
             }
             # Publish each immutable checkpoint before moving to the next page.
@@ -511,7 +605,13 @@ def process_resumable_catalog_job(
             "catalog_id": catalog_id,
             "source_sha256": actual_sha, "job_input_sha256": job_input_sha,
             "page_count": page_count, "completed_units": page_count, "failed_units": 0,
-            "reused_units": reused, "newly_processed_units": created, "run_status": "COMPLETED",
+            "reused_units": reused, "newly_processed_units": created,
+            "candidate_counts": {
+                "products": sum(p.get("candidate_counts", {}).get("products", 0) for p in pages),
+                "variants": sum(p.get("candidate_counts", {}).get("variants", 0) for p in pages),
+                "specifications": sum(p.get("candidate_counts", {}).get("specifications", 0) for p in pages),
+            },
+            "run_status": "COMPLETED",
             "started_at": started_at, "finished_at": _now(), "pages": pages,
         }
         result["manifest_sha256"] = _hash_payload(result, "manifest_sha256")

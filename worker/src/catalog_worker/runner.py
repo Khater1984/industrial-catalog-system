@@ -244,7 +244,9 @@ def run_from_drive(
         "source_pdf_path": str(pdf_path), "source_sha256": source_sha,
         "attempt_number": attempt, "parent_run_id": parent_run_id,
         "retry_reason": retry_reason, "catalog_page_ids": page_ids,
-        "extraction_profile": job.get("extraction_profile", "embedded-text-v1"),
+        "extraction_profile": job.get("extraction_profile", "text-ocr-candidates-v2"),
+        "ocr_languages": job.get("ocr_languages") or "ara+eng",
+        "ocr_min_usable_chars": job.get("ocr_min_usable_chars", 40),
         "idempotency_key": idempotency_key,
     }
 

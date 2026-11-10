@@ -32,6 +32,13 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: worker/requirements.txt
+      - name: Install OCR engine and Arabic/English language data
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-ara tesseract-ocr-eng
+          tesseract --version
+          tesseract --list-langs | grep -Fx ara
+          tesseract --list-langs | grep -Fx eng
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

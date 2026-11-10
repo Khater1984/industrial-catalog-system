@@ -68,3 +68,18 @@ def test_language_pack_error_message(tmp_path):
         result = extract_page_text("", img, languages="ara")
         assert result["processing_status"] == "OCR_FAILED"
         assert any("LANGUAGE_PACK_MISSING" in w for w in result["warnings"])
+
+
+
+def test_ocr_confidence_accepts_decimal_tesseract_values(tmp_path):
+    from catalog_worker.ocr import ocr_page_image
+
+    image = tmp_path / "page.png"
+    image.write_bytes(b"mock image")
+    with patch("catalog_worker.ocr.tesseract_available", return_value=True), \
+         patch("catalog_worker.ocr.pytesseract.image_to_data", return_value={"conf": ["95.6", "-1", "80.2"]}), \
+         patch("catalog_worker.ocr.pytesseract.image_to_string", return_value="GENERATOR"):
+        result = ocr_page_image(image, languages="eng")
+
+    assert result["extracted_text"] == "GENERATOR"
+    assert result["confidence"] == 87.9
