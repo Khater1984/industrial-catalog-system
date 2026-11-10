@@ -30,7 +30,7 @@ def _publish_terminal_failure(
     drive: DriveClient, job: dict[str, Any], exc: Exception, root: Path
 ) -> dict[str, Any] | None:
     """Best-effort terminal result for failures occurring outside runner's handled errors."""
-    required = ("run_id", "logical_job_id", "catalog_id", "source_sha256", "run_folder_id")
+    required = ("run_id", "logical_job_id", "catalog_id", "source_sha256", "run_folder_id", "idempotency_key")
     if any(not isinstance(job.get(key), str) or not job[key].strip() for key in required):
         return None
     run_id = job["run_id"].strip()
@@ -45,6 +45,7 @@ def _publish_terminal_failure(
         drive, root / "existing-result", items,
         run_id=run_id, logical_job_id=job["logical_job_id"].strip(),
         catalog_id=job["catalog_id"].strip(), source_sha=job["source_sha256"].strip().lower(),
+        idempotency_key=job["idempotency_key"].strip().lower(),
     )
     if existing:
         return existing
@@ -62,6 +63,7 @@ def _publish_terminal_failure(
         attempt=attempt,
         parent_run_id=job.get("parent_run_id") or None,
         retry_reason=job.get("retry_reason") or None,
+        idempotency_key=job["idempotency_key"].strip().lower(),
         error_code=error_code,
         error_message="Worker stopped unexpectedly; inspect the sanitized GitHub Actions run log.",
     )
