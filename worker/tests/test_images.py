@@ -152,3 +152,25 @@ def test_extracts_full_page_scan_and_product_photo_from_same_page(tmp_path):
     assert hashlib.sha256(scan_bytes).hexdigest() in extracted_hashes
     assert hashlib.sha256(photo_bytes).hexdigest() in extracted_hashes
     assert all((tmp_path / "out" / row["artifact_path"]).is_file() for row in result["images"])
+
+def test_repeated_identical_image_placements_have_distinct_artifact_paths(tmp_path):
+    source = tmp_path / "repeated-image.pdf"
+    image_buffer = BytesIO()
+    Image.new("RGB", (24, 16), (20, 120, 180)).save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
+
+    pdf = canvas.Canvas(str(source))
+    for x in (60, 240):
+        pdf.drawImage(ImageReader(BytesIO(image_bytes)), x, 600, width=80, height=54)
+    pdf.showPage()
+    pdf.save()
+
+    result = extract_embedded_images(source, tmp_path / "out", enabled=True)
+
+    assert result["image_count"] == 2
+    assert {row["sha256"] for row in result["images"]} == {
+        hashlib.sha256(image_bytes).hexdigest()
+    }
+    paths = [row["artifact_path"] for row in result["images"]]
+    assert len(set(paths)) == 2
+    assert all((tmp_path / "out" / path).read_bytes() == image_bytes for path in paths)
