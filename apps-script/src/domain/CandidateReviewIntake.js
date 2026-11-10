@@ -66,7 +66,7 @@ var CandidateReviewIntake = (function () {
     var name = text_(candidate.proposed_product_name, 300);
     require_(name, "CANDIDATE_PRODUCT_NAME_MISSING");
     // The destination column is explicitly English; never put Arabic/mixed text in it.
-    if (/[\\u0600-\\u06FF]/.test(name)) { counts.product_names_unassigned += 1; return null; }
+    if (/[\u0600-\u06FF]/.test(name)) { counts.product_names_unassigned += 1; return null; }
     var quote = text_(candidate.source_quote, 4000);
     var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|" + index + "|" + name + "|" + quote;
     var sourceKey = "candidate-v1|" + sha_(sourceSeed).slice(0, 48);
