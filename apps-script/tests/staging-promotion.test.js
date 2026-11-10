@@ -236,6 +236,7 @@ test("promotion rejects specification parent mismatch even with a valid file has
   staging.products.push({
     staging_id: "stg_prd_2", catalog_page_id: "cp_cat_demo_001_00002",
     proposed_product_name: "Second Product", source_quote: "PRODUCT: Second Product",
+    identity_resolution: "CREATE_NEW", canonical_product_id: "", match_rationale: "Reviewer confirmed new product identity",
     review_status: "ACCEPTED", staging_record_hash: "d".repeat(64)
   });
   staging.specifications[0].parent_staging_product_id = "stg_prd_2";
