@@ -389,3 +389,12 @@ test("changing a specification unit requires a reviewer reason", () => {
       valueRaw: "100", unitRaw: "kVA" }]
   }, "actor_primary"), /REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED/);
 });
+
+test("generic review status updates cannot reject image tasks outside the image decision workflow", () => {
+  const ctx = fixture();
+  ctx.queue[0].Review_Type = "IMAGE_QUALITY";
+  assert.throws(() => ctx.service.updateStatus({
+    reviewId: "rev_product_123456", status: "REJECTED", notes: "No"
+  }, "actor_primary"), /IMAGE_REVIEW_REQUIRES_DECISION_SERVICE/);
+  assert.equal(ctx.queue[0].Review_Status, "IN_REVIEW");
+});
