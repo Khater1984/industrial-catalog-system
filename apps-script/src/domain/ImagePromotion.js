@@ -76,6 +76,9 @@ var ImagePromotion = (function () {
   }
   function promoteReviewedImage(options) {
     require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
     var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
     require_(review, "IMAGE_REVIEW_NOT_FOUND");
     require_(review.Review_Type === "IMAGE_QUALITY", "IMAGE_REVIEW_TYPE_INVALID");
@@ -175,6 +178,9 @@ var ImagePromotion = (function () {
       Updated_At: now_()
     });
     return { status: "COMPLETED", reviewQueueId: review.Review_Queue_ID, stagingId: staging.Staging_ID, imageId: imageId, link: link };
+    } finally {
+      lock.releaseLock();
+    }
   }
   return { promoteReviewedImage: promoteReviewedImage };
 })();
