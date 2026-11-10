@@ -54,7 +54,7 @@ test("dispatch writes an immutable job manifest and starts the GitHub Actions wo
   const properties = {
     DEV_RUNS_FOLDER_ID: "runs-folder-id-123456",
     GITHUB_ACTIONS_TOKEN: "github-actions-token",
-    GITHUB_WORKFLOW_REF: "main"
+    GITHUB_WORKFLOW_REF: "dev/worker-v2.1-resumable"
   };
   const key = crypto.createHash("sha256")
     .update(["logical_1", "run_1", "1", "", "", "a".repeat(64)].join("|"))
@@ -112,7 +112,7 @@ test("dispatch writes an immutable job manifest and starts the GitHub Actions wo
   assert.equal(request.options.headers.Accept, "application/vnd.github+json");
   assert.equal(request.options.headers["X-GitHub-Api-Version"], "2022-11-28");
   const payload = JSON.parse(request.options.payload);
-  assert.equal(payload.ref, "main");
+  assert.equal(payload.ref, "dev/worker-v2.1-resumable");
   assert.equal(payload.inputs.run_id, "run_1");
   assert.equal(payload.inputs.job_file_id, "job-file-id-123456");
   const job = JSON.parse(jobContent);
