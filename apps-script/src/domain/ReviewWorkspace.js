@@ -53,8 +53,6 @@ var ReviewWorkspace = (function () {
     var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
     var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
     var expectedVariants = {}, expectedSpecifications = {};
-    if (variantInputs.length !== Object.keys(expectedVariants).length ||
-        specInputs.length !== Object.keys(expectedSpecifications).length) fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
     links.forEach(function (link) {
       if (link.Review_Role !== "EVIDENCE") return;
       if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
@@ -116,6 +114,10 @@ var ReviewWorkspace = (function () {
         source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
       };
     });
+    if (variants.length !== Object.keys(expectedVariants).length ||
+        specifications.length !== Object.keys(expectedSpecifications).length) {
+      fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
+    }
     return { variants: variants, specifications: specifications };
   }
   function updateStatus(options, actor) {
