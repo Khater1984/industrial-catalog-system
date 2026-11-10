@@ -84,7 +84,8 @@ function stagingObject() {
       { staging_id: "stg_spec_1", source_assertion_key: "assertion_1", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Plate size", value_raw: "600x450", unit_raw: "mm", scope: "VARIANT", source_quote: "SPEC: Plate size | 600x450 | mm", review_status: "ACCEPTED", confidence: "HIGH" },
       { staging_id: "stg_spec_2", source_assertion_key: "assertion_2", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "91", original_value_raw: "90", edited: true, edit_reason: "Accepted reviewer edit", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 90 | kg", review_status: "ACCEPTED", confidence: "HIGH" },
       { staging_id: "stg_spec_3", source_assertion_key: "assertion_3", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Engine power", value_raw: "", unit_raw: "kW", scope: "VARIANT", source_quote: "SPEC: Engine power |  | kW", review_status: "REJECTED", confidence: "MEDIUM" },
-      { staging_id: "stg_spec_4", source_assertion_key: "assertion_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 110 | kg", review_status: "REJECTED", confidence: "HIGH" }
+      { staging_id: "stg_spec_4", source_assertion_key: "assertion_4", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_2", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Weight", value_raw: "110", unit_raw: "kg", scope: "VARIANT", source_quote: "SPEC: Weight | 110 | kg", review_status: "REJECTED", confidence: "HIGH" },
+      { staging_id: "stg_spec_5", source_assertion_key: "assertion_5", parent_staging_product_id: "stg_prd_1", parent_staging_variant_id: "stg_var_1", catalog_page_id: "cp_cat_demo_001_00001", attribute_key_raw: "Output", value_raw: "100", original_value_raw: "100", unit_raw: "kVA", original_unit_raw: "kW", edited: true, edit_reason: "Corrected unit from source table", scope: "VARIANT", source_quote: "SPEC: Output | 100 | kW", review_status: "ACCEPTED", confidence: "HIGH" }
     ]
   };
 }
@@ -106,13 +107,20 @@ test("accepted records are written and rejected records are not", () => {
   assert.equal(result.status, "COMPLETED");
   assert.equal(ctx.store.Products.length, 1);
   assert.equal(ctx.store.Variants.length, 1);
-  assert.equal(ctx.store.Specifications.length, 2);
-  assert.equal(ctx.store.Specification_Changes.length, 1);
+  assert.equal(ctx.store.Specifications.length, 3);
+  assert.equal(ctx.store.Specification_Changes.length, 2);
   assert.equal(ctx.store.Specification_Changes[0].Operation, "UPDATE");
   assert.equal(ctx.store.Specifications[1].Attribute_Value_Source, "90");
   assert.equal(ctx.store.Specifications[1].Source_Assertion_Key, "assertion_2");
   assert.equal(ctx.store.Specification_Changes[0].Logical_Specification_Key, "SRC:" + ctx.store.Specifications[1].Specification_ID);
   assert.equal(JSON.parse(ctx.store.Specification_Changes[0].Value_JSON), "91");
+  const unitOnlySource = ctx.store.Specifications.find(row => row.Source_Assertion_Key === "assertion_5");
+  const unitOnlyChange = ctx.store.Specification_Changes.find(row => row.Unit_Code === "kVA");
+  assert.equal(unitOnlySource.Unit_Source, "kW");
+  assert.equal(unitOnlySource.Attribute_Value_Source, "100");
+  assert.ok(unitOnlyChange, "unit-only edit must create a Specification_Changes row");
+  assert.equal(unitOnlyChange.Unit_Code, "kVA");
+  assert.match(unitOnlyChange.Reason, /Corrected unit/);
 });
 
 test("rejects client-supplied staging object", () => {
