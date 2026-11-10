@@ -2497,23 +2497,26 @@ var CandidateReviewIntake = (function () {
         counts.variants_unassigned += variants.length;
         counts.specifications_unassigned += specs.length;
       });
-      var imageIntake = null;
-      var imageResult = manifest.image_extraction || {};
-      if (imageResult.enabled === true && imageResult.status === "COMPLETED") {
-        imageIntake = ImageReviewIntake.intake({
-          imageManifestFileId: imageResult.manifest_file_id,
-          imageManifestSha256: imageResult.manifest_sha256,
-          driveManifestFileId: imageResult.drive_manifest_file_id,
-          driveManifestSha256: imageResult.drive_manifest_sha256,
-          actor: actor
-        });
-      }
-      return { status: "COMPLETED", run_id: manifest.run_id, catalog_id: manifest.catalog_id,
-        counts: counts, image_intake: imageIntake,
-        note: "Product candidates were staged for human review. Model/specification candidates remain in their verified page artifacts until a reviewer establishes parent relationships." };
     } finally {
       lock.releaseLock();
     }
+    // ImageReviewIntake acquires the same Apps Script lock internally. Call it
+    // only after releasing this module's lock to avoid a nested-lock timeout.
+    var imageIntake = null;
+    var imageResult = manifest.image_extraction || {};
+    if (imageResult.enabled === true && imageResult.status === "COMPLETED") {
+      imageIntake = ImageReviewIntake.intake({
+        imageManifestFileId: imageResult.manifest_file_id,
+        imageManifestSha256: imageResult.manifest_sha256,
+        driveManifestFileId: imageResult.drive_manifest_file_id,
+        driveManifestSha256: imageResult.drive_manifest_sha256,
+        actor: actor
+      });
+      require_(imageIntake && imageIntake.status === "COMPLETED", "IMAGE_REVIEW_INTAKE_INCOMPLETE");
+    }
+    return { status: "COMPLETED", run_id: manifest.run_id, catalog_id: manifest.catalog_id,
+      counts: counts, image_intake: imageIntake,
+      note: "Product candidates were staged for human review. Model/specification candidates remain in their verified page artifacts until a reviewer establishes parent relationships." };
   }
   return { intakeRun: intakeRun };
 })();
