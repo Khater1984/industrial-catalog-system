@@ -18,6 +18,60 @@ var ImagePromotion = (function () {
     require_(typeof v === "string" && v.trim().length > 0, code);
     var s = v.trim(); require_(s.length <= max, code); return s;
   }
+  function canonical_(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") { require_(isFinite(value), "IMAGE_SOURCE_MANIFEST_INVALID"); return value; }
+    if (Array.isArray(value)) return value.map(canonical_);
+    if (value && Object.prototype.toString.call(value) === "[object Object]") {
+      var out = {};
+      Object.keys(value).sort().forEach(function (key) {
+        require_(value[key] !== undefined, "IMAGE_SOURCE_MANIFEST_INVALID");
+        out[key] = canonical_(value[key]);
+      });
+      return out;
+    }
+    fail_("IMAGE_SOURCE_MANIFEST_INVALID");
+  }
+  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
+  function withoutKey_(value, key) {
+    var out = {};
+    Object.keys(value).forEach(function (name) { if (name !== key) out[name] = value[name]; });
+    return out;
+  }
+  function verifyImageSource_(staging, digest, width, height, size, mime) {
+    var metadata;
+    try { metadata = JSON.parse(String(staging.Extracted_Text || "")); } catch (e) { fail_("IMAGE_SOURCE_METADATA_INVALID"); }
+    require_(metadata && SHA_RE.test(String(metadata.source_manifest_sha256 || "")), "IMAGE_SOURCE_MANIFEST_SHA_MISSING");
+    require_(SHA_RE.test(String(metadata.source_manifest_internal_sha256 || "")), "IMAGE_SOURCE_MANIFEST_CHECKSUM_MISSING");
+    var file;
+    try { file = DriveApp.getFileById(staging.Raw_Extract_File_ID); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_NOT_FOUND"); }
+    var raw = file.getBlob().getBytes();
+    require_(sha_(raw) === metadata.source_manifest_sha256, "IMAGE_SOURCE_MANIFEST_SHA_MISMATCH");
+    var manifest;
+    try { manifest = JSON.parse(file.getBlob().getDataAsString("UTF-8")); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_INVALID"); }
+    require_(manifest && manifest.manifest_version === 1 && Array.isArray(manifest.images), "IMAGE_SOURCE_MANIFEST_INVALID");
+    require_(manifest.manifest_sha256 === metadata.source_manifest_internal_sha256, "IMAGE_SOURCE_MANIFEST_IDENTITY_MISMATCH");
+    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(manifest, "manifest_sha256")), "application/json").getBytes()) === manifest.manifest_sha256,
+      "IMAGE_SOURCE_MANIFEST_CHECKSUM_INVALID");
+    require_(manifest.catalog_id === staging.Catalog_ID && manifest.run_id === staging.Run_ID, "IMAGE_SOURCE_MANIFEST_SCOPE_MISMATCH");
+    var matches = manifest.images.filter(function (img) {
+      return img && img.sha256 === digest && img.artifact_path;
+    });
+    require_(matches.length === 1, "IMAGE_SOURCE_RECORD_NOT_UNIQUE");
+    var source = matches[0];
+    var sourceCopy = withoutKey_(withoutKey_(source, "drive_file_id"), "drive_sha256");
+    require_(SHA_RE.test(String(source.output_sha256 || "")), "IMAGE_SOURCE_RECORD_CHECKSUM_MISSING");
+    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(sourceCopy, "output_sha256")), "application/json").getBytes()) === source.output_sha256,
+      "IMAGE_SOURCE_RECORD_CHECKSUM_INVALID");
+    require_(source.metadata_status === "COMPLETED", "IMAGE_SOURCE_METADATA_INCOMPLETE");
+    require_(typeof source.has_alpha === "boolean", "IMAGE_SOURCE_ALPHA_METADATA_MISSING");
+    require_(Number(source.width_px) === width && Number(source.height_px) === height, "IMAGE_SOURCE_DIMENSIONS_MISMATCH");
+    require_(Number(source.file_size_bytes) === size && source.mime_type === mime, "IMAGE_SOURCE_FILE_METADATA_MISMATCH");
+    require_(source.sha256 === digest, "IMAGE_SOURCE_DIGEST_MISMATCH");
+    require_(metadata.image_output_sha256 === source.output_sha256, "IMAGE_SOURCE_STAGING_CHECKSUM_MISMATCH");
+    require_(metadata.has_alpha === source.has_alpha, "IMAGE_SOURCE_ALPHA_MISMATCH");
+    return source;
+  }
   function promoteReviewedImage(options) {
     require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
     var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
@@ -65,6 +119,7 @@ var ImagePromotion = (function () {
     require_(Number.isSafeInteger(size) && size > 0 && size <= 26214400, "IMAGE_SIZE_INVALID");
     var digest = text_(staging.SHA256, "IMAGE_SHA_MISSING", 64).toLowerCase();
     require_(SHA_RE.test(digest), "IMAGE_SHA_INVALID");
+    var sourceImage = verifyImageSource_(staging, digest, width, height, size, mime);
     var driveId = text_(staging.Proposed_Image_File_ID, "IMAGE_DRIVE_FILE_ID_MISSING", 200);
     require_(/^[A-Za-z0-9_-]{10,200}$/.test(driveId), "IMAGE_DRIVE_FILE_ID_INVALID");
     var driveFile;
@@ -80,11 +135,13 @@ var ImagePromotion = (function () {
         Image_ID: imageId, Original_File_ID: driveId,
         Original_File_Name: text_(staging.Original_File_Name, "IMAGE_NAME_MISSING", 255),
         MIME_Type: mime, Width_PX: width, Height_PX: height,
-        File_Size_Bytes: size, Has_Alpha: decision.has_alpha === true,
-        Orientation: "NORMALIZED", SHA256: digest,
+        File_Size_Bytes: size, Has_Alpha: sourceImage.has_alpha,
+        Color_Space: ["SRGB", "DISPLAY_P3", "CMYK", "GRAYSCALE", "UNKNOWN"].indexOf(sourceImage.color_space) >= 0 ? sourceImage.color_space : "UNKNOWN",
+        Orientation: ["NORMALIZED", "EXIF_ROTATED", "UNKNOWN"].indexOf(sourceImage.orientation) >= 0 ? sourceImage.orientation : "UNKNOWN",
+        SHA256: digest,
         Source_Type: "CATALOG_EMBEDDED", Source_Catalog_ID: staging.Catalog_ID,
         Source_Catalog_Page_ID: staging.Catalog_Page_ID || "",
-        Source_Page_Label: staging.Page_Number || "",
+        Source_Page_Label: sourceImage.page_number ? String(sourceImage.page_number) : "",
         Quality_Status: "ACCEPTABLE", Lifecycle_Status: "ACTIVE",
         Created_At: now_(), Created_By: options.actor || APP.ACTOR_ID
       });
