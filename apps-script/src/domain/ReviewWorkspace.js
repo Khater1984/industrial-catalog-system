@@ -146,6 +146,16 @@ var ReviewWorkspace = (function () {
     var productName = text_(options.productName, 300);
     if (!productName) fail_("REVIEW_PRODUCT_NAME_REQUIRED");
     if (/[\u0600-\u06FF]/.test(productName)) fail_("REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH");
+    var identityResolution = text_(options.identityResolution || "", 30).toUpperCase();
+    if (["CREATE_NEW", "MATCH_EXISTING"].indexOf(identityResolution) < 0) fail_("REVIEW_IDENTITY_RESOLUTION_REQUIRED");
+    var canonicalProductId = text_(options.canonicalProductId || "", 160);
+    var matchRationale = text_(options.matchRationale || "", 1000);
+    if (identityResolution === "MATCH_EXISTING") {
+      var matchedProduct = SheetsRepository.getBy("Products", "Product_ID", canonicalProductId);
+      if (!matchedProduct || matchedProduct.Lifecycle_Status !== "ACTIVE") fail_("REVIEW_MATCH_PRODUCT_NOT_ACTIVE");
+      if (!matchRationale) fail_("REVIEW_MATCH_RATIONALE_REQUIRED");
+    } else if (canonicalProductId) fail_("REVIEW_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
+    if (identityResolution === "CREATE_NEW" && !matchRationale) matchRationale = "Reviewer confirmed a new canonical product identity.";
     var notes = text_(options.notes || "", 1500);
     if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
@@ -156,7 +166,10 @@ var ReviewWorkspace = (function () {
       if (review.Review_Status === "APPROVED") {
         var approvedFile = DriveApp.getFileById(review.Decision_JSON_File_ID);
         var approved = JSON.parse(approvedFile.getBlob().getDataAsString("UTF-8"));
-        if (approved.products && approved.products[0] && approved.products[0].proposed_product_name === productName) {
+        if (approved.products && approved.products[0] &&
+            approved.products[0].proposed_product_name === productName &&
+            approved.products[0].identity_resolution === identityResolution &&
+            String(approved.products[0].canonical_product_id || "") === canonicalProductId) {
           return { status: "APPROVED", decisionFileId: review.Decision_JSON_File_ID, decisionSha256: review.Decision_SHA256, reused: true };
         }
         fail_("REVIEW_DECISION_ALREADY_APPROVED");
@@ -181,6 +194,9 @@ var ReviewWorkspace = (function () {
           staging_id: staging.Staging_ID,
           catalog_page_id: staging.Catalog_Page_ID,
           proposed_product_name: productName,
+          identity_resolution: identityResolution,
+          canonical_product_id: canonicalProductId,
+          match_rationale: matchRationale,
           source_quote: text_(staging.Extracted_Text || "", 2000),
           review_status: "ACCEPTED",
           staging_record_hash: staging.Staging_Record_Hash
