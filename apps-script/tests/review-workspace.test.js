@@ -1,38 +1,124 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const source = fs.readFileSync("src/domain/ReviewWorkspace.js", "utf8");
+
 function fixture() {
-  const row = { Review_Queue_ID: "rev_12345678", Review_Status: "OPEN", Decision_Notes: "" };
+  const queue = [{
+    Review_Queue_ID: "rev_product_123456", Review_Type: "PRODUCT_MATCH",
+    Review_Status: "IN_REVIEW", Decision_Notes: "", Created_By: "actor_primary"
+  }];
+  const links = [{ Review_Queue_ID: "rev_product_123456", Staging_ID: "stg_product_123456", Review_Role: "PRIMARY" }];
+  const staging = {
+    Staging_ID: "stg_product_123456", Run_ID: "run_test_123456", Catalog_ID: "cat_test_123456",
+    Catalog_Page_ID: "page_test_0001", Extracted_Text: "Industrial Generator DG-100",
+    Staging_Record_Hash: "a".repeat(64)
+  };
+  const files = {};
+  let fileSeq = 0;
+  const runFolder = {
+    getFilesByName(name) {
+      const found = Object.values(files).filter(f => f.name === name);
+      let i = 0;
+      return { hasNext: () => i < found.length, next: () => found[i++] };
+    },
+    createFile(name, content) {
+      const id = "drive_file_" + (++fileSeq);
+      const file = {
+        id, name, content,
+        getId: () => id,
+        getBlob: () => ({
+          getBytes: () => Array.from(Buffer.from(content, "utf8")),
+          getDataAsString: () => content
+        })
+      };
+      files[id] = file; return file;
+    }
+  };
+  const rootFolder = { getFoldersByName: name => ({ hasNext: () => name === staging.Run_ID, next: () => runFolder }) };
   const context = {
-    SheetsRepository: {
-      getBy: (_table, _key, value) => value === row.Review_Queue_ID ? row : null,
-      updateBy: (_table, _key, value, patch) => { if (value !== row.Review_Queue_ID) throw new Error("ROW_NOT_FOUND"); Object.assign(row, patch); }
+    APP: { ACTOR_ID: "actor_primary" },
+    MimeType: { JSON: "application/json" },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: key => key === "DEV_RUNS_FOLDER_ID" ? "root_folder_id" : "" }) },
+    Utilities: {
+      DigestAlgorithm: { SHA_256: "SHA-256" },
+      newBlob: value => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
+      computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
+    },
+    DriveApp: {
+      getFolderById: () => rootFolder,
+      getFileById: id => files[id] || null
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    SheetsRepository: {
+      listAll: name => name === "Review_Queue" ? queue : name === "Review_Staging_Links" ? links : [],
+      getBy: (table, key, value) => {
+        if (table === "Review_Queue") return queue.find(row => row[key] === value) || null;
+        if (table === "Staging_Products") return staging[key] === value ? staging : null;
+        return null;
+      },
+      updateBy: (_table, key, value, patch) => {
+        const row = queue.find(item => item[key] === value);
+        if (!row) throw new Error("ROW_NOT_FOUND");
+        Object.assign(row, patch);
+      }
+    },
     Date
   };
   vm.runInNewContext(source, context);
-  return { workspace: context.ReviewWorkspace, row };
+  return { service: context.ReviewWorkspace, queue, staging, files, runFolder };
 }
-test("review task can be claimed and reviewer notes are recorded without staging promotion", () => {
+
+test("product approval writes an immutable accepted decision and records its SHA", () => {
   const ctx = fixture();
-  const result = ctx.workspace.updateStatus({ reviewId: "rev_12345678", status: "IN_REVIEW", notes: "Check source" }, "actor_primary");
-  assert.equal(result.status, "IN_REVIEW");
-  assert.equal(ctx.row.Assigned_Actor_ID, "actor_primary");
-  assert.equal(ctx.row.Decision_Notes, "Check source");
+  const result = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", notes: "Checked source" }, "actor_primary");
+  assert.equal(result.status, "APPROVED");
+  assert.equal(ctx.queue[0].Review_Status, "APPROVED");
+  assert.equal(ctx.queue[0].Decision_JSON_File_ID, result.decisionFileId);
+  assert.equal(ctx.queue[0].Decision_SHA256, result.decisionSha256);
+  const decision = JSON.parse(ctx.files[result.decisionFileId].content);
+  assert.equal(decision.products[0].review_status, "ACCEPTED");
+  assert.equal(decision.products[0].staging_id, "stg_product_123456");
+  assert.equal(decision.variants.length, 0);
 });
-test("review task can be deferred or rejected and rejection is terminal", () => {
+
+test("product approval is idempotent and refuses edits after approval", () => {
   const ctx = fixture();
-  ctx.workspace.updateStatus({ reviewId: "rev_12345678", status: "REJECTED" }, "actor_primary");
-  assert.equal(ctx.row.Reviewed_By, "actor_primary");
-  assert.throws(() => ctx.workspace.updateStatus({ reviewId: "rev_12345678", status: "OPEN" }, "actor_primary"), /REVIEW_TRANSITION_NOT_ALLOWED/);
+  const first = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  const again = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  assert.equal(again.decisionFileId, first.decisionFileId);
+  assert.equal(again.reused, true);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Different Product" }, "actor_primary"), /REVIEW_DECISION_ALREADY_APPROVED/);
 });
-test("approval, invalid IDs, unknown tasks and oversized notes are refused", () => {
+
+test("Arabic product names and non-product review tasks cannot be approved as products", () => {
   const ctx = fixture();
-  assert.throws(() => ctx.workspace.updateStatus({ reviewId: "rev_12345678", status: "APPROVED" }, "actor_primary"), /REVIEW_STATUS_INVALID/);
-  assert.throws(() => ctx.workspace.updateStatus({ reviewId: "bad", status: "OPEN" }, "actor_primary"), /REVIEW_ID_INVALID/);
-  assert.throws(() => ctx.workspace.updateStatus({ reviewId: "rev_missing1", status: "OPEN" }, "actor_primary"), /REVIEW_NOT_FOUND/);
-  assert.throws(() => ctx.workspace.updateStatus({ reviewId: "rev_12345678", status: "IN_REVIEW", notes: "x".repeat(1501) }, "actor_primary"), /REVIEW_NOTES_TOO_LONG/);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "مولد كهربائي" }, "actor_primary"), /REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH/);
+  ctx.queue[0].Review_Type = "EXTRACTION_AMBIGUITY";
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator" }, "actor_primary"), /REVIEW_PRODUCT_TASK_REQUIRED/);
+});
+
+test("Staging Set builder combines approved decision files and updates their queue references", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  const result = ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary");
+  assert.equal(result.status, "READY_FOR_PROMOTION");
+  assert.equal(result.products, 1);
+  assert.equal(result.variants, 0);
+  assert.equal(ctx.queue[0].Staging_Set_Manifest_File_ID, result.stagingSetFileId);
+  assert.equal(ctx.queue[0].Staging_Set_SHA256, result.stagingSetSha256);
+  const stagingSet = JSON.parse(ctx.files[result.stagingSetFileId].content);
+  assert.equal(stagingSet.products[0].proposed_product_name, "Industrial Generator DG-100");
+});
+
+test("Staging Set builder refuses runs without approved product decisions", () => {
+  const ctx = fixture();
+  assert.throws(() => ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary"), /REVIEW_NO_APPROVED_PRODUCTS_FOR_RUN/);
+});
+
+test("review status transitions cannot mark a task approved without an immutable decision", () => {
+  const ctx = fixture();
+  assert.throws(() => ctx.service.updateStatus({ reviewId: "rev_product_123456", status: "APPROVED" }, "actor_primary"), /REVIEW_STATUS_INVALID/);
 });
