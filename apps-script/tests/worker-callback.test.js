@@ -19,13 +19,15 @@ test("owner-executed poller ingests a Drive result manifest for active runs", ()
       listAll: () => [{
         Run_ID: "run-1", Run_Status: "RUNNING",
         Input_Manifest_File_ID: "job-file-id"
-      }]
+      }],
+      updateBy: () => {}
     },
     DriveApp: { getFileById: () => jobFile },
     Ingest: { ingestManifest: (options) => {
       calls.push(options);
       return { run_id: options.runId, run_status: "COMPLETED" };
-    } }
+    } },
+    CandidateReviewIntake: { intakeRun: (options) => ({ status: "COMPLETED", run_id: options.runId }) }
   };
   vm.runInNewContext(source, context);
   const result = context.WorkerIntegration.processCompletedRuns();
