@@ -203,14 +203,17 @@ test("retry does not duplicate products, variants, or source specifications", ()
 
 test("connection failure leaves the operation in doubt and retry resumes without duplicates", () => {
   const opts = makeDriveOptions(stagingObject());
-  const first = buildContext(Object.assign({ failAfter: 4 }, opts));
+  const first = buildContext(Object.assign({ failAfter: 3 }, opts));
   assert.throws(() => first.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }), /SHEETS_CONNECTION_FAILED/);
   assert.equal(first.store.Promotion_Operations[0].Operation_Status, "IN_DOUBT");
+  assert.equal(first.store.Products.length, 1);
+  assert.equal(first.store.Product_Company, undefined);
   const before = first.store.Products.length;
   const resumed = buildContext(Object.assign({ store: first.store }, opts));
   const result = resumed.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(resumed.store.Products.length, before);
+  assert.equal(resumed.store.Product_Company.length, 1);
   assert.equal(resumed.store.Variants.length, 1);
   assert.equal(resumed.store.Specifications.length, 3);
 });
