@@ -19,13 +19,15 @@ test("owner-executed poller ingests a Drive result manifest for active runs", ()
       listAll: () => [{
         Run_ID: "run-1", Run_Status: "RUNNING",
         Input_Manifest_File_ID: "job-file-id"
-      }]
+      }],
+      updateBy: () => {}
     },
     DriveApp: { getFileById: () => jobFile },
     Ingest: { ingestManifest: (options) => {
       calls.push(options);
       return { run_id: options.runId, run_status: "COMPLETED" };
-    } }
+    } },
+    CandidateReviewIntake: { intakeRun: (options) => ({ status: "COMPLETED", run_id: options.runId }) }
   };
   vm.runInNewContext(source, context);
   const result = context.WorkerIntegration.processCompletedRuns();
@@ -162,4 +164,22 @@ test("GitHub workflow rejection is surfaced as a terminal failed registration", 
   assert.equal(result.retryable, false);
   assert.equal(result.error_code, "GITHUB_WORKFLOW_REJECTED");
   assert.equal(registered.status, "FAILED");
+});
+
+
+test("poller does not stage candidates for a failed worker manifest", () => {
+  const manifestFile = { getId: () => "failed-manifest-id" };
+  const folder = { getFilesByName: () => ({ hasNext: () => true, next: () => manifestFile }) };
+  const jobFile = { getParents: () => ({ hasNext: () => true, next: () => folder }) };
+  const context = {
+    SheetsRepository: { listAll: () => [{ Run_ID: "run-failed", Run_Status: "RUNNING", Input_Manifest_File_ID: "job-failed" }] },
+    DriveApp: { getFileById: () => jobFile },
+    Ingest: { ingestManifest: () => ({ run_id: "run-failed", run_status: "FAILED" }) },
+    CandidateReviewIntake: { intakeRun: () => { throw new Error("must not be called"); } }
+  };
+  vm.runInNewContext(source, context);
+  const result = context.WorkerIntegration.processCompletedRuns();
+  assert.equal(result.processed.length, 1);
+  assert.equal(result.processed[0].run_status, "FAILED");
+  assert.equal(result.errors.length, 0);
 });
