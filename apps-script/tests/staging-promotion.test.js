@@ -106,6 +106,8 @@ test("accepted records are written and rejected records are not", () => {
   const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
   assert.equal(result.status, "COMPLETED");
   assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Product_Company.length, 1);
+  assert.equal(ctx.store.Product_Company[0].Product_Name_EN, "");
   assert.equal(ctx.store.Variants.length, 1);
   assert.equal(ctx.store.Specifications.length, 3);
   assert.equal(ctx.store.Specification_Changes.length, 2);
@@ -121,6 +123,44 @@ test("accepted records are written and rejected records are not", () => {
   assert.ok(unitOnlyChange, "unit-only edit must create a Specification_Changes row");
   assert.equal(unitOnlyChange.Unit_Code, "kVA");
   assert.match(unitOnlyChange.Reason, /Corrected unit/);
+});
+
+test("MATCH_EXISTING promotion links source records to an active canonical product without creating a duplicate", () => {
+  const staging = stagingObject();
+  staging.products[0].identity_resolution = "MATCH_EXISTING";
+  staging.products[0].canonical_product_id = "prd_existing_001";
+  staging.products[0].match_rationale = "Same manufacturer and verified product reference";
+  const store = {
+    Products: [{ Product_ID: "prd_existing_001", Lifecycle_Status: "ACTIVE" }],
+    Product_Company: [{ Product_ID: "prd_existing_001", Product_Name_EN: "Existing Canonical Product" }]
+  };
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(Object.assign({ store }, opts));
+  const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(ctx.store.Products.length, 1);
+  assert.equal(ctx.store.Product_Company.length, 1);
+  const source = ctx.store.Product_Source_Records[0];
+  assert.equal(source.Product_ID, "prd_existing_001");
+  assert.equal(source.Identity_Resolution, "MATCH_EXISTING");
+  const match = ctx.store.Identity_Match_Decisions.find(row => row.Entity_Type === "PRODUCT");
+  assert.equal(match.Decision, "MATCH_EXISTING");
+  assert.equal(match.Candidate_Canonical_ID, "prd_existing_001");
+  assert.equal(match.Result_Canonical_ID, "prd_existing_001");
+});
+
+test("MATCH_EXISTING promotion refuses inactive or missing canonical products", () => {
+  const staging = stagingObject();
+  staging.products[0].identity_resolution = "MATCH_EXISTING";
+  staging.products[0].canonical_product_id = "prd_inactive";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(Object.assign({ store: {
+    Products: [{ Product_ID: "prd_inactive", Lifecycle_Status: "ARCHIVED" }]
+  } }, opts));
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_MATCH_PRODUCT_NOT_ACTIVE/
+  );
 });
 
 test("rejects client-supplied staging object", () => {
