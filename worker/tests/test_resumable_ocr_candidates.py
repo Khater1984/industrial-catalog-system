@@ -4,9 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from reportlab.pdfgen import canvas
 
+from catalog_worker.ocr import ocr_page_image, tesseract_available
 from catalog_worker.resumable import process_resumable_catalog_job, sha256_file
 
 
@@ -101,3 +102,24 @@ def test_resumable_engine_keeps_embedded_text_without_rendering(monkeypatch, tmp
     assert result["run_status"] == "COMPLETED"
     assert page["extraction_method"] == "EMBEDDED_TEXT"
     assert "DG-100" in page["extracted_text"]
+
+
+def test_real_tesseract_arabic_english_runtime_smoke(tmp_path):
+    import pytest
+
+    if not tesseract_available():
+        pytest.skip("Tesseract is not installed in this environment")
+
+    image = Image.new("RGB", (1800, 360), "white")
+    draw = ImageDraw.Draw(image)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    font = ImageFont.truetype(font_path, 72)
+    draw.text((60, 90), "INDUSTRIAL GENERATOR MODEL DG-100", fill="black", font=font)
+    path = tmp_path / "ocr-smoke.png"
+    image.save(path)
+
+    result = ocr_page_image(path, languages="ara+eng")
+    normalized = result["extracted_text"].upper()
+    assert "GENERATOR" in normalized
+    assert "DG-100" in normalized
+    assert result["confidence"] is not None
