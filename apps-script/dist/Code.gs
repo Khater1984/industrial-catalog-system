@@ -3024,7 +3024,7 @@ var StagingPromotion = (function () {
       staging.products.forEach(function (product) {
         if (!accepted_(product)) { counts.rejected += 1; return; }
         var sourceKey = text_(catalogId + "|" + product.catalog_page_id + "|" + product.proposed_product_name, 160);
-        var identityResolution = text_(product.identity_resolution || "CREATE_NEW", 30).toUpperCase();
+        var identityResolution = text_(product.identity_resolution || "", 30).toUpperCase();
         require_(identityResolution === "CREATE_NEW" || identityResolution === "MATCH_EXISTING", "PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID");
         var canonicalCandidateId = text_(product.canonical_product_id || "", 160);
         if (identityResolution === "MATCH_EXISTING") {
