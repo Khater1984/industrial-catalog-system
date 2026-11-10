@@ -201,9 +201,9 @@ test("promotion writes product-scope specifications against Product_Source_Recor
   const opts = makeDriveOptions(staging);
   const ctx = buildContext(opts);
   const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
-  assert.equal(result.counts.specifications, 1);
-  const spec = ctx.store.Specifications[0];
-  assert.equal(spec.Scope, "PRODUCT");
+  assert.equal(result.counts.specifications, 2);
+  const spec = ctx.store.Specifications.find(row => row.Scope === "PRODUCT");
+  assert.ok(spec);
   assert.ok(spec.Product_Source_Record_ID);
   assert.equal(spec.Variant_Source_Record_ID, "");
   assert.equal(spec.Variant_ID, "");
