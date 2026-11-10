@@ -29,7 +29,6 @@ const order = [
   "domain/StagingPromotion.js",
   "domain/ImagePromotion.js",
   "domain/ImageReviewIntake.js",
-  "domain/ReviewDashboard.js",
   "domain/ReviewWorkspace.js",
 
   // Documents, backups, and design
