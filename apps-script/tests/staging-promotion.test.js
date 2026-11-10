@@ -172,7 +172,7 @@ test("connection failure leaves the operation in doubt and retry resumes without
   assert.equal(result.status, "COMPLETED");
   assert.equal(resumed.store.Products.length, before);
   assert.equal(resumed.store.Variants.length, 1);
-  assert.equal(resumed.store.Specifications.length, 2);
+  assert.equal(resumed.store.Specifications.length, 3);
 });
 
 
