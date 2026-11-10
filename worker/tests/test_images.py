@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
@@ -130,7 +130,7 @@ def test_extracts_full_page_scan_and_product_photo_from_same_page(tmp_path):
     source = tmp_path / "scanned-catalog.pdf"
     scan_buffer = BytesIO()
     scan = Image.new("RGB", (900, 1200), "white")
-    scan_draw = __import__("PIL.ImageDraw", fromlist=["ImageDraw"]).Draw(scan)
+    scan_draw = ImageDraw.Draw(scan)
     scan_draw.text((60, 80), "INDUSTRIAL CATALOG PAGE 1", fill="black")
     scan.save(scan_buffer, format="PNG")
     scan_bytes = scan_buffer.getvalue()
