@@ -44,6 +44,11 @@ The committed `dist/Code.gs` was also stale: it contained only a subset of sourc
 
 The malformed quote in the dashboard's HTML-escaping expression was corrected in the preceding DEV commit. The bundle-integrity test now parses every inline script in `Index.html` to prevent recurrence.
 
+
+A second inline-script defect was then found by the new parser test: a literal backslash-n sequence had been inserted into the Design Studio script between two statements. It has been replaced with a real line break. The dashboard's malformed escaping expression and this Design Studio parse error are now both covered by the inline-script syntax regression test.
+
+The regenerated deployment bundle is approximately 4,330 lines and includes all 21 active source modules in the build order. CI's Apps Script validation and bundle-integrity test workflows pass on the current PR head. The worker/integration workflow is tracked separately and is not a substitute for a live Google Apps Script browser test.
+
 ## Phase and readiness assessment
 
 - Catalog intake/dashboard: limited DEV slice; live Sheets authorization/configuration and browser runtime still require verification.
