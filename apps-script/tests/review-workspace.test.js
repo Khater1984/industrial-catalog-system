@@ -110,7 +110,7 @@ test("review approval persists explicitly accepted model and scoped specificatio
     { Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" }
   );
   const result = ctx.service.approveProductReview({
-    reviewId: "rev_product_123456", productName: "Industrial Generator DG-100",
+    reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity",
     variants: [{ stagingId: variant.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: productId }],
     specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: productId,
       scope: "VARIANT", parentVariantStagingId: variant.Staging_ID, valueRaw: "110", unitRaw: "kW", editReason: "Verified against source table" }]
@@ -132,13 +132,13 @@ test("review approval refuses unlinked candidates and edited values without a re
   };
   ctx.stagingRows.Staging_Specifications = { [spec.Staging_ID]: spec };
   assert.throws(() => ctx.service.approveProductReview({
-    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    reviewId: "rev_product_123456", productName: "Industrial Generator", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity",
     specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: ctx.staging.Staging_ID,
       scope: "PRODUCT", valueRaw: "415" }]
   }, "actor_primary"), /REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE/);
   ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" });
   assert.throws(() => ctx.service.approveProductReview({
-    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    reviewId: "rev_product_123456", productName: "Industrial Generator", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity",
     specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: ctx.staging.Staging_ID,
       scope: "PRODUCT", valueRaw: "415" }]
   }, "actor_primary"), /REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED/);
@@ -146,7 +146,7 @@ test("review approval refuses unlinked candidates and edited values without a re
 
 test("product approval writes an immutable accepted decision and records its SHA", () => {
   const ctx = fixture();
-  const result = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", notes: "Checked source" }, "actor_primary");
+  const result = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity", notes: "Checked source" }, "actor_primary");
   assert.equal(result.status, "APPROVED");
   assert.equal(ctx.queue[0].Review_Status, "APPROVED");
   assert.equal(ctx.queue[0].Decision_JSON_File_ID, result.decisionFileId);
@@ -159,23 +159,23 @@ test("product approval writes an immutable accepted decision and records its SHA
 
 test("product approval is idempotent and refuses edits after approval", () => {
   const ctx = fixture();
-  const first = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
-  const again = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  const first = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
+  const again = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   assert.equal(again.decisionFileId, first.decisionFileId);
   assert.equal(again.reused, true);
-  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Different Product" }, "actor_primary"), /REVIEW_DECISION_ALREADY_APPROVED/);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Different Product", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary"), /REVIEW_DECISION_ALREADY_APPROVED/);
 });
 
 test("Arabic product names and non-product review tasks cannot be approved as products", () => {
   const ctx = fixture();
-  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "مولد كهربائي" }, "actor_primary"), /REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH/);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "مولد كهربائي", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary"), /REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH/);
   ctx.queue[0].Review_Type = "EXTRACTION_AMBIGUITY";
-  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator" }, "actor_primary"), /REVIEW_PRODUCT_TASK_REQUIRED/);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary"), /REVIEW_PRODUCT_TASK_REQUIRED/);
 });
 
 test("Staging Set builder combines approved decision files and updates their queue references", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   const result = ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary");
   assert.equal(result.status, "READY_FOR_PROMOTION");
   assert.equal(result.products, 1);
@@ -199,7 +199,7 @@ test("review status transitions cannot mark a task approved without an immutable
 
 test("Staging Set accepts explicitly linked model/spec candidates with a consistent parent chain", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   const productStagingId = ctx.service.approveProductReview
     ? JSON.parse(ctx.files[ctx.queue[0].Decision_JSON_File_ID].content).products[0].staging_id
     : "";
@@ -221,7 +221,7 @@ test("Staging Set accepts explicitly linked model/spec candidates with a consist
 
 test("Staging Set rejects specifications linked to a variant under a different product", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   rewriteDecision(ctx, decision => {
     const productStagingId = decision.products[0].staging_id;
     decision.products.push({
@@ -246,7 +246,7 @@ test("Staging Set rejects specifications linked to a variant under a different p
 
 test("Staging Set refuses specifications without an explicit supported scope", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   rewriteDecision(ctx, decision => {
     const productStagingId = decision.products[0].staging_id;
     decision.variants.push({
@@ -268,7 +268,7 @@ test("Staging Set refuses specifications without an explicit supported scope", (
 
 test("Staging Set accepts product-scope specifications without a variant parent", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   rewriteDecision(ctx, decision => {
     const productStagingId = decision.products[0].staging_id;
     decision.specifications.push({
@@ -283,7 +283,7 @@ test("Staging Set accepts product-scope specifications without a variant parent"
 
 test("Staging Set rejects a product-scope specification carrying a variant parent", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   rewriteDecision(ctx, decision => {
     const productStagingId = decision.products[0].staging_id;
     decision.variants.push({
@@ -305,7 +305,7 @@ test("Staging Set rejects a product-scope specification carrying a variant paren
 
 test("Staging Set keeps rejected unresolved candidates without requiring parent assignments", () => {
   const ctx = fixture();
-  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   rewriteDecision(ctx, decision => {
     decision.variants.push({
       staging_id: "stg_variant_rejected", parent_staging_product_id: "",
@@ -332,7 +332,7 @@ test("review approval requires an explicit decision for every linked candidate",
   ctx.stagingRows.Staging_Variants = { [variant.Staging_ID]: variant };
   ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: variant.Staging_ID, Review_Role: "EVIDENCE" });
   assert.throws(() => ctx.service.approveProductReview({
-    reviewId: "rev_product_123456", productName: "Industrial Generator"
+    reviewId: "rev_product_123456", productName: "Industrial Generator", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity"
   }, "actor_primary"), /REVIEW_CANDIDATE_DECISIONS_INCOMPLETE/);
 });
 
@@ -345,7 +345,7 @@ test("changing a specification unit requires a reviewer reason", () => {
   ctx.stagingRows.Staging_Specifications = { [spec.Staging_ID]: spec };
   ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" });
   assert.throws(() => ctx.service.approveProductReview({
-    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    reviewId: "rev_product_123456", productName: "Industrial Generator", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity",
     specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED",
       parentProductStagingId: ctx.staging.Staging_ID, scope: "PRODUCT",
       valueRaw: "100", unitRaw: "kVA" }]
