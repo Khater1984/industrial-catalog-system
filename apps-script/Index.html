@@ -27,6 +27,18 @@
     .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:17px}.stat{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:13px}.stat b{font-size:23px;display:block;margin-bottom:4px}.stat span{font-size:11px;color:var(--muted)}
     .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:460px}th,td{text-align:right;padding:12px 9px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}th{color:var(--muted);font-weight:700;background:#fbfcfd}
     .pill{display:inline-block;padding:5px 8px;border-radius:20px;font-size:11px;background:#edf2f6;color:#425466}.pill.queued{background:#fff5e5;color:var(--warn)}.empty{text-align:center;color:var(--muted);padding:32px 10px;font-size:13px}
+    .review-cards{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
+    .review-card{border:1px solid var(--line);border-radius:12px;padding:15px;background:#fff}
+    .review-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+    .review-title{font-weight:800;font-size:14px}.review-meta{font-size:11px;color:var(--muted);line-height:1.8;margin-top:5px}
+    .review-evidence{margin-top:12px;padding:11px;background:#f8fafb;border-radius:9px}
+    .review-evidence h5{margin:0 0 8px;font-size:12px}.review-evidence p{font-size:12px;line-height:1.7;margin:5px 0;overflow-wrap:anywhere}
+    .review-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.review-actions button{width:auto;margin:0}
+    .review-note{width:100%;min-height:58px;margin-top:10px;border:1px solid #d7dee6;border-radius:8px;padding:9px;font:inherit;font-size:12px}
+    .review-image{display:block;max-width:100%;max-height:220px;object-fit:contain;border:1px solid var(--line);border-radius:8px;margin-top:8px;background:#fff}
+    .review-counts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+    .review-count{background:#f7f9fb;border:1px solid var(--line);border-radius:9px;padding:10px}.review-count b{display:block;font-size:18px}.review-count span{font-size:11px;color:var(--muted)}
+    @media(max-width:600px){.review-counts{grid-template-columns:repeat(2,1fr)}.review-card{padding:12px}}
     .footer{color:#8a96a3;text-align:center;font-size:11px;margin-top:24px}
     @media(max-width:800px){.shell{padding:18px 13px 40px}.grid{grid-template-columns:1fr}.top{margin-bottom:22px}.intro h2{font-size:21px}.panel{padding:17px}.stats{gap:7px}.stat{padding:10px}.stat b{font-size:20px}}
   </style>
@@ -37,7 +49,7 @@
       <div class="brand"><div class="mark">IC</div><div><h1>Industrial Catalog Studio</h1><div class="sub">منصة إدارة الكتالوجات الفنية</div></div></div>
       <div class="env">بيئة التطوير · DEV</div>
     </header>
-    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF، وسجّل بيانات المصدر، وتابع حالة المعالجة من مكان واحد. هذه النسخة تسجل الكتالوج وتتحقق من الملف؛ استخراج المنتجات سيضاف في المرحلة التالية.</p></section>
+    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF، وسجّل بيانات المصدر، وتابع حالة المعالجة من مكان واحد. يسجل النظام الكتالوج، ويستخرج مرشحات المنتجات والموديلات والمواصفات والصور لمراجعتها بشريًا قبل أي اعتماد.</p></section>
     <section class="grid">
       <div class="panel">
         <h3>إضافة كتالوج جديد</h3>
@@ -57,6 +69,17 @@
         <div class="table-wrap"><table><thead><tr><th>المورد</th><th>الكتالوج</th><th>تاريخ التسجيل</th><th>الحالة</th></tr></thead><tbody id="catalogRows"><tr><td colspan="4" class="empty">جارٍ تحميل البيانات...</td></tr></tbody></table></div>
         <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
       </div>
+    </section>
+    <section class="panel" style="margin-top:18px" id="reviewWorkspace">
+      <div class="toolbar"><h3>مركز مراجعة الاستخراج</h3><button class="refresh" id="reviewRefresh" type="button">تحديث المراجعة</button></div>
+      <p class="notice">يعرض هذا المركز ما استخرجه العامل مع صفحة المصدر. يمكنك بدء المراجعة أو تأجيلها وإضافة ملاحظات. تغيير الحالة لا ينشئ منتجات أو موديلات ولا يعتمد أي مواصفة في الجداول الأساسية.</p>
+      <div class="review-counts">
+        <div class="review-count"><b id="reviewTotal">—</b><span>إجمالي عناصر المراجعة</span></div>
+        <div class="review-count"><b id="reviewOpen">—</b><span>مفتوحة</span></div>
+        <div class="review-count"><b id="reviewInProgress">—</b><span>قيد المراجعة</span></div>
+        <div class="review-count"><b id="reviewDeferred">—</b><span>مؤجلة</span></div>
+      </div>
+      <div id="reviewCards" class="review-cards"><div class="empty">جارٍ تحميل عناصر المراجعة...</div></div>
     </section>
     <section class="panel" style="margin-top:18px">
       <h3>اعتماد دفعة المراجعة</h3>
@@ -345,8 +368,85 @@
       }).createDocumentFromBrowser({title:el("docTitle").value,documentType:el("docType").value,languageCode:el("docLanguage").value,description:el("docDescription").value,versionLabel:el("docVersion").value,fileName:f.name,base64:String(reader.result||"").split(",")[1]||""});
     };reader.readAsDataURL(f);
   });
+  function reviewNode(tag,className,text){
+    const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=String(text);return node;
+  }
+  const reviewTypeLabels={PRODUCT_MATCH:"مطابقة منتج",EXTRACTION_AMBIGUITY:"التباس في الاستخراج",IMAGE_QUALITY:"مراجعة جودة صورة",IMAGE_DUPLICATE:"صورة مكررة",VARIANT_MATCH:"مطابقة موديل",SPECIFICATION:"مراجعة مواصفة",DOCUMENT_MATCH:"مطابقة مستند",OTHER:"مراجعة أخرى"};
+  const reviewStatusLabels={OPEN:"مفتوحة",IN_REVIEW:"قيد المراجعة",DEFERRED:"مؤجلة",APPROVED:"معتمدة بالمراجعة",REJECTED:"مرفوضة",STALE:"قديمة",SUPERSEDED:"مستبدلة"};
+  function appendCandidateList(parent,title,items,formatter){
+    if(!items||!items.length)return;
+    const box=reviewNode("div","review-evidence");box.appendChild(reviewNode("h5","",title));
+    items.forEach(item=>{box.appendChild(reviewNode("p","",formatter(item)));});
+    parent.appendChild(box);
+  }
+  function renderReviewWorkspace(data){
+    const counts=data.counts||{};el("reviewTotal").textContent=counts.total||0;el("reviewOpen").textContent=counts.open||0;
+    el("reviewInProgress").textContent=counts.in_review||0;el("reviewDeferred").textContent=counts.deferred||0;
+    const root=el("reviewCards");root.textContent="";
+    const items=data.items||[];
+    if(!items.length){root.appendChild(reviewNode("div","empty","لا توجد عناصر مراجعة حتى الآن. ستظهر هنا المرشحات بعد اكتمال تشغيل كتالوج."));return;}
+    items.forEach(item=>{
+      const card=reviewNode("article","review-card");
+      const head=reviewNode("div","review-head");
+      head.appendChild(reviewNode("div","review-title",(reviewTypeLabels[item.review_type]||item.review_type)+" · "+(reviewStatusLabels[item.review_status]||item.review_status)));
+      head.appendChild(reviewNode("span","pill",item.priority||"NORMAL"));card.appendChild(head);
+      if(item.proposed_action)card.appendChild(reviewNode("p","review-meta",item.proposed_action));
+      card.appendChild(reviewNode("div","review-meta","رقم المراجعة: "+item.review_queue_id+" · تاريخ الإنشاء: "+(item.created_at||"—")));
+      (item.staging_items||[]).forEach(linked=>{
+        const s=linked.staging;if(!s)return;
+        const box=reviewNode("div","review-evidence");box.appendChild(reviewNode("h5","","الدليل · "+(linked.role||"")));
+        const mainName=s.proposed_product_name==="UNASSIGNED"?"اسم غير متاح بالإنجليزية: "+(s.extracted_text||""):(s.proposed_product_name||s.proposed_model_number||s.extracted_text||s.original_file_name||s.staging_id);
+        box.appendChild(reviewNode("p","",mainName));
+        box.appendChild(reviewNode("p","review-meta","الصفحة: "+(s.catalog_page_id||"—")+" · طريقة الاستخراج: "+(s.extraction_method||"—")+" · الثقة: "+(s.confidence||"—")));
+        if(s.extracted_text)box.appendChild(reviewNode("p","","النص المستخرج: "+s.extracted_text));
+        if(s.attribute_key||s.value_raw)box.appendChild(reviewNode("p","","المواصفة: "+[s.attribute_key,s.value_raw,s.unit_raw].filter(Boolean).join(" · ")));
+        if(s.image_preview_url){
+          const a=reviewNode("a","","فتح الصورة الأصلية في Drive");a.href="https://drive.google.com/file/d/"+encodeURIComponent(s.image_file_id)+"/view";a.target="_blank";a.rel="noopener";box.appendChild(a);
+          const img=reviewNode("img","review-image");img.src=s.image_preview_url;img.alt=s.original_file_name||"صورة مستخرجة";img.loading="lazy";box.appendChild(img);
+          box.appendChild(reviewNode("p","review-meta","الأبعاد: "+(s.width_px||"—")+" × "+(s.height_px||"—")+" · الجودة: "+(s.quality_status||"—")));
+        }
+        const ev=s.page_evidence;
+        if(ev){
+          if(ev.unavailable)box.appendChild(reviewNode("p","review-meta","تعذر قراءة ملف دليل الصفحة."));
+          else{
+            if(ev.page_number)box.appendChild(reviewNode("p","review-meta","رقم الصفحة داخل PDF: "+ev.page_number));
+            appendCandidateList(box,"أسماء المنتجات المرشحة",ev.products,x=>(x.proposed_product_name||"اسم غير متاح")+" · "+(x.confidence||"—")+" · "+(x.source_quote||""));
+            appendCandidateList(box,"الموديلات المرشحة",ev.variants,x=>(x.proposed_model_number||"")+" "+(x.proposed_model_name||"")+" · "+(x.confidence||"—")+" · "+(x.source_quote||""));
+            appendCandidateList(box,"المواصفات المرشحة",ev.specifications,x=>[x.attribute_key_raw,x.value_raw,x.unit_raw,x.confidence,x.source_quote].filter(Boolean).join(" · "));
+            if(ev.warnings&&ev.warnings.length)appendCandidateList(box,"تنبيهات الاستخراج",ev.warnings,x=>x);
+          }
+        }
+        card.appendChild(box);
+      });
+      if(item.decision_notes)card.appendChild(reviewNode("p","review-meta","ملاحظات سابقة: "+item.decision_notes));
+      if(["OPEN","IN_REVIEW","DEFERRED"].includes(item.review_status)){
+        const note=reviewNode("textarea","review-note");note.maxLength=1500;note.placeholder="ملاحظات المراجع (اختياري)";note.value=item.decision_notes||"";card.appendChild(note);
+        const actions=reviewNode("div","review-actions");
+        const addAction=(label,status)=>{const b=reviewNode("button","refresh",label);b.type="button";b.addEventListener("click",()=>saveReviewStatus(item.review_queue_id,status,note.value,b));actions.appendChild(b);};
+        if(item.review_status!=="IN_REVIEW")addAction("بدء المراجعة","IN_REVIEW");
+        if(item.review_status!=="DEFERRED")addAction("تأجيل","DEFERRED");
+        if(item.review_status!=="OPEN")addAction("إعادة إلى المفتوحة","OPEN");
+        card.appendChild(actions);
+      }
+      root.appendChild(card);
+    });
+  }
+  function loadReviewWorkspace(){
+    el("reviewCards").textContent="جارٍ تحميل عناصر المراجعة...";
+    google.script.run.withSuccessHandler(renderReviewWorkspace).withFailureHandler(err=>{
+      el("reviewCards").textContent="تعذر تحميل مركز المراجعة: "+(err&&err.message||"خطأ غير معروف");
+    }).getReviewWorkspaceForBrowser();
+  }
+  function saveReviewStatus(id,status,notes,button){
+    button.disabled=true;const old=button.textContent;button.textContent="جارٍ الحفظ...";
+    google.script.run.withSuccessHandler(()=>loadReviewWorkspace()).withFailureHandler(err=>{
+      button.disabled=false;button.textContent=old;alert("تعذر تحديث حالة المراجعة: "+(err&&err.message||"خطأ"));
+    }).updateReviewQueueStatusFromBrowser({reviewQueueId:id,status,notes});
+  }
+  el("reviewRefresh").addEventListener("click",loadReviewWorkspace);
   loadDashboard();
   loadDocuments();
+  loadReviewWorkspace();
   el("promoteForm").addEventListener("submit", event => {
     event.preventDefault();
     const fileId = el("fileId").value.trim();
