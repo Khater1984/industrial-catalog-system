@@ -37,6 +37,7 @@ function fixture() {
     SheetsRepository: {
       listRecent: (name, limit) => name === "Review_Queue" ? queue.slice(-limit).reverse() : [],
       listAll: (name) => ({
+        Review_Queue: queue.slice().reverse(),
         Review_Staging_Links: links,
         Staging_Products: stagingProducts,
         Staging_Variants: [],
