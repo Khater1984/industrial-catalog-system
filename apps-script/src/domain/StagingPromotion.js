@@ -253,12 +253,14 @@ var StagingPromotion = (function () {
           require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
         }
         var original = text_(sourceValue_(spec), 2000);
-        var assertionKey = text_(canonicalEntityId + "|" + spec.attribute_key_raw, 160);
+        var sourceAssertionKey = text_(spec.source_assertion_key || spec.staging_id, 160);
+        var sourceRecordId = scope === "PRODUCT" ? productSourceRecordId : variantSourceRecordId;
+        var logicalAddKey = text_("ADD:" + canonicalEntityId + "|" + spec.attribute_key_raw, 180);
         if (original) {
-          var specId = stableId_("spec", assertionKey + "|" + original);
+          var specId = stableId_("spec", sourceRecordId + "|" + sourceAssertionKey);
           if (!existingBy_("Specifications", "Specification_ID", specId)) {
             appendOnce_("Specifications", {
-              Specification_ID: specId, Source_Assertion_Key: assertionKey,
+              Specification_ID: specId, Source_Assertion_Key: sourceAssertionKey,
               Source_Key_Algorithm_Version: keyVersion, Scope: scope,
               Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
               Product_ID: productId, Variant_ID: variantId,
@@ -277,10 +279,11 @@ var StagingPromotion = (function () {
           mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
           if (spec.edited && text_(spec.value_raw, 2000) && text_(spec.value_raw, 2000) !== original) {
             var changePayload = { before: original, after: spec.value_raw };
-            var changeId = stableId_("chg", assertionKey + "|" + original + "|" + spec.value_raw);
+            var logicalSourceKey = "SRC:" + specId;
+            var changeId = stableId_("chg", logicalSourceKey + "|" + original + "|" + spec.value_raw);
             if (!existingBy_("Specification_Changes", "Specification_Change_ID", changeId)) {
               appendOnce_("Specification_Changes", {
-                Specification_Change_ID: changeId, Logical_Specification_Key: text_(assertionKey, 180),
+                Specification_Change_ID: changeId, Logical_Specification_Key: logicalSourceKey,
                 Sequence_No: 1, Operation: "UPDATE", Target_Specification_ID: specId,
                 Product_ID: productId, Variant_ID: variantId,
                 Attribute_Key: text_(spec.attribute_key_raw, 160),
@@ -293,10 +296,10 @@ var StagingPromotion = (function () {
             }
           }
         } else if (text_(spec.value_raw, 2000)) {
-          var addId = stableId_("chg", "ADD|" + assertionKey + "|" + spec.value_raw);
+          var addId = stableId_("chg", logicalAddKey + "|" + spec.value_raw);
           if (!existingBy_("Specification_Changes", "Specification_Change_ID", addId)) {
             appendOnce_("Specification_Changes", {
-              Specification_Change_ID: addId, Logical_Specification_Key: text_(assertionKey, 180),
+              Specification_Change_ID: addId, Logical_Specification_Key: logicalAddKey,
               Sequence_No: 1, Operation: "ADD", Product_ID: productId, Variant_ID: variantId,
               Attribute_Key: text_(spec.attribute_key_raw, 160), Value_JSON: json_(spec.value_raw),
               Unit_Code: text_(spec.unit_raw, 40), Change_Status: "APPROVED",
