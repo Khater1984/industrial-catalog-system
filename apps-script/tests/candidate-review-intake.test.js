@@ -109,8 +109,8 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   assert.equal(ctx.rows.Review_Queue.length, 2);
   assert.equal(ctx.rows.Staging_Products[0].Raw_Extract_File_ID, "artifact-file-id");
   assert.equal(ctx.rows.Review_Queue.find((row) => row.Review_Type === "EXTRACTION_AMBIGUITY").Decision_JSON_File_ID, undefined);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 4);
-  assert.equal(ctx.rows.Review_Staging_Links.filter((row) => row.Review_Role === "EVIDENCE").length, 3);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 6);
+  assert.equal(ctx.rows.Review_Staging_Links.filter((row) => row.Review_Role === "EVIDENCE").length, 5);
 });
 
 test("candidate intake is idempotent across poller retries", () => {
