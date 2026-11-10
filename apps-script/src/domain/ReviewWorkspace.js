@@ -148,9 +148,19 @@ var ReviewWorkspace = (function () {
       }
       var productIds = unique_(products, "PRODUCT");
       var variantIds = unique_(variants, "VARIANT");
-      variants.forEach(function (v) { if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING"); });
+      var variantsByStagingId = {};
+      variants.forEach(function (v) {
+        if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
+        variantsByStagingId[v.staging_id] = v;
+      });
       specifications.forEach(function (s) {
-        if (!productIds[s.parent_staging_product_id] || !variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_PARENT_MISSING");
+        if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
+        if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
+        if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
+        var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
+        if (!parentVariant || parentVariant.parent_staging_product_id !== s.parent_staging_product_id) {
+          fail_("REVIEW_SPECIFICATION_PARENT_MISMATCH");
+        }
       });
       var stagingSet = {
         run_id: id, catalog_id: catalogId, source_key_algorithm_version: "source-key-v1",
