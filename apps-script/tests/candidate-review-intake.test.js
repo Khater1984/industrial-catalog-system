@@ -89,8 +89,10 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   assert.equal(ctx.rows.Staging_Variants, undefined);
   assert.equal(ctx.rows.Staging_Specifications, undefined);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Queue.find((row) => row.Review_Type === "EXTRACTION_AMBIGUITY").Decision_JSON_File_ID, "artifact-file-id");
-  assert.equal(ctx.rows.Review_Staging_Links.length, 1);
+  assert.equal(ctx.rows.Staging_Products[0].Raw_Extract_File_ID, "artifact-file-id");
+  assert.equal(ctx.rows.Review_Queue.find((row) => row.Review_Type === "EXTRACTION_AMBIGUITY").Decision_JSON_File_ID, undefined);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
+  assert.equal(ctx.rows.Review_Staging_Links.find((row) => row.Review_Role === "EVIDENCE").Staging_ID, ctx.rows.Staging_Products[0].Staging_ID);
 });
 
 test("candidate intake is idempotent across poller retries", () => {
@@ -99,7 +101,7 @@ test("candidate intake is idempotent across poller retries", () => {
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   assert.equal(ctx.rows.Staging_Products.length, 1);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 1);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
 });
 
 test("candidate intake rejects artifacts with altered bytes or identity", () => {
