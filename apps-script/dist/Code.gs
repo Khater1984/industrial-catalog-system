@@ -3557,6 +3557,15 @@ var ImageReviewIntake = (function () {
     return true;
   }
 
+  function stagingHashPayload_(record) {
+    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
+      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
+      Candidate_Variant_ID: true, Image_Role: true };
+    var out = {};
+    Object.keys(record).forEach(function (key) { if (!mutable[key]) out[key] = record[key]; });
+    return out;
+  }
+
   function buildStaging_(img, driveImage, options, catalogId, runId, stagingId) {
     var name = requireText_(img.original_name, "IMAGE_ORIGINAL_NAME_MISSING", 255);
     var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
@@ -3585,8 +3594,7 @@ var ImageReviewIntake = (function () {
     }
     if (img.width_px !== null && img.width_px !== undefined) record.Width_PX = requireInteger_(img.width_px, "IMAGE_WIDTH_INVALID", 1);
     if (img.height_px !== null && img.height_px !== undefined) record.Height_PX = requireInteger_(img.height_px, "IMAGE_HEIGHT_INVALID", 1);
-    var hashPayload = withoutKey_(record, "Staging_Record_Hash");
-    record.Staging_Record_Hash = sha_(canonicalJson_(hashPayload));
+    record.Staging_Record_Hash = sha_(canonicalJson_(stagingHashPayload_(record)));
     record.Created_At = now_();
     record.Updated_At = record.Created_At;
     return record;
@@ -3643,7 +3651,8 @@ var ImageReviewIntake = (function () {
           var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
           var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
           var stagingFields = Object.keys(staging).filter(function (field) {
-            return field !== "Created_At" && field !== "Updated_At";
+            return ["Created_At", "Updated_At", "Proposed_Status", "Quality_Status",
+              "Candidate_Product_ID", "Candidate_Variant_ID", "Image_Role"].indexOf(field) < 0;
           });
           var stagingCreated = ensureRecord_("Staging_Images", "Staging_ID", staging, stagingFields, "STAGING_CONFLICT");
           if (stagingCreated) counts.staging += 1;
@@ -3815,7 +3824,7 @@ var ImageManagement = (function () {
     return { status: "UPDATED", linkId: linkId, linkStatus: nextStatus };
   }
 
-  function setPrimary(linkId, actor) {
+  function setPrimary(linkId, actor, lockAlreadyHeld) {
     linkId = text_(linkId, 120);
     var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
     require_(link, "IMAGE_LINK_NOT_FOUND");
@@ -3823,8 +3832,8 @@ var ImageManagement = (function () {
     require_(link.Link_Status === "ACTIVE", "IMAGE_LINK_NOT_ACTIVE");
     require_(link.Catalog_Approved === true || link.DataSheet_Approved === true, "IMAGE_PRIMARY_REQUIRES_APPROVAL");
     resolveTarget_(link.Target_Type, link.Target_ID);
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
+    var lock = lockAlreadyHeld ? null : LockService.getScriptLock();
+    if (lock) lock.waitLock(30000);
     try {
       var rows = SheetsRepository.listAll("Image_Links") || [];
       var actorId = actor_(actor);
@@ -3840,7 +3849,7 @@ var ImageManagement = (function () {
         Is_Primary: true, Updated_At: now_(), Updated_By: actorId
       });
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
     return { status: "PRIMARY_SET", linkId: linkId };
   }
@@ -3919,8 +3928,6 @@ var ImageManagement = (function () {
 })();
 
 
-
-
 // ===== domain/ImageReviewService.js =====
 /**
  * Human decision workflow for extracted catalog images.
@@ -3966,9 +3973,10 @@ var ImageReviewService = (function () {
   function verifyStagingHash_(row) {
     require_(row && SHA_RE.test(String(row.Staging_Record_Hash || "")), "IMAGE_STAGING_HASH_MISSING");
     var copy = {};
-    Object.keys(row).forEach(function (k) {
-      if (k !== "Staging_Record_Hash" && k !== "Created_At" && k !== "Updated_At") copy[k] = row[k];
-    });
+    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
+      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
+      Candidate_Variant_ID: true, Image_Role: true };
+    Object.keys(row).forEach(function (k) { if (!mutable[k]) copy[k] = row[k]; });
     require_(sha_(Utilities.newBlob(canonicalJson_(copy)).getBytes()) === row.Staging_Record_Hash,
       "IMAGE_STAGING_HASH_MISMATCH");
   }
@@ -4042,6 +4050,11 @@ var ImageReviewService = (function () {
     var fingerprint = payloadHash_(decisionPayload);
     if (review.Review_Status === "APPROVED" || review.Review_Status === "REJECTED") {
       require_(review.Reviewed_Payload_Hash === fingerprint, "IMAGE_REVIEW_DECISION_ALREADY_FINAL");
+      if (decision === "ACCEPTED" && options.isPrimary === true) {
+        var retryImageId = stableId_("img", String(staging.SHA256).toLowerCase());
+        var retryLink = ImageManagement.linkToTarget(retryImageId, target.type, target.id, { actor: actor });
+        ImageManagement.setPrimary(retryLink.linkId, actor);
+      }
       return { status: review.Review_Status, reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID, reused: true };
     }
     var lock = LockService.getScriptLock();
@@ -4081,12 +4094,13 @@ var ImageReviewService = (function () {
         catalogApproved: catalogApproved, dataSheetApproved: dataSheetApproved,
         linkStatus: "ACTIVE", actor: actor
       });
-      if (options.isPrimary === true) ImageManagement.setPrimary(linked.linkId, actor);
+      if (options.isPrimary === true) ImageManagement.setPrimary(linked.linkId, actor, true);
       var stagingPatch = {
         Proposed_Status: "PROMOTED", Quality_Status: "ACCEPTABLE", Updated_At: now_()
       };
       if (target.type === "PRODUCT") stagingPatch.Candidate_Product_ID = target.id;
       else stagingPatch.Candidate_Variant_ID = target.id;
+      SheetsRepository.updateBy("Image_Assets", "Image_ID", imageId, { Quality_Status: "ACCEPTABLE" });
       SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, stagingPatch);
       SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", review.Review_Queue_ID, {
         Review_Status: "APPROVED", Decision_Notes: decisionPayload.notes,
@@ -5520,16 +5534,7 @@ var Api = (function () {
         });
         return success_(requestId, promoted);
       }
-      if (body.action === "images.promote") {
-        var imgPayload = InputValidation.imagesPromotePayload(p);
-        var imgResult = ImagePromotion.promoteAcceptedImages({
-          images: imgPayload.images,
-          run_id: imgPayload.run_id,
-          catalog_id: imgPayload.catalog_id,
-          actor: actor
-        });
-        return success_(requestId, imgResult);
-      }
+      if (body.action === "images.promote") throw new Error("IMAGE_PROMOTION_REQUIRES_REVIEW_TASK");
       if (body.action === "images.intake") {
         var intakeResult = ImageReviewIntake.intake({
           imageManifestFileId: p.imageManifestFileId,
@@ -5722,16 +5727,12 @@ function promoteStagingFromBrowser(payload) {
   });
 }
 
-/** Owner-only endpoint for promoting accepted images. */
-function promoteImagesFromBrowser(payload) {
+/** Legacy direct image promotion is intentionally disabled.
+ * Images can only be promoted from a verified IMAGE_QUALITY review decision.
+ */
+function promoteImagesFromBrowser() {
   assertPrimaryUser_();
-  var validated = InputValidation.imagesPromotePayload(payload || {});
-  return ImagePromotion.promoteAcceptedImages({
-    images: validated.images,
-    run_id: validated.run_id,
-    catalog_id: validated.catalog_id,
-    actor: APP.ACTOR_ID
-  });
+  throw new Error("IMAGE_PROMOTION_REQUIRES_REVIEW_TASK");
 }
 
 /** Owner-only endpoint for image review intake. */
