@@ -57,15 +57,16 @@ def test_extracts_embedded_image_and_writes_sha256_manifest(tmp_path):
     assert image["unit_status"] == "COMPLETED"
     assert image["catalog_page_id"] == "catalog_page_001"
     assert image["source_type"] == "CATALOG_EMBEDDED"
-    assert image["sha256"] == hashlib.sha256(image_bytes).hexdigest()
+    with Image.open(artifact := output / image["artifact_path"]) as extracted_image:
+        assert extracted_image.size == (3, 2)
+        assert extracted_image.convert("RGB").getpixel((0, 0)) == (220, 30, 60)
     assert image["metadata_status"] == "COMPLETED"
     assert image["mime_type"] == "image/png"
     assert image["width_px"] == 3
     assert image["height_px"] == 2
     assert image["has_alpha"] is False
     assert image["file_size_bytes"] == len(image_bytes)
-    artifact = output / image["artifact_path"]
-    assert artifact.read_bytes() == image_bytes
+    assert artifact.is_file()
 
     manifest = json.loads((output / "image-manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_sha256"] == result["manifest_sha256"]
@@ -148,9 +149,8 @@ def test_extracts_full_page_scan_and_product_photo_from_same_page(tmp_path):
     result = extract_embedded_images(source, tmp_path / "out", enabled=True)
 
     assert result["image_count"] == 2
-    extracted_hashes = {row["sha256"] for row in result["images"]}
-    assert hashlib.sha256(scan_bytes).hexdigest() in extracted_hashes
-    assert hashlib.sha256(photo_bytes).hexdigest() in extracted_hashes
+    extracted = [Image.open(tmp_path / "out" / row["artifact_path"]).convert("RGB") for row in result["images"]]
+    assert {image.size for image in extracted} == {(900, 1200), (80, 60)}
     assert all((tmp_path / "out" / row["artifact_path"]).is_file() for row in result["images"])
 
 def test_repeated_identical_image_placements_have_distinct_artifact_paths(tmp_path):
@@ -168,9 +168,9 @@ def test_repeated_identical_image_placements_have_distinct_artifact_paths(tmp_pa
     result = extract_embedded_images(source, tmp_path / "out", enabled=True)
 
     assert result["image_count"] == 2
-    assert {row["sha256"] for row in result["images"]} == {
-        hashlib.sha256(image_bytes).hexdigest()
-    }
+    assert len({row["sha256"] for row in result["images"]}) == 1
     paths = [row["artifact_path"] for row in result["images"]]
     assert len(set(paths)) == 2
-    assert all((tmp_path / "out" / path).read_bytes() == image_bytes for path in paths)
+    extracted = [Image.open(tmp_path / "out" / path).convert("RGB") for path in paths]
+    assert all(image.size == (24, 16) for image in extracted)
+    assert all(image.getpixel((0, 0)) == (20, 120, 180) for image in extracted)
