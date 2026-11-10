@@ -465,7 +465,7 @@
       evidence.forEach(ev=>{
         const row=reviewNode("div",null,"review-row");
         row.appendChild(reviewNode("strong",(ev.table||"عنصر") +" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
-        const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
+        const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"ارتباط المنتج: "+(ev.parentProductStagingId||"غير محدد"),"ارتباط الموديل: "+(ev.parentVariantStagingId||"غير محدد"),"نطاق المواصفة: "+(ev.scope||"غير محدد"),"حالة الاستخراج: "+(ev.proposedStatus||"—"),"حالة تحليل المواصفة: "+(ev.parseStatus||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
         row.appendChild(reviewNode("div",parts.join(" · "),"review-meta"));
         if(ev.quote)row.appendChild(reviewNode("div",ev.quote,"review-meta"));
         if(ev.fileUrl){const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.fileUrl,"فتح الملف المرتبط");row.appendChild(evLinks);}
@@ -484,8 +484,22 @@
       }
       if(item.status==="OPEN"||item.status==="DEFERRED")addDecisionAction("استلام للمراجعة","IN_REVIEW","primary");
       if(item.status==="IN_REVIEW")addDecisionAction("إعادة فتح","OPEN","");
-      if(item.status!=="DEFERRED"&&item.status!=="REJECTED")addDecisionAction("تأجيل","DEFERRED","");
-      if(item.status!=="REJECTED")addDecisionAction("رفض مهمة المراجعة","REJECTED","danger");
+      if(item.status!=="DEFERRED"&&item.status!=="REJECTED"&&item.status!=="APPROVED")addDecisionAction("تأجيل","DEFERRED","");
+      if(item.status!=="REJECTED"&&item.status!=="APPROVED")addDecisionAction("رفض مهمة المراجعة","REJECTED","danger");
+      if(item.type==="PRODUCT_MATCH"&&["OPEN","IN_REVIEW"].includes(item.status)){
+        const productEvidence=(item.evidence||[]).find(ev=>ev.type==="PRODUCT");
+        const productName=document.createElement("input");productName.type="text";productName.maxLength=300;productName.className="review-notes";
+        productName.placeholder="اسم المنتج بالإنجليزية كما تريد اعتماده";productName.value=(productEvidence&&productEvidence.productName)||"";
+        card.appendChild(productName);
+        const approve=reviewNode("button","اعتماد اسم المنتج","review-action-btn primary");approve.type="button";
+        approve.addEventListener("click",()=>approveReviewProduct(item.id,productName.value,notes.value,approve));
+        decisionActions.appendChild(approve);
+      }
+      if(item.status==="APPROVED"&&item.runId){
+        const build=reviewNode("button","تكوين Staging Set للعملية","review-action-btn primary");build.type="button";
+        build.addEventListener("click",()=>buildReviewStagingSet(item.runId,build));
+        decisionActions.appendChild(build);
+      }
       card.appendChild(decisionActions);root.appendChild(card);
     });
   }
@@ -504,6 +518,28 @@
       parent.appendChild(reviewNode("h5","مقتطف النص المستخرج · "+(artifact.extractionMethod||"")));
       parent.appendChild(reviewNode("pre",artifact.pageText));
     }
+  }
+  function approveReviewProduct(reviewId,productName,notes,button) {
+    if(!productName.trim()){alert("أدخل اسم المنتج بالإنجليزية أولاً.");return;}
+    if(!confirm("سيُحفظ قرار قبول اسم المنتج في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
+    button.disabled=true;
+    google.script.run.withSuccessHandler(result=>{
+      const box=el("reviewStatus");box.textContent="تم اعتماد مرشح المنتج وحفظ قرار المراجعة. لم يتم ترحيل المنتج إلى البيانات الأساسية.";box.className="status show ok";
+      loadReviewQueue();
+    }).withFailureHandler(err=>{
+      button.disabled=false;const box=el("reviewStatus");box.textContent="تعذر اعتماد المرشح: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
+    }).approveProductReviewFromBrowser({reviewId:reviewId,productName:productName,notes:notes});
+  }
+  function buildReviewStagingSet(runId,button) {
+    if(!confirm("سيجمع النظام قرارات المنتجات المعتمدة لهذه العملية في ملف Staging Set. لن يتم ترحيل أي بيانات إلى الجداول الأساسية. متابعة؟"))return;
+    button.disabled=true;
+    google.script.run.withSuccessHandler(result=>{
+      el("fileId").value=result.stagingSetFileId;el("sha256").value=result.stagingSetSha256;
+      const box=el("reviewStatus");box.textContent="تم تكوين Staging Set: "+result.products+" منتج. تم تعبئة معرف الملف والبصمة في نموذج الاعتماد، ولم يتم الترحيل.";box.className="status show ok";
+      button.disabled=false;
+    }).withFailureHandler(err=>{
+      button.disabled=false;const box=el("reviewStatus");box.textContent="تعذر تكوين Staging Set: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
+    }).buildStagingSetFromBrowser({runId:runId});
   }
   function updateReviewQueueStatus(reviewId,status,notes,button) {
     if(status==="REJECTED"&&!confirm("سيتم إغلاق مهمة المراجعة فقط. لن يُحذف المرشح أو يُعتمد المنتج. هل تريد المتابعة؟"))return;
