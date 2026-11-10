@@ -46,7 +46,7 @@ var TABLES = Object.freeze({
   Run_Log: ["Run_ID", "Run_Type", "Catalog_ID", "Logical_Job_ID", "Parent_Run_ID", "Attempt_Number", "Retry_Reason", "Idempotency_Key", "Run_Status", "Current_Step", "Total_Units", "Completed_Units", "Failed_Units", "Worker_Version", "Started_At", "Heartbeat_At", "Worker_Lease_ID", "Lease_Expires_At", "Finished_At", "Error_Code", "Error_Summary", "Input_Manifest_File_ID", "Output_Manifest_File_ID", "Created_At", "Created_By"],
   Run_Units: ["Run_Unit_ID", "Run_ID", "Unit_Type", "Unit_Key", "Catalog_Page_ID", "Unit_Status", "Input_SHA256", "Output_Manifest_File_ID", "Output_SHA256", "Reused_From_Run_Unit_ID", "Attempt_Started_At", "Attempt_Finished_At", "Error_Code", "Created_At"],
   Run_Events: ["Run_Event_ID", "Event_Idempotency_Key", "Run_ID", "Event_Type", "Unit_Type", "Unit_Reference_ID", "Progress_Count", "Message", "Details_File_ID", "Occurred_At", "Actor_ID"],
-  Staging_Products: ["Staging_ID", "Run_ID", "Catalog_ID", "Catalog_Page_ID", "Source_Region", "Raw_Extract_File_ID", "Extracted_Text", "Extraction_Method", "Extraction_Tool_Version", "Source_Key_Algorithm_Version", "Confidence", "Proposed_Status", "Staging_Record_Hash", "Created_At", "Updated_At", "Proposed_Product_Name_EN", "Proposed_Product_Reference", "Candidate_Product_ID", "Identity_Match_Method", "Match_Confidence", "Source_Record_Key"],
+  Staging_Products: ["Staging_ID", "Run_ID", "Catalog_ID", "Catalog_Page_ID", "Page_Number", "Has_Alpha", "Source_Region", "Raw_Extract_File_ID", "Extracted_Text", "Extraction_Method", "Extraction_Tool_Version", "Source_Key_Algorithm_Version", "Confidence", "Proposed_Status", "Staging_Record_Hash", "Created_At", "Updated_At", "Proposed_Product_Name_EN", "Proposed_Product_Reference", "Candidate_Product_ID", "Identity_Match_Method", "Match_Confidence", "Source_Record_Key"],
   Staging_Variants: ["Staging_ID", "Run_ID", "Catalog_ID", "Catalog_Page_ID", "Source_Region", "Raw_Extract_File_ID", "Extracted_Text", "Extraction_Method", "Extraction_Tool_Version", "Source_Key_Algorithm_Version", "Confidence", "Proposed_Status", "Staging_Record_Hash", "Created_At", "Updated_At", "Parent_Staging_Product_ID", "Proposed_Model_Number", "Proposed_Model_Name", "Candidate_Variant_ID", "Identity_Match_Method", "Match_Confidence", "Source_Record_Key"],
   Staging_Specifications: ["Staging_ID", "Run_ID", "Catalog_ID", "Catalog_Page_ID", "Source_Region", "Raw_Extract_File_ID", "Extracted_Text", "Extraction_Method", "Extraction_Tool_Version", "Source_Key_Algorithm_Version", "Confidence", "Proposed_Status", "Staging_Record_Hash", "Created_At", "Updated_At", "Parent_Staging_Product_ID", "Parent_Staging_Variant_ID", "Source_Assertion_Key", "Scope", "Attribute_Key_Raw", "Value_Raw", "Unit_Raw", "Normalized_Key", "Normalized_Value_JSON", "Normalized_Unit", "Parse_Status"],
   Staging_Images: ["Staging_ID", "Run_ID", "Catalog_ID", "Catalog_Page_ID", "Source_Region", "Raw_Extract_File_ID", "Extracted_Text", "Extraction_Method", "Extraction_Tool_Version", "Source_Key_Algorithm_Version", "Confidence", "Proposed_Status", "Staging_Record_Hash", "Created_At", "Updated_At", "Proposed_Image_File_ID", "Original_File_Name", "MIME_Type", "Width_PX", "Height_PX", "File_Size_Bytes", "SHA256", "PHash", "Candidate_Product_ID", "Candidate_Variant_ID", "Image_Role", "Quality_Status"],
@@ -818,6 +818,8 @@ var FIELD_RULES = Object.freeze({
   "Staging_Images.Run_ID": { type: "ID", required: true, conditional: false },
   "Staging_Images.Catalog_ID": { type: "ID", required: false, conditional: false },
   "Staging_Images.Catalog_Page_ID": { type: "ID", required: false, conditional: false },
+  "Staging_Images.Page_Number": { type: "INTEGER", required: false, conditional: false },
+  "Staging_Images.Has_Alpha": { type: "BOOLEAN", required: false, conditional: false },
   "Staging_Images.Source_Region": { type: "TEXT(120)", required: false, conditional: false },
   "Staging_Images.Raw_Extract_File_ID": { type: "DRIVE_FILE_ID", required: false, conditional: false },
   "Staging_Images.Extracted_Text": { type: "TEXT(4000)", required: false, conditional: false },
@@ -936,6 +938,7 @@ var FIELD_RULES = Object.freeze({
   "Promotion_Mappings.Payload_SHA256": { type: "HEX64", required: true, conditional: false },
   "Promotion_Mappings.Created_At": { type: "DATETIME_UTC", required: true, conditional: false }
 });
+
 
 // ===== repositories/SheetsRepository.js =====
 
@@ -3364,7 +3367,6 @@ var ImagePromotion = (function () {
 
 
 // ===== domain/ImageReviewIntake.js =====
-
 /** Image Review Intake
  *
  * Verifies the worker's immutable image manifests and Drive objects, then
@@ -3576,6 +3578,8 @@ var ImageReviewIntake = (function () {
       Quality_Status: "NEEDS_REVIEW"
     };
     if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
+    if (img.page_number !== null && img.page_number !== undefined) record.Page_Number = requireInteger_(img.page_number, "IMAGE_PAGE_NUMBER_INVALID", 1);
+    if (typeof img.has_alpha === "boolean") record.Has_Alpha = img.has_alpha;
     if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
       record.Extraction_Tool_Version = requireText_(img.extractor_version, "IMAGE_EXTRACTOR_VERSION_INVALID", 120);
     }
@@ -3699,6 +3703,837 @@ var ImageReviewIntake = (function () {
   }
 
   return { intake: intake };
+})();
+
+
+// ===== domain/ImageManagement.js =====
+/** Image Management — Phase 4
+ *
+ * Manages links and independent catalog/datasheet approval without changing
+ * extracted source assets. Only ACTIVE links with the relevant approval are
+ * returned for a publication use.
+ */
+var ImageManagement = (function () {
+  function now_() { return new Date().toISOString(); }
+  function require_(condition, code) { if (!condition) throw new Error(code); }
+  function text_(value, limit) {
+    var t = value === undefined || value === null ? "" : String(value).trim();
+    require_(t.length > 0, "IMAGE_TEXT_REQUIRED");
+    require_(!limit || t.length <= limit, "IMAGE_TEXT_INVALID");
+    return t;
+  }
+  function sha_(value) {
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value)).map(function (b) {
+      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
+      return hex.length === 1 ? "0" + hex : hex;
+    }).join("");
+  }
+  function stableId_(prefix, seed) { return prefix + "_" + sha_(seed).slice(0, 16); }
+  function actor_(value) { return text_(value || APP.ACTOR_ID, 120); }
+
+  function getAsset_(imageId) {
+    var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", text_(imageId, 120));
+    require_(asset, "IMAGE_ASSET_NOT_FOUND");
+    require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
+    return asset;
+  }
+  function resolveTarget_(targetType, targetId) {
+    require_(targetType === "PRODUCT" || targetType === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
+    targetId = text_(targetId, 120);
+    if (targetType === "PRODUCT") {
+      var product = SheetsRepository.getBy("Products", "Product_ID", targetId);
+      require_(product, "PRODUCT_NOT_FOUND");
+      require_(product.Lifecycle_Status === "ACTIVE", "PRODUCT_NOT_ACTIVE");
+    } else {
+      var variant = SheetsRepository.getBy("Variants", "Variant_ID", targetId);
+      require_(variant, "VARIANT_NOT_FOUND");
+      require_(variant.Lifecycle_Status === "ACTIVE", "VARIANT_NOT_ACTIVE");
+      var parent = SheetsRepository.getBy("Products", "Product_ID", variant.Product_ID);
+      require_(parent && parent.Lifecycle_Status === "ACTIVE", "VARIANT_PARENT_PRODUCT_NOT_ACTIVE");
+    }
+    return { type: targetType, id: targetId };
+  }
+  function linkToTarget(imageId, targetType, targetId, options) {
+    options = options || {};
+    var asset = getAsset_(imageId);
+    var target = resolveTarget_(targetType, targetId);
+    var linkId = stableId_("imgl", asset.Image_ID + "|" + target.type + "|" + target.id);
+    var existing = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
+    if (existing) return { status: "EXISTS", linkId: linkId, imageId: asset.Image_ID, target: target };
+    var catalogApproved = options.catalogApproved === true;
+    var dataSheetApproved = options.dataSheetApproved === true;
+    var linkStatus = options.linkStatus || "CANDIDATE";
+    require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
+    if (linkStatus === "ACTIVE") {
+      require_(catalogApproved || dataSheetApproved, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
+    }
+    require_(!options.isPrimary || (linkStatus === "ACTIVE" && (catalogApproved || dataSheetApproved)),
+      "IMAGE_PRIMARY_REQUIRES_ACTIVE_APPROVAL");
+    var actor = actor_(options.actor);
+    SheetsRepository.append("Image_Links", {
+      Image_Link_ID: linkId, Image_ID: asset.Image_ID,
+      Target_Type: target.type, Target_ID: target.id,
+      Is_Primary: false,
+      Catalog_Approved: catalogApproved, DataSheet_Approved: dataSheetApproved,
+      Catalog_Order: Number(options.catalogOrder) || 0,
+      DataSheet_Order: Number(options.dataSheetOrder) || 0,
+      Link_Status: linkStatus, Created_At: now_(), Created_By: actor,
+      Updated_At: now_(), Updated_By: actor
+    });
+    if (options.isPrimary) setPrimary(linkId, actor);
+    return { status: "CREATED", linkId: linkId, imageId: asset.Image_ID, target: target };
+  }
+
+  function setApproval(linkId, approval) {
+    linkId = text_(linkId, 120);
+    approval = approval || {};
+    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
+    require_(link, "IMAGE_LINK_NOT_FOUND");
+    var asset = getAsset_(link.Image_ID);
+    var patch = { Updated_At: now_(), Updated_By: actor_(approval.actor) };
+    if (typeof approval.catalogApproved === "boolean") patch.Catalog_Approved = approval.catalogApproved;
+    if (typeof approval.dataSheetApproved === "boolean") patch.DataSheet_Approved = approval.dataSheetApproved;
+    if (approval.linkStatus !== undefined && approval.linkStatus !== null && approval.linkStatus !== "") {
+      require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(approval.linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
+      patch.Link_Status = approval.linkStatus;
+    }
+    var nextCatalog = Object.prototype.hasOwnProperty.call(patch, "Catalog_Approved") ? patch.Catalog_Approved : link.Catalog_Approved === true;
+    var nextSheet = Object.prototype.hasOwnProperty.call(patch, "DataSheet_Approved") ? patch.DataSheet_Approved : link.DataSheet_Approved === true;
+    var nextStatus = patch.Link_Status || link.Link_Status;
+    if (nextStatus === "ACTIVE") {
+      require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
+      require_(nextCatalog || nextSheet, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
+    }
+    if (nextStatus === "REJECTED" || nextStatus === "ARCHIVED") {
+      patch.Catalog_Approved = false;
+      patch.DataSheet_Approved = false;
+      patch.Is_Primary = false;
+    } else if (!nextCatalog && !nextSheet) {
+      patch.Is_Primary = false;
+    }
+    SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, patch);
+    return { status: "UPDATED", linkId: linkId, linkStatus: nextStatus };
+  }
+
+  function setPrimary(linkId, actor) {
+    linkId = text_(linkId, 120);
+    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
+    require_(link, "IMAGE_LINK_NOT_FOUND");
+    getAsset_(link.Image_ID);
+    require_(link.Link_Status === "ACTIVE", "IMAGE_LINK_NOT_ACTIVE");
+    require_(link.Catalog_Approved === true || link.DataSheet_Approved === true, "IMAGE_PRIMARY_REQUIRES_APPROVAL");
+    resolveTarget_(link.Target_Type, link.Target_ID);
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var rows = SheetsRepository.listAll("Image_Links") || [];
+      var actorId = actor_(actor);
+      rows.forEach(function (row) {
+        if (row.Target_Type === link.Target_Type && row.Target_ID === link.Target_ID &&
+            row.Is_Primary === true && row.Image_Link_ID !== linkId) {
+          SheetsRepository.updateBy("Image_Links", "Image_Link_ID", row.Image_Link_ID, {
+            Is_Primary: false, Updated_At: now_(), Updated_By: actorId
+          });
+        }
+      });
+      SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, {
+        Is_Primary: true, Updated_At: now_(), Updated_By: actorId
+      });
+    } finally {
+      lock.releaseLock();
+    }
+    return { status: "PRIMARY_SET", linkId: linkId };
+  }
+
+  function sortImages_(items, orderField) {
+    items.sort(function (a, b) {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      var diff = (Number(a[orderField]) || 0) - (Number(b[orderField]) || 0);
+      if (diff) return diff;
+      return String(a.imageId).localeCompare(String(b.imageId));
+    });
+    return items;
+  }
+  function project_(links, approvedField, orderField) {
+    var result = [];
+    links.forEach(function (link) {
+      if (link.Link_Status !== "ACTIVE" || link[approvedField] !== true) return;
+      var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", link.Image_ID);
+      if (!asset || asset.Lifecycle_Status !== "ACTIVE") return;
+      result.push({
+        imageId: asset.Image_ID, driveFileId: asset.Original_File_ID,
+        name: asset.Original_File_Name, mimeType: asset.MIME_Type,
+        width: asset.Width_PX, height: asset.Height_PX, sha256: asset.SHA256,
+        isPrimary: link.Is_Primary === true, catalogApproved: link.Catalog_Approved === true,
+        dataSheetApproved: link.DataSheet_Approved === true, linkStatus: link.Link_Status,
+        source: link.Target_Type, catalogOrder: Number(link.Catalog_Order) || 0,
+        dataSheetOrder: Number(link.DataSheet_Order) || 0
+      });
+    });
+    return sortImages_(result, orderField);
+  }
+  function getImagesForProduct(productId, variantId, usage) {
+    var product = resolveTarget_("PRODUCT", productId);
+    usage = usage || "ALL";
+    require_(["ALL", "CATALOG", "DATASHEET"].indexOf(usage) >= 0, "IMAGE_USAGE_INVALID");
+    var allLinks = SheetsRepository.listAll("Image_Links") || [];
+    var productLinks = allLinks.filter(function (l) {
+      return l.Target_Type === "PRODUCT" && l.Target_ID === product.id;
+    });
+    var variantLinks = [];
+    if (variantId) {
+      var variant = resolveTarget_("VARIANT", variantId);
+      require_(variant.id && SheetsRepository.getBy("Variants", "Variant_ID", variant.id).Product_ID === product.id,
+        "VARIANT_PRODUCT_MISMATCH");
+      variantLinks = allLinks.filter(function (l) {
+        return l.Target_Type === "VARIANT" && l.Target_ID === variant.id;
+      });
+    }
+    function select_(field, order) {
+      var variantImages = project_(variantLinks, field, order);
+      return variantImages.length ? variantImages : project_(productLinks, field, order);
+    }
+    var catalog = select_("Catalog_Approved", "catalogOrder");
+    var dataSheet = select_("DataSheet_Approved", "dataSheetOrder");
+    var images = usage === "CATALOG" ? catalog : usage === "DATASHEET" ? dataSheet :
+      catalog.concat(dataSheet.filter(function (item) {
+        return !catalog.some(function (c) { return c.imageId === item.imageId; });
+      }));
+    return { productId: product.id, variantId: variantId || null, usage: usage,
+      images: images, catalogImages: catalog, dataSheetImages: dataSheet, count: images.length };
+  }
+
+  function findDuplicateBySha256(sha256) {
+    require_(/^[a-f0-9]{64}$/i.test(String(sha256 || "")), "IMAGE_SHA256_INVALID");
+    var digest = String(sha256).toLowerCase();
+    var all = SheetsRepository.listAll("Image_Assets") || [];
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].SHA256 || "").toLowerCase() === digest && all[i].Lifecycle_Status === "ACTIVE") {
+        return { duplicate: true, imageId: all[i].Image_ID, driveFileId: all[i].Original_File_ID };
+      }
+    }
+    return { duplicate: false };
+  }
+  return { linkToTarget: linkToTarget, setApproval: setApproval, setPrimary: setPrimary,
+    getImagesForProduct: getImagesForProduct, findDuplicateBySha256: findDuplicateBySha256 };
+})();
+
+
+
+
+// ===== domain/ImageReviewService.js =====
+/**
+ * Human decision workflow for extracted catalog images.
+ *
+ * The caller cannot self-assert ACCEPTED: this service resolves the actual
+ * IMAGE_QUALITY review task and its PRIMARY Staging_Images record, verifies
+ * the immutable Drive bytes, then promotes and approves the resulting link.
+ */
+var ImageReviewService = (function () {
+  var DRIVE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
+  var SHA_RE = /^[a-f0-9]{64}$/;
+
+  function require_(ok, code) { if (!ok) throw new Error(code); }
+  function now_() { return new Date().toISOString(); }
+  function text_(v, max, code) {
+    var s = v === undefined || v === null ? "" : String(v).trim();
+    require_(s.length > 0 && s.length <= max, code);
+    return s;
+  }
+  function sha_(bytes) {
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
+      var n = b < 0 ? b + 256 : b, h = n.toString(16);
+      return h.length === 1 ? "0" + h : h;
+    }).join("");
+  }
+  function canonical_(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") { require_(isFinite(value), "IMAGE_REVIEW_NONFINITE_VALUE"); return value; }
+    if (Array.isArray(value)) return value.map(canonical_);
+    if (value && Object.prototype.toString.call(value) === "[object Object]") {
+      var out = {};
+      Object.keys(value).sort().forEach(function (k) {
+        require_(value[k] !== undefined, "IMAGE_REVIEW_UNDEFINED_VALUE");
+        out[k] = canonical_(value[k]);
+      });
+      return out;
+    }
+    throw new Error("IMAGE_REVIEW_VALUE_UNSUPPORTED");
+  }
+  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
+  function payloadHash_(value) { return sha_(Utilities.newBlob(canonicalJson_(value)).getBytes()); }
+  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
+  function verifyStagingHash_(row) {
+    require_(row && SHA_RE.test(String(row.Staging_Record_Hash || "")), "IMAGE_STAGING_HASH_MISSING");
+    var copy = {};
+    Object.keys(row).forEach(function (k) {
+      if (k !== "Staging_Record_Hash" && k !== "Created_At" && k !== "Updated_At") copy[k] = row[k];
+    });
+    require_(sha_(Utilities.newBlob(canonicalJson_(copy)).getBytes()) === row.Staging_Record_Hash,
+      "IMAGE_STAGING_HASH_MISMATCH");
+  }
+  function resolveTarget_(type, id) {
+    require_(type === "PRODUCT" || type === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
+    id = text_(id, 120, "IMAGE_TARGET_ID_INVALID");
+    if (type === "PRODUCT") {
+      var product = SheetsRepository.getBy("Products", "Product_ID", id);
+      require_(product && product.Lifecycle_Status === "ACTIVE", "IMAGE_TARGET_PRODUCT_NOT_ACTIVE");
+      return { type: type, id: id, productId: id };
+    }
+    var variant = SheetsRepository.getBy("Variants", "Variant_ID", id);
+    require_(variant && variant.Lifecycle_Status === "ACTIVE", "IMAGE_TARGET_VARIANT_NOT_ACTIVE");
+    var parent = SheetsRepository.getBy("Products", "Product_ID", variant.Product_ID);
+    require_(parent && parent.Lifecycle_Status === "ACTIVE", "IMAGE_TARGET_PARENT_NOT_ACTIVE");
+    return { type: type, id: id, productId: String(variant.Product_ID) };
+  }
+  function verifyDrive_(staging) {
+    var fileId = text_(staging.Proposed_Image_File_ID, 200, "IMAGE_DRIVE_FILE_ID_INVALID");
+    require_(DRIVE_ID_RE.test(fileId), "IMAGE_DRIVE_FILE_ID_INVALID");
+    var file;
+    try { file = DriveApp.getFileById(fileId); } catch (e) { throw new Error("IMAGE_DRIVE_FILE_NOT_FOUND"); }
+    require_(file, "IMAGE_DRIVE_FILE_NOT_FOUND");
+    var blob = file.getBlob(), bytes = blob.getBytes();
+    require_(file.getSize() === Number(staging.File_Size_Bytes), "IMAGE_DRIVE_SIZE_MISMATCH");
+    require_(String(file.getMimeType()).toLowerCase() === String(staging.MIME_Type).toLowerCase(),
+      "IMAGE_DRIVE_MIME_MISMATCH");
+    require_(sha_(bytes) === String(staging.SHA256).toLowerCase(), "IMAGE_DRIVE_SHA_MISMATCH");
+    return true;
+  }
+  function findTask_(reviewId) {
+    var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", text_(reviewId, 120, "IMAGE_REVIEW_ID_INVALID"));
+    require_(review && review.Review_Type === "IMAGE_QUALITY", "IMAGE_REVIEW_TASK_NOT_FOUND");
+    var links = SheetsRepository.listAll("Review_Staging_Links").filter(function (l) {
+      return l.Review_Queue_ID === review.Review_Queue_ID && l.Review_Role === "PRIMARY";
+    });
+    require_(links.length === 1, "IMAGE_REVIEW_PRIMARY_STAGING_INVALID");
+    var staging = SheetsRepository.getBy("Staging_Images", "Staging_ID", links[0].Staging_ID);
+    require_(staging, "IMAGE_REVIEW_STAGING_NOT_FOUND");
+    verifyStagingHash_(staging);
+    return { review: review, staging: staging };
+  }
+  function decide(options, actor) {
+    options = options || {};
+    actor = text_(actor || APP.ACTOR_ID, 120, "IMAGE_REVIEW_ACTOR_INVALID");
+    var decision = text_(options.decision, 20, "IMAGE_REVIEW_DECISION_INVALID");
+    require_(decision === "ACCEPTED" || decision === "REJECTED", "IMAGE_REVIEW_DECISION_INVALID");
+    var task = findTask_(options.reviewId), review = task.review, staging = task.staging;
+    var target = null;
+    var catalogApproved = options.catalogApproved === true;
+    var dataSheetApproved = options.dataSheetApproved === true;
+    if (decision === "ACCEPTED") {
+      require_(review.Review_Status === "OPEN" || review.Review_Status === "IN_REVIEW" ||
+        review.Review_Status === "APPROVED", "IMAGE_REVIEW_TASK_NOT_ACTIONABLE");
+      require_(staging.Proposed_Status === "NEEDS_REVIEW", "IMAGE_STAGING_NOT_REVIEWABLE");
+      require_(catalogApproved || dataSheetApproved, "IMAGE_PUBLICATION_APPROVAL_REQUIRED");
+      target = resolveTarget_(options.targetType, options.targetId);
+      if (options.targetType === "VARIANT") {
+        require_(String(staging.Catalog_ID || "") !== "", "IMAGE_CATALOG_ID_REQUIRED");
+      }
+    } else {
+      require_(review.Review_Status === "OPEN" || review.Review_Status === "IN_REVIEW" ||
+        review.Review_Status === "REJECTED", "IMAGE_REVIEW_TASK_NOT_ACTIONABLE");
+    }
+    var decisionPayload = {
+      reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID, decision: decision,
+      targetType: target ? target.type : "", targetId: target ? target.id : "",
+      catalogApproved: catalogApproved, dataSheetApproved: dataSheetApproved,
+      isPrimary: options.isPrimary === true, notes: String(options.notes || "").trim()
+    };
+    var fingerprint = payloadHash_(decisionPayload);
+    if (review.Review_Status === "APPROVED" || review.Review_Status === "REJECTED") {
+      require_(review.Reviewed_Payload_Hash === fingerprint, "IMAGE_REVIEW_DECISION_ALREADY_FINAL");
+      return { status: review.Review_Status, reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID, reused: true };
+    }
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      // Re-read under lock to avoid two reviewers promoting the same task concurrently.
+      task = findTask_(review.Review_Queue_ID); review = task.review; staging = task.staging;
+      require_(review.Review_Status === "OPEN" || review.Review_Status === "IN_REVIEW", "IMAGE_REVIEW_TASK_NOT_ACTIONABLE");
+      if (decision === "REJECTED") {
+        SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, {
+          Proposed_Status: "REJECTED", Updated_At: now_()
+        });
+        SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", review.Review_Queue_ID, {
+          Review_Status: "REJECTED", Decision_Notes: decisionPayload.notes,
+          Reviewed_Payload_Hash: fingerprint, Reviewed_At: now_(), Reviewed_By: actor
+        });
+        return { status: "REJECTED", reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID, reused: false };
+      }
+      verifyDrive_(staging);
+      require_(typeof staging.Width_PX === "number" && staging.Width_PX > 0, "IMAGE_WIDTH_REQUIRED");
+      require_(typeof staging.Height_PX === "number" && staging.Height_PX > 0, "IMAGE_HEIGHT_REQUIRED");
+      require_(typeof staging.Has_Alpha === "boolean", "IMAGE_ALPHA_FLAG_REQUIRED");
+      var imagePayload = {
+        review_status: "ACCEPTED", sha256: staging.SHA256,
+        drive_file_id: staging.Proposed_Image_File_ID, original_name: staging.Original_File_Name,
+        mime_type: staging.MIME_Type, width_px: staging.Width_PX, height_px: staging.Height_PX,
+        file_size_bytes: staging.File_Size_Bytes, has_alpha: staging.Has_Alpha,
+        catalog_page_id: staging.Catalog_Page_ID || "", page_number: Number(staging.Page_Number || 0) || 1,
+        target_type: target.type, target_id: target.id
+      };
+      ImagePromotion.promoteAcceptedImages({
+        images: [imagePayload], run_id: staging.Run_ID, catalog_id: staging.Catalog_ID, actor: actor
+      });
+      var imageId = stableId_("img", String(staging.SHA256).toLowerCase());
+      var linked = ImageManagement.linkToTarget(imageId, target.type, target.id, { actor: actor });
+      ImageManagement.setApproval(linked.linkId, {
+        catalogApproved: catalogApproved, dataSheetApproved: dataSheetApproved,
+        linkStatus: "ACTIVE", actor: actor
+      });
+      if (options.isPrimary === true) ImageManagement.setPrimary(linked.linkId, actor);
+      var stagingPatch = {
+        Proposed_Status: "PROMOTED", Quality_Status: "ACCEPTABLE", Updated_At: now_()
+      };
+      if (target.type === "PRODUCT") stagingPatch.Candidate_Product_ID = target.id;
+      else stagingPatch.Candidate_Variant_ID = target.id;
+      SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, stagingPatch);
+      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", review.Review_Queue_ID, {
+        Review_Status: "APPROVED", Decision_Notes: decisionPayload.notes,
+        Reviewed_Payload_Hash: fingerprint, Reviewed_At: now_(), Reviewed_By: actor
+      });
+      return { status: "APPROVED", reviewId: review.Review_Queue_ID, stagingId: staging.Staging_ID,
+        imageId: imageId, linkId: linked.linkId, target: target, reused: false };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  return { decide: decide };
+})();
+
+// ===== domain/ReviewDashboard.js =====
+/** Read-only browser projection for the human review queue. */
+var ReviewDashboard = (function () {
+  function safeUrl_(fileId) {
+    if (!fileId || typeof fileId !== "string") return "";
+    try { return DriveApp.getFileById(fileId).getUrl(); } catch (err) { return ""; }
+  }
+  function index_(rows, key) {
+    var out = {};
+    (rows || []).forEach(function (row) { if (row && row[key]) out[String(row[key])] = row; });
+    return out;
+  }
+  function short_(value, limit) {
+    var s = value === null || value === undefined ? "" : String(value);
+    return s.length > limit ? s.slice(0, limit) + "…" : s;
+  }
+  function candidateSummary_(artifact) {
+    var set = artifact && artifact.product_candidates || {};
+    function pick(list, fields) {
+      return (Array.isArray(list) ? list : []).slice(0, 30).map(function (item) {
+        var out = {};
+        fields.forEach(function (field) {
+          if (item && item[field] !== undefined && item[field] !== null) out[field] = short_(item[field], 500);
+        });
+        return out;
+      });
+    }
+    return {
+      products: pick(set.products, ["proposed_product_name", "proposed_product_reference", "source_quote", "confidence"]),
+      variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
+      specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
+      extractedText: short_(artifact && artifact.extracted_text, 1800),
+      pageText: short_(artifact && artifact.extracted_text, 1800),
+      pageNumber: artifact && artifact.page_number || "",
+      extractionMethod: artifact && artifact.extraction_method || ""
+    };
+  }
+  function getQueue() {
+    var reviews = SheetsRepository.listRecent("Review_Queue", 250);
+    var links = SheetsRepository.listAll("Review_Staging_Links");
+    var products = index_(SheetsRepository.listAll("Staging_Products"), "Staging_ID");
+    var variants = index_(SheetsRepository.listAll("Staging_Variants"), "Staging_ID");
+    var specs = index_(SheetsRepository.listAll("Staging_Specifications"), "Staging_ID");
+    var images = index_(SheetsRepository.listAll("Staging_Images"), "Staging_ID");
+    var docs = index_(SheetsRepository.listAll("Staging_Documents"), "Staging_ID");
+    var catalogs = index_(SheetsRepository.listAll("Catalogs"), "Catalog_ID");
+    var pages = index_(SheetsRepository.listAll("Catalog_Pages"), "Catalog_Page_ID");
+    var units = SheetsRepository.listAll("Run_Units");
+    var artifacts = {};
+    var linksByReview = {};
+    links.forEach(function (link) {
+      (linksByReview[link.Review_Queue_ID] || (linksByReview[link.Review_Queue_ID] = [])).push(link);
+    });
+    function artifactSummary_(id) {
+      if (!id) return null;
+      if (Object.prototype.hasOwnProperty.call(artifacts, id)) return artifacts[id];
+      try {
+        var data = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString("UTF-8"));
+        artifacts[id] = candidateSummary_(data);
+      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE", warning: true }; }
+      return artifacts[id];
+    }
+    var items = reviews.map(function (review) {
+      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 200);
+      var evidence = [], artifactId = "", runId = "", catalogId = "";
+      linked.forEach(function (link) {
+        var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
+        if (!row) return;
+        var type = products[link.Staging_ID] ? "PRODUCT" : variants[link.Staging_ID] ? "VARIANT" :
+          specs[link.Staging_ID] ? "SPECIFICATION" : images[link.Staging_ID] ? "IMAGE" : "DOCUMENT";
+        if (!artifactId && row.Raw_Extract_File_ID) artifactId = row.Raw_Extract_File_ID;
+        runId = runId || row.Run_ID || "";
+        catalogId = catalogId || row.Catalog_ID || "";
+        var page = pages[row.Catalog_Page_ID] || {};
+        evidence.push({
+          stagingId: row.Staging_ID, type: type, table: type, role: link.Review_Role || "",
+          pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
+          productName: row.Proposed_Product_Name_EN || "", productReference: row.Proposed_Product_Reference || "",
+          modelNumber: row.Proposed_Model_Number || "", modelName: row.Proposed_Model_Name || "",
+          attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
+          value: row.Value_Raw || row.Normalized_Value_JSON || "", unit: row.Unit_Raw || row.Normalized_Unit || "",
+          imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
+          fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
+          imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
+          parentProductStagingId: row.Parent_Staging_Product_ID || "",
+          parentVariantStagingId: row.Parent_Staging_Variant_ID || "",
+          scope: row.Scope || "", parseStatus: row.Parse_Status || "",
+          proposedStatus: row.Proposed_Status || "",
+          confidence: row.Confidence === undefined ? "" : row.Confidence,
+          extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
+          quote: short_(row.Extracted_Text, 700),
+          sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
+        });
+      });
+      var pageId = "";
+      var match = String(review.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      if (match) { pageId = match[1]; runId = runId || match[2]; }
+      var unit = units.find(function (u) { return u.Run_ID === runId && u.Catalog_Page_ID === pageId; });
+      if (!artifactId && unit) artifactId = unit.Output_Manifest_File_ID || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {}, page = pages[pageId] || {};
+      var artifact = artifactSummary_(artifactId);
+      if (artifact && !page.Page_Number && artifact.pageNumber) page = { Page_Number: artifact.pageNumber };
+      if (artifact) artifact.fileUrl = safeUrl_(artifactId);
+      return {
+        id: review.Review_Queue_ID, reviewId: review.Review_Queue_ID,
+        type: review.Review_Type, status: review.Review_Status,
+        priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
+        action: short_(review.Proposed_Action, 1800),
+        notes: short_(review.Decision_Notes || "", 1500),
+        decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
+        runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
+        catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
+        sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
+        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId),
+        evidence: evidence, links: evidence, artifact: artifact, pageArtifact: artifact
+      };
+    });
+    var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
+    items.forEach(function (item) {
+      if (item.status === "OPEN") counts.open += 1;
+      else if (item.status === "IN_REVIEW") counts.inReview += 1;
+      else if (item.status === "DEFERRED") counts.deferred += 1;
+      else counts.closed += 1;
+    });
+    return { items: items, counts: counts, limit: 250, readOnly: true };
+  }
+  return { getQueue: getQueue };
+})();
+
+// ===== domain/ReviewWorkspace.js =====
+/** Human review actions and immutable decision/Staging Set generation.
+ * Product approval is explicit and limited to PRODUCT_MATCH tasks.
+ * Variant/specification decisions are not inferred; the builder validates parent references if supplied later.
+ */
+var ReviewWorkspace = (function () {
+  var ALLOWED = { OPEN: true, IN_REVIEW: true, DEFERRED: true, REJECTED: true };
+  var TRANSITIONS = {
+    OPEN: { IN_REVIEW: true, DEFERRED: true, REJECTED: true },
+    IN_REVIEW: { OPEN: true, DEFERRED: true, REJECTED: true },
+    DEFERRED: { OPEN: true, IN_REVIEW: true, REJECTED: true },
+    REJECTED: {}
+  };
+  function fail_(code) { throw new Error(code); }
+  function text_(value, limit) {
+    var s = value === null || value === undefined ? "" : String(value).trim();
+    if (s.length > limit) fail_("REVIEW_TEXT_TOO_LONG");
+    return s;
+  }
+  function sha_(value) {
+    var bytes = typeof value === "string" ? Utilities.newBlob(value, "application/json").getBytes() : value;
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
+      var n = b < 0 ? b + 256 : b, h = n.toString(16);
+      return h.length === 1 ? "0" + h : h;
+    }).join("");
+  }
+  function runFolder_(runId) {
+    var rootId = (PropertiesService.getScriptProperties().getProperty("DEV_RUNS_FOLDER_ID") || "").trim();
+    if (!rootId) fail_("CONFIG_MISSING_DEV_RUNS_FOLDER_ID");
+    var folders = DriveApp.getFolderById(rootId).getFoldersByName(runId);
+    if (!folders.hasNext()) fail_("REVIEW_RUN_FOLDER_NOT_FOUND");
+    return folders.next();
+  }
+  function immutableJsonFile_(folder, name, payload) {
+    var content = JSON.stringify(payload), files = folder.getFilesByName(name);
+    if (files.hasNext()) {
+      var existing = files.next();
+      if (existing.getBlob().getDataAsString("UTF-8") !== content) fail_("REVIEW_DECISION_IMMUTABLE_CONFLICT");
+      return { file: existing, content: content, sha256: sha_(content), reused: true };
+    }
+    var file = folder.createFile(name, content, MimeType.JSON);
+    return { file: file, content: content, sha256: sha_(content), reused: false };
+  }
+  function array_(value, code) {
+    if (value === undefined || value === null) return [];
+    if (!Array.isArray(value) || value.length > 200) fail_(code);
+    return value;
+  }
+  function buildCandidateDecisions_(options, reviewId, primary, links) {
+    var allowed = {};
+    links.forEach(function (link) {
+      if (link.Review_Role === "EVIDENCE") allowed[String(link.Staging_ID)] = true;
+    });
+    var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
+    var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
+    var expectedVariants = {}, expectedSpecifications = {};
+    links.forEach(function (link) {
+      if (link.Review_Role !== "EVIDENCE") return;
+      if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
+      if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
+    });
+    var seen = {};
+    function claim_(id, kind) {
+      id = text_(id, 160);
+      if (!id || !allowed[id]) fail_("REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE");
+      if (seen[id]) fail_("REVIEW_CANDIDATE_DUPLICATE");
+      seen[id] = true;
+      var table = kind === "VARIANT" ? "Staging_Variants" : "Staging_Specifications";
+      var row = SheetsRepository.getBy(table, "Staging_ID", id);
+      if (!row || row.Run_ID !== primary.Run_ID || row.Catalog_ID !== primary.Catalog_ID) fail_("REVIEW_CANDIDATE_CONTEXT_MISMATCH");
+      return row;
+    }
+    var variants = variantInputs.map(function (input) {
+      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_VARIANT_DECISION_INVALID");
+      var row = claim_(input.stagingId, "VARIANT");
+      var parent = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
+      if (input.reviewStatus === "ACCEPTED" && parent !== primary.Staging_ID) fail_("REVIEW_VARIANT_PARENT_INVALID");
+      if (input.reviewStatus === "ACCEPTED" && !text_(row.Proposed_Model_Number, 160)) fail_("REVIEW_VARIANT_MODEL_NUMBER_REQUIRED");
+      return {
+        staging_id: row.Staging_ID, parent_staging_product_id: parent,
+        proposed_model_number: text_(row.Proposed_Model_Number, 160),
+        proposed_model_name: text_(row.Proposed_Model_Name, 250),
+        source_quote: text_(row.Extracted_Text, 4000),
+        review_status: input.reviewStatus
+      };
+    });
+    var acceptedVariants = {};
+    variants.forEach(function (v) { if (v.review_status === "ACCEPTED") acceptedVariants[v.staging_id] = true; });
+    var specifications = specInputs.map(function (input) {
+      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_SPECIFICATION_DECISION_INVALID");
+      var row = claim_(input.stagingId, "SPECIFICATION");
+      var parentProduct = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
+      var scope = input.reviewStatus === "ACCEPTED" ? text_(input.scope, 20).toUpperCase() : "";
+      var parentVariant = input.reviewStatus === "ACCEPTED" ? text_(input.parentVariantStagingId, 160) : "";
+      if (input.reviewStatus === "ACCEPTED" && parentProduct !== primary.Staging_ID) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_INVALID");
+      if (input.reviewStatus === "ACCEPTED" && ["PRODUCT", "VARIANT"].indexOf(scope) < 0) fail_("REVIEW_SPECIFICATION_SCOPE_REQUIRED");
+      if (scope === "PRODUCT" && parentVariant) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+      if (scope === "VARIANT" && (!parentVariant || !acceptedVariants[parentVariant])) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_INVALID");
+      var originalValue = text_(row.Value_Raw, 1000);
+      var originalUnit = text_(row.Unit_Raw, 80);
+      var finalValue = input.reviewStatus === "ACCEPTED" && input.valueRaw !== undefined
+        ? text_(input.valueRaw, 1000) : originalValue;
+      if (input.reviewStatus === "ACCEPTED" && !finalValue) fail_("REVIEW_SPECIFICATION_VALUE_REQUIRED");
+      var reason = text_(input.editReason || "", 500);
+      var unit = input.reviewStatus === "ACCEPTED" && input.unitRaw !== undefined
+        ? text_(input.unitRaw, 80) : originalUnit;
+      if ((finalValue !== originalValue || unit !== originalUnit) && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
+      return {
+        staging_id: row.Staging_ID, parent_staging_product_id: parentProduct,
+        parent_staging_variant_id: parentVariant, scope: scope,
+        attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
+        original_value_raw: originalValue, value_raw: finalValue,
+        original_unit_raw: originalUnit, unit_raw: unit,
+        edited: finalValue !== originalValue || unit !== originalUnit,
+        edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
+        source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
+      };
+    });
+    if (variants.length !== Object.keys(expectedVariants).length ||
+        specifications.length !== Object.keys(expectedSpecifications).length) {
+      fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
+    }
+    return { variants: variants, specifications: specifications };
+  }
+  function updateStatus(options, actor) {
+    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
+    var next = String(options.status || "");
+    if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
+    var notes = text_(options.notes || "", 1500);
+    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var lock = LockService.getScriptLock(); lock.waitLock(30000);
+    try {
+      var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
+      if (!current) fail_("REVIEW_NOT_FOUND");
+      var from = String(current.Review_Status || "");
+      if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
+      var now = new Date().toISOString(), patch = { Review_Status: next, Decision_Notes: notes };
+      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = String(actor);
+      if (next === "REJECTED" || next === "DEFERRED") { patch.Reviewed_At = now; patch.Reviewed_By = String(actor); }
+      if (next === "OPEN") { patch.Assigned_Actor_ID = ""; patch.Reviewed_At = ""; patch.Reviewed_By = ""; }
+      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, patch);
+      return { reviewId: options.reviewId, previousStatus: from, status: next };
+    } finally { lock.releaseLock(); }
+  }
+  function approveProductReview(options, actor) {
+    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
+    var productName = text_(options.productName, 300);
+    if (!productName) fail_("REVIEW_PRODUCT_NAME_REQUIRED");
+    if (/[\u0600-\u06FF]/.test(productName)) fail_("REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH");
+    var identityResolution = text_(options.identityResolution || "", 30).toUpperCase();
+    if (["CREATE_NEW", "MATCH_EXISTING"].indexOf(identityResolution) < 0) fail_("REVIEW_IDENTITY_RESOLUTION_REQUIRED");
+    var canonicalProductId = text_(options.canonicalProductId || "", 160);
+    var matchRationale = text_(options.matchRationale || "", 1000);
+    if (identityResolution === "MATCH_EXISTING") {
+      var matchedProduct = SheetsRepository.getBy("Products", "Product_ID", canonicalProductId);
+      if (!matchedProduct || matchedProduct.Lifecycle_Status !== "ACTIVE") fail_("REVIEW_MATCH_PRODUCT_NOT_ACTIVE");
+      if (!matchRationale) fail_("REVIEW_MATCH_RATIONALE_REQUIRED");
+    } else if (canonicalProductId) fail_("REVIEW_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
+    if (identityResolution === "CREATE_NEW" && !matchRationale) matchRationale = "Reviewer confirmed a new canonical product identity.";
+    var notes = text_(options.notes || "", 1500);
+    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var requestFingerprint = sha_(JSON.stringify({
+      productName: productName, identityResolution: identityResolution,
+      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
+      notes: notes, variants: options.variants || [], specifications: options.specifications || []
+    }));
+    var lock = LockService.getScriptLock(); lock.waitLock(30000);
+    try {
+      var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
+      if (!review) fail_("REVIEW_NOT_FOUND");
+      if (review.Review_Type !== "PRODUCT_MATCH") fail_("REVIEW_PRODUCT_TASK_REQUIRED");
+      if (review.Review_Status === "APPROVED") {
+        var approvedFile = DriveApp.getFileById(review.Decision_JSON_File_ID);
+        var approved = JSON.parse(approvedFile.getBlob().getDataAsString("UTF-8"));
+        if (approved.products && approved.products[0] &&
+            approved.products[0].proposed_product_name === productName &&
+            approved.products[0].identity_resolution === identityResolution &&
+            String(approved.products[0].canonical_product_id || "") === canonicalProductId &&
+            approved.products[0].review_request_sha256 === requestFingerprint) {
+          return { status: "APPROVED", decisionFileId: review.Decision_JSON_File_ID, decisionSha256: review.Decision_SHA256, reused: true };
+        }
+        fail_("REVIEW_DECISION_ALREADY_APPROVED");
+      }
+      if (["OPEN", "IN_REVIEW"].indexOf(review.Review_Status) < 0) fail_("REVIEW_TASK_NOT_ACTIONABLE");
+      var links = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
+        return link.Review_Queue_ID === options.reviewId && link.Review_Role === "PRIMARY";
+      });
+      if (links.length !== 1) fail_("REVIEW_PRIMARY_STAGING_LINK_INVALID");
+      var staging = SheetsRepository.getBy("Staging_Products", "Staging_ID", links[0].Staging_ID);
+      if (!staging) fail_("REVIEW_STAGING_PRODUCT_NOT_FOUND");
+      var reviewLinks = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
+        return link.Review_Queue_ID === options.reviewId;
+      });
+      var candidateDecisions = buildCandidateDecisions_(options, options.reviewId, staging, reviewLinks);
+      var payload = {
+        schema_version: 1,
+        run_id: staging.Run_ID,
+        catalog_id: staging.Catalog_ID,
+        source_key_algorithm_version: "source-key-v1",
+        products: [{
+          staging_id: staging.Staging_ID,
+          catalog_page_id: staging.Catalog_Page_ID,
+          proposed_product_name: productName,
+          identity_resolution: identityResolution,
+          canonical_product_id: canonicalProductId,
+          match_rationale: matchRationale,
+          review_request_sha256: requestFingerprint,
+          source_quote: text_(staging.Extracted_Text || "", 2000),
+          review_status: "ACCEPTED",
+          staging_record_hash: staging.Staging_Record_Hash
+        }],
+        variants: candidateDecisions.variants,
+        specifications: candidateDecisions.specifications
+      };
+      var saved = immutableJsonFile_(runFolder_(staging.Run_ID), "review-decision-" + options.reviewId + ".json", payload);
+      var now = new Date().toISOString();
+      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, {
+        Review_Status: "APPROVED", Decision_JSON_File_ID: saved.file.getId(),
+        Decision_SHA256: saved.sha256, Reviewed_Payload_Hash: saved.sha256,
+        Decision_Notes: notes, Reviewed_At: now, Reviewed_By: String(actor)
+      });
+      return { status: "APPROVED", decisionFileId: saved.file.getId(), decisionSha256: saved.sha256, reused: saved.reused };
+    } finally { lock.releaseLock(); }
+  }
+  function buildStagingSetForRun(runId, actor) {
+    var id = text_(runId, 120);
+    if (!id) fail_("REVIEW_RUN_ID_REQUIRED");
+    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var lock = LockService.getScriptLock(); lock.waitLock(30000);
+    try {
+      var queue = SheetsRepository.listAll("Review_Queue");
+      var products = [], variants = [], specifications = [], included = [], catalogId = "";
+      queue.filter(function (q) { return q.Review_Status === "APPROVED" && q.Decision_JSON_File_ID; }).forEach(function (q) {
+        var file = DriveApp.getFileById(q.Decision_JSON_File_ID);
+        if (!file) fail_("REVIEW_DECISION_FILE_NOT_FOUND");
+        var blob = file.getBlob(), bytes = blob.getBytes();
+        if (sha_(bytes) !== q.Decision_SHA256) fail_("REVIEW_DECISION_SHA_MISMATCH");
+        var decision;
+        try { decision = JSON.parse(blob.getDataAsString("UTF-8")); } catch (e) { fail_("REVIEW_DECISION_INVALID_JSON"); }
+        if (!decision || decision.run_id !== id) return;
+        if (!catalogId) catalogId = decision.catalog_id;
+        if (catalogId !== decision.catalog_id) fail_("REVIEW_DECISION_CATALOG_MISMATCH");
+        if (!Array.isArray(decision.products) || !Array.isArray(decision.variants) || !Array.isArray(decision.specifications)) fail_("REVIEW_DECISION_STRUCTURE_INVALID");
+        products = products.concat(decision.products);
+        variants = variants.concat(decision.variants);
+        specifications = specifications.concat(decision.specifications);
+        included.push(q);
+      });
+      if (!included.length || !products.length) fail_("REVIEW_NO_APPROVED_PRODUCTS_FOR_RUN");
+      function unique_(records, label) {
+        var seen = {};
+        records.forEach(function (record) {
+          if (!record || !record.staging_id || seen[record.staging_id]) fail_("REVIEW_DUPLICATE_OR_INVALID_" + label);
+          seen[record.staging_id] = true;
+        });
+        return seen;
+      }
+      var productIds = unique_(products, "PRODUCT");
+      var variantIds = unique_(variants, "VARIANT");
+      var variantsByStagingId = {};
+      variants.forEach(function (v) {
+        if (!v || v.review_status !== "ACCEPTED") return;
+        if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
+        variantsByStagingId[v.staging_id] = v;
+      });
+      specifications.forEach(function (s) {
+        if (!s || s.review_status !== "ACCEPTED") return;
+        if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
+        if (s.scope === "PRODUCT") {
+          if (s.parent_staging_variant_id) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+          return;
+        }
+        if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
+        if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
+        var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
+        if (!parentVariant || parentVariant.parent_staging_product_id !== s.parent_staging_product_id) {
+          fail_("REVIEW_SPECIFICATION_PARENT_MISMATCH");
+        }
+      });
+      var stagingSet = {
+        run_id: id, catalog_id: catalogId, source_key_algorithm_version: "source-key-v1",
+        products: products, variants: variants, specifications: specifications
+      };
+      var content = JSON.stringify(stagingSet), digest = sha_(content);
+      var saved = immutableJsonFile_(runFolder_(id), "staging-set-" + digest.slice(0, 16) + ".json", stagingSet);
+      included.forEach(function (q) {
+        SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", q.Review_Queue_ID, {
+          Staging_Set_Manifest_File_ID: saved.file.getId(), Staging_Set_SHA256: digest
+        });
+      });
+      return { status: "READY_FOR_PROMOTION", runId: id, catalogId: catalogId,
+        products: products.length, variants: variants.length, specifications: specifications.length,
+        stagingSetFileId: saved.file.getId(), stagingSetSha256: digest, reused: saved.reused };
+    } finally { lock.releaseLock(); }
+  }
+  return {
+    updateStatus: updateStatus,
+    approveProductReview: approveProductReview,
+    buildStagingSetForRun: buildStagingSetForRun
+  };
 })();
 
 
@@ -4605,657 +5440,6 @@ function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); retur
 function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
 
 
-// ===== domain/ImageManagement.js =====
-/** Image Management — Phase 4
- *
- * Manages links and independent catalog/datasheet approval without changing
- * extracted source assets. Only ACTIVE links with the relevant approval are
- * returned for a publication use.
- */
-var ImageManagement = (function () {
-  function now_() { return new Date().toISOString(); }
-  function require_(condition, code) { if (!condition) throw new Error(code); }
-  function text_(value, limit) {
-    var t = value === undefined || value === null ? "" : String(value).trim();
-    require_(t.length > 0, "IMAGE_TEXT_REQUIRED");
-    require_(!limit || t.length <= limit, "IMAGE_TEXT_INVALID");
-    return t;
-  }
-  function sha_(value) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value)).map(function (b) {
-      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
-      return hex.length === 1 ? "0" + hex : hex;
-    }).join("");
-  }
-  function stableId_(prefix, seed) { return prefix + "_" + sha_(seed).slice(0, 16); }
-  function actor_(value) { return text_(value || APP.ACTOR_ID, 120); }
-
-  function getAsset_(imageId) {
-    var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", text_(imageId, 120));
-    require_(asset, "IMAGE_ASSET_NOT_FOUND");
-    require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
-    return asset;
-  }
-  function resolveTarget_(targetType, targetId) {
-    require_(targetType === "PRODUCT" || targetType === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
-    targetId = text_(targetId, 120);
-    if (targetType === "PRODUCT") {
-      var product = SheetsRepository.getBy("Products", "Product_ID", targetId);
-      require_(product, "PRODUCT_NOT_FOUND");
-      require_(product.Lifecycle_Status === "ACTIVE", "PRODUCT_NOT_ACTIVE");
-    } else {
-      var variant = SheetsRepository.getBy("Variants", "Variant_ID", targetId);
-      require_(variant, "VARIANT_NOT_FOUND");
-      require_(variant.Lifecycle_Status === "ACTIVE", "VARIANT_NOT_ACTIVE");
-      var parent = SheetsRepository.getBy("Products", "Product_ID", variant.Product_ID);
-      require_(parent && parent.Lifecycle_Status === "ACTIVE", "VARIANT_PARENT_PRODUCT_NOT_ACTIVE");
-    }
-    return { type: targetType, id: targetId };
-  }
-  function linkToTarget(imageId, targetType, targetId, options) {
-    options = options || {};
-    var asset = getAsset_(imageId);
-    var target = resolveTarget_(targetType, targetId);
-    var linkId = stableId_("imgl", asset.Image_ID + "|" + target.type + "|" + target.id);
-    var existing = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    if (existing) return { status: "EXISTS", linkId: linkId, imageId: asset.Image_ID, target: target };
-    var catalogApproved = options.catalogApproved === true;
-    var dataSheetApproved = options.dataSheetApproved === true;
-    var linkStatus = options.linkStatus || "CANDIDATE";
-    require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
-    if (linkStatus === "ACTIVE") {
-      require_(catalogApproved || dataSheetApproved, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
-    }
-    require_(!options.isPrimary || (linkStatus === "ACTIVE" && (catalogApproved || dataSheetApproved)),
-      "IMAGE_PRIMARY_REQUIRES_ACTIVE_APPROVAL");
-    var actor = actor_(options.actor);
-    SheetsRepository.append("Image_Links", {
-      Image_Link_ID: linkId, Image_ID: asset.Image_ID,
-      Target_Type: target.type, Target_ID: target.id,
-      Is_Primary: false,
-      Catalog_Approved: catalogApproved, DataSheet_Approved: dataSheetApproved,
-      Catalog_Order: Number(options.catalogOrder) || 0,
-      DataSheet_Order: Number(options.dataSheetOrder) || 0,
-      Link_Status: linkStatus, Created_At: now_(), Created_By: actor,
-      Updated_At: now_(), Updated_By: actor
-    });
-    if (options.isPrimary) setPrimary(linkId, actor);
-    return { status: "CREATED", linkId: linkId, imageId: asset.Image_ID, target: target };
-  }
-
-  function setApproval(linkId, approval) {
-    linkId = text_(linkId, 120);
-    approval = approval || {};
-    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    require_(link, "IMAGE_LINK_NOT_FOUND");
-    var asset = getAsset_(link.Image_ID);
-    var patch = { Updated_At: now_(), Updated_By: actor_(approval.actor) };
-    if (typeof approval.catalogApproved === "boolean") patch.Catalog_Approved = approval.catalogApproved;
-    if (typeof approval.dataSheetApproved === "boolean") patch.DataSheet_Approved = approval.dataSheetApproved;
-    if (approval.linkStatus !== undefined && approval.linkStatus !== null && approval.linkStatus !== "") {
-      require_(["CANDIDATE", "ACTIVE", "REJECTED", "ARCHIVED"].indexOf(approval.linkStatus) >= 0, "IMAGE_LINK_STATUS_INVALID");
-      patch.Link_Status = approval.linkStatus;
-    }
-    var nextCatalog = Object.prototype.hasOwnProperty.call(patch, "Catalog_Approved") ? patch.Catalog_Approved : link.Catalog_Approved === true;
-    var nextSheet = Object.prototype.hasOwnProperty.call(patch, "DataSheet_Approved") ? patch.DataSheet_Approved : link.DataSheet_Approved === true;
-    var nextStatus = patch.Link_Status || link.Link_Status;
-    if (nextStatus === "ACTIVE") {
-      require_(asset.Lifecycle_Status === "ACTIVE", "IMAGE_ASSET_NOT_ACTIVE");
-      require_(nextCatalog || nextSheet, "IMAGE_ACTIVE_REQUIRES_APPROVAL");
-    }
-    if (nextStatus === "REJECTED" || nextStatus === "ARCHIVED") {
-      patch.Catalog_Approved = false;
-      patch.DataSheet_Approved = false;
-      patch.Is_Primary = false;
-    } else if (!nextCatalog && !nextSheet) {
-      patch.Is_Primary = false;
-    }
-    SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, patch);
-    return { status: "UPDATED", linkId: linkId, linkStatus: nextStatus };
-  }
-
-  function setPrimary(linkId, actor) {
-    linkId = text_(linkId, 120);
-    var link = SheetsRepository.getBy("Image_Links", "Image_Link_ID", linkId);
-    require_(link, "IMAGE_LINK_NOT_FOUND");
-    getAsset_(link.Image_ID);
-    require_(link.Link_Status === "ACTIVE", "IMAGE_LINK_NOT_ACTIVE");
-    require_(link.Catalog_Approved === true || link.DataSheet_Approved === true, "IMAGE_PRIMARY_REQUIRES_APPROVAL");
-    resolveTarget_(link.Target_Type, link.Target_ID);
-    var lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
-      var rows = SheetsRepository.listAll("Image_Links") || [];
-      var actorId = actor_(actor);
-      rows.forEach(function (row) {
-        if (row.Target_Type === link.Target_Type && row.Target_ID === link.Target_ID &&
-            row.Is_Primary === true && row.Image_Link_ID !== linkId) {
-          SheetsRepository.updateBy("Image_Links", "Image_Link_ID", row.Image_Link_ID, {
-            Is_Primary: false, Updated_At: now_(), Updated_By: actorId
-          });
-        }
-      });
-      SheetsRepository.updateBy("Image_Links", "Image_Link_ID", linkId, {
-        Is_Primary: true, Updated_At: now_(), Updated_By: actorId
-      });
-    } finally {
-      lock.releaseLock();
-    }
-    return { status: "PRIMARY_SET", linkId: linkId };
-  }
-
-  function sortImages_(items, orderField) {
-    items.sort(function (a, b) {
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      var diff = (Number(a[orderField]) || 0) - (Number(b[orderField]) || 0);
-      if (diff) return diff;
-      return String(a.imageId).localeCompare(String(b.imageId));
-    });
-    return items;
-  }
-  function project_(links, approvedField, orderField) {
-    var result = [];
-    links.forEach(function (link) {
-      if (link.Link_Status !== "ACTIVE" || link[approvedField] !== true) return;
-      var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", link.Image_ID);
-      if (!asset || asset.Lifecycle_Status !== "ACTIVE") return;
-      result.push({
-        imageId: asset.Image_ID, driveFileId: asset.Original_File_ID,
-        name: asset.Original_File_Name, mimeType: asset.MIME_Type,
-        width: asset.Width_PX, height: asset.Height_PX, sha256: asset.SHA256,
-        isPrimary: link.Is_Primary === true, catalogApproved: link.Catalog_Approved === true,
-        dataSheetApproved: link.DataSheet_Approved === true, linkStatus: link.Link_Status,
-        source: link.Target_Type, catalogOrder: Number(link.Catalog_Order) || 0,
-        dataSheetOrder: Number(link.DataSheet_Order) || 0
-      });
-    });
-    return sortImages_(result, orderField);
-  }
-  function getImagesForProduct(productId, variantId, usage) {
-    var product = resolveTarget_("PRODUCT", productId);
-    usage = usage || "ALL";
-    require_(["ALL", "CATALOG", "DATASHEET"].indexOf(usage) >= 0, "IMAGE_USAGE_INVALID");
-    var allLinks = SheetsRepository.listAll("Image_Links") || [];
-    var productLinks = allLinks.filter(function (l) {
-      return l.Target_Type === "PRODUCT" && l.Target_ID === product.id;
-    });
-    var variantLinks = [];
-    if (variantId) {
-      var variant = resolveTarget_("VARIANT", variantId);
-      require_(variant.id && SheetsRepository.getBy("Variants", "Variant_ID", variant.id).Product_ID === product.id,
-        "VARIANT_PRODUCT_MISMATCH");
-      variantLinks = allLinks.filter(function (l) {
-        return l.Target_Type === "VARIANT" && l.Target_ID === variant.id;
-      });
-    }
-    function select_(field, order) {
-      var variantImages = project_(variantLinks, field, order);
-      return variantImages.length ? variantImages : project_(productLinks, field, order);
-    }
-    var catalog = select_("Catalog_Approved", "catalogOrder");
-    var dataSheet = select_("DataSheet_Approved", "dataSheetOrder");
-    var images = usage === "CATALOG" ? catalog : usage === "DATASHEET" ? dataSheet :
-      catalog.concat(dataSheet.filter(function (item) {
-        return !catalog.some(function (c) { return c.imageId === item.imageId; });
-      }));
-    return { productId: product.id, variantId: variantId || null, usage: usage,
-      images: images, catalogImages: catalog, dataSheetImages: dataSheet, count: images.length };
-  }
-
-  function findDuplicateBySha256(sha256) {
-    require_(/^[a-f0-9]{64}$/i.test(String(sha256 || "")), "IMAGE_SHA256_INVALID");
-    var digest = String(sha256).toLowerCase();
-    var all = SheetsRepository.listAll("Image_Assets") || [];
-    for (var i = 0; i < all.length; i++) {
-      if (String(all[i].SHA256 || "").toLowerCase() === digest && all[i].Lifecycle_Status === "ACTIVE") {
-        return { duplicate: true, imageId: all[i].Image_ID, driveFileId: all[i].Original_File_ID };
-      }
-    }
-    return { duplicate: false };
-  }
-  return { linkToTarget: linkToTarget, setApproval: setApproval, setPrimary: setPrimary,
-    getImagesForProduct: getImagesForProduct, findDuplicateBySha256: findDuplicateBySha256 };
-})();
-
-
-
-
-// ===== domain/ReviewDashboard.js =====
-/** Read-only browser projection for the human review queue. */
-var ReviewDashboard = (function () {
-  function safeUrl_(fileId) {
-    if (!fileId || typeof fileId !== "string") return "";
-    try { return DriveApp.getFileById(fileId).getUrl(); } catch (err) { return ""; }
-  }
-  function index_(rows, key) {
-    var out = {};
-    (rows || []).forEach(function (row) { if (row && row[key]) out[String(row[key])] = row; });
-    return out;
-  }
-  function short_(value, limit) {
-    var s = value === null || value === undefined ? "" : String(value);
-    return s.length > limit ? s.slice(0, limit) + "…" : s;
-  }
-  function candidateSummary_(artifact) {
-    var set = artifact && artifact.product_candidates || {};
-    function pick(list, fields) {
-      return (Array.isArray(list) ? list : []).slice(0, 30).map(function (item) {
-        var out = {};
-        fields.forEach(function (field) {
-          if (item && item[field] !== undefined && item[field] !== null) out[field] = short_(item[field], 500);
-        });
-        return out;
-      });
-    }
-    return {
-      products: pick(set.products, ["proposed_product_name", "proposed_product_reference", "source_quote", "confidence"]),
-      variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
-      specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
-      extractedText: short_(artifact && artifact.extracted_text, 1800),
-      pageText: short_(artifact && artifact.extracted_text, 1800),
-      pageNumber: artifact && artifact.page_number || "",
-      extractionMethod: artifact && artifact.extraction_method || ""
-    };
-  }
-  function getQueue() {
-    var reviews = SheetsRepository.listRecent("Review_Queue", 250);
-    var links = SheetsRepository.listAll("Review_Staging_Links");
-    var products = index_(SheetsRepository.listAll("Staging_Products"), "Staging_ID");
-    var variants = index_(SheetsRepository.listAll("Staging_Variants"), "Staging_ID");
-    var specs = index_(SheetsRepository.listAll("Staging_Specifications"), "Staging_ID");
-    var images = index_(SheetsRepository.listAll("Staging_Images"), "Staging_ID");
-    var docs = index_(SheetsRepository.listAll("Staging_Documents"), "Staging_ID");
-    var catalogs = index_(SheetsRepository.listAll("Catalogs"), "Catalog_ID");
-    var pages = index_(SheetsRepository.listAll("Catalog_Pages"), "Catalog_Page_ID");
-    var units = SheetsRepository.listAll("Run_Units");
-    var artifacts = {};
-    var linksByReview = {};
-    links.forEach(function (link) {
-      (linksByReview[link.Review_Queue_ID] || (linksByReview[link.Review_Queue_ID] = [])).push(link);
-    });
-    function artifactSummary_(id) {
-      if (!id) return null;
-      if (Object.prototype.hasOwnProperty.call(artifacts, id)) return artifacts[id];
-      try {
-        var data = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString("UTF-8"));
-        artifacts[id] = candidateSummary_(data);
-      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE", warning: true }; }
-      return artifacts[id];
-    }
-    var items = reviews.map(function (review) {
-      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 200);
-      var evidence = [], artifactId = "", runId = "", catalogId = "";
-      linked.forEach(function (link) {
-        var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
-        if (!row) return;
-        var type = products[link.Staging_ID] ? "PRODUCT" : variants[link.Staging_ID] ? "VARIANT" :
-          specs[link.Staging_ID] ? "SPECIFICATION" : images[link.Staging_ID] ? "IMAGE" : "DOCUMENT";
-        if (!artifactId && row.Raw_Extract_File_ID) artifactId = row.Raw_Extract_File_ID;
-        runId = runId || row.Run_ID || "";
-        catalogId = catalogId || row.Catalog_ID || "";
-        var page = pages[row.Catalog_Page_ID] || {};
-        evidence.push({
-          stagingId: row.Staging_ID, type: type, table: type, role: link.Review_Role || "",
-          pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
-          productName: row.Proposed_Product_Name_EN || "", productReference: row.Proposed_Product_Reference || "",
-          modelNumber: row.Proposed_Model_Number || "", modelName: row.Proposed_Model_Name || "",
-          attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
-          value: row.Value_Raw || row.Normalized_Value_JSON || "", unit: row.Unit_Raw || row.Normalized_Unit || "",
-          imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
-          fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
-          imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
-          parentProductStagingId: row.Parent_Staging_Product_ID || "",
-          parentVariantStagingId: row.Parent_Staging_Variant_ID || "",
-          scope: row.Scope || "", parseStatus: row.Parse_Status || "",
-          proposedStatus: row.Proposed_Status || "",
-          confidence: row.Confidence === undefined ? "" : row.Confidence,
-          extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
-          quote: short_(row.Extracted_Text, 700),
-          sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
-        });
-      });
-      var pageId = "";
-      var match = String(review.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
-      if (match) { pageId = match[1]; runId = runId || match[2]; }
-      var unit = units.find(function (u) { return u.Run_ID === runId && u.Catalog_Page_ID === pageId; });
-      if (!artifactId && unit) artifactId = unit.Output_Manifest_File_ID || "";
-      if (!catalogId && runId) {
-        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
-        catalogId = run && run.Catalog_ID || "";
-      }
-      var catalog = catalogs[catalogId] || {}, page = pages[pageId] || {};
-      var artifact = artifactSummary_(artifactId);
-      if (artifact && !page.Page_Number && artifact.pageNumber) page = { Page_Number: artifact.pageNumber };
-      if (artifact) artifact.fileUrl = safeUrl_(artifactId);
-      return {
-        id: review.Review_Queue_ID, reviewId: review.Review_Queue_ID,
-        type: review.Review_Type, status: review.Review_Status,
-        priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
-        action: short_(review.Proposed_Action, 1800),
-        notes: short_(review.Decision_Notes || "", 1500),
-        decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
-        runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
-        catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
-        sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
-        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId),
-        evidence: evidence, links: evidence, artifact: artifact, pageArtifact: artifact
-      };
-    });
-    var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
-    items.forEach(function (item) {
-      if (item.status === "OPEN") counts.open += 1;
-      else if (item.status === "IN_REVIEW") counts.inReview += 1;
-      else if (item.status === "DEFERRED") counts.deferred += 1;
-      else counts.closed += 1;
-    });
-    return { items: items, counts: counts, limit: 250, readOnly: true };
-  }
-  return { getQueue: getQueue };
-})();
-
-// ===== domain/ReviewWorkspace.js =====
-/** Human review actions and immutable decision/Staging Set generation.
- * Product approval is explicit and limited to PRODUCT_MATCH tasks.
- * Variant/specification decisions are not inferred; the builder validates parent references if supplied later.
- */
-var ReviewWorkspace = (function () {
-  var ALLOWED = { OPEN: true, IN_REVIEW: true, DEFERRED: true, REJECTED: true };
-  var TRANSITIONS = {
-    OPEN: { IN_REVIEW: true, DEFERRED: true, REJECTED: true },
-    IN_REVIEW: { OPEN: true, DEFERRED: true, REJECTED: true },
-    DEFERRED: { OPEN: true, IN_REVIEW: true, REJECTED: true },
-    REJECTED: {}
-  };
-  function fail_(code) { throw new Error(code); }
-  function text_(value, limit) {
-    var s = value === null || value === undefined ? "" : String(value).trim();
-    if (s.length > limit) fail_("REVIEW_TEXT_TOO_LONG");
-    return s;
-  }
-  function sha_(value) {
-    var bytes = typeof value === "string" ? Utilities.newBlob(value, "application/json").getBytes() : value;
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
-      var n = b < 0 ? b + 256 : b, h = n.toString(16);
-      return h.length === 1 ? "0" + h : h;
-    }).join("");
-  }
-  function runFolder_(runId) {
-    var rootId = (PropertiesService.getScriptProperties().getProperty("DEV_RUNS_FOLDER_ID") || "").trim();
-    if (!rootId) fail_("CONFIG_MISSING_DEV_RUNS_FOLDER_ID");
-    var folders = DriveApp.getFolderById(rootId).getFoldersByName(runId);
-    if (!folders.hasNext()) fail_("REVIEW_RUN_FOLDER_NOT_FOUND");
-    return folders.next();
-  }
-  function immutableJsonFile_(folder, name, payload) {
-    var content = JSON.stringify(payload), files = folder.getFilesByName(name);
-    if (files.hasNext()) {
-      var existing = files.next();
-      if (existing.getBlob().getDataAsString("UTF-8") !== content) fail_("REVIEW_DECISION_IMMUTABLE_CONFLICT");
-      return { file: existing, content: content, sha256: sha_(content), reused: true };
-    }
-    var file = folder.createFile(name, content, MimeType.JSON);
-    return { file: file, content: content, sha256: sha_(content), reused: false };
-  }
-  function array_(value, code) {
-    if (value === undefined || value === null) return [];
-    if (!Array.isArray(value) || value.length > 200) fail_(code);
-    return value;
-  }
-  function buildCandidateDecisions_(options, reviewId, primary, links) {
-    var allowed = {};
-    links.forEach(function (link) {
-      if (link.Review_Role === "EVIDENCE") allowed[String(link.Staging_ID)] = true;
-    });
-    var variantInputs = array_(options.variants, "REVIEW_VARIANTS_INVALID");
-    var specInputs = array_(options.specifications, "REVIEW_SPECIFICATIONS_INVALID");
-    var expectedVariants = {}, expectedSpecifications = {};
-    links.forEach(function (link) {
-      if (link.Review_Role !== "EVIDENCE") return;
-      if (SheetsRepository.getBy("Staging_Variants", "Staging_ID", link.Staging_ID)) expectedVariants[String(link.Staging_ID)] = true;
-      if (SheetsRepository.getBy("Staging_Specifications", "Staging_ID", link.Staging_ID)) expectedSpecifications[String(link.Staging_ID)] = true;
-    });
-    var seen = {};
-    function claim_(id, kind) {
-      id = text_(id, 160);
-      if (!id || !allowed[id]) fail_("REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE");
-      if (seen[id]) fail_("REVIEW_CANDIDATE_DUPLICATE");
-      seen[id] = true;
-      var table = kind === "VARIANT" ? "Staging_Variants" : "Staging_Specifications";
-      var row = SheetsRepository.getBy(table, "Staging_ID", id);
-      if (!row || row.Run_ID !== primary.Run_ID || row.Catalog_ID !== primary.Catalog_ID) fail_("REVIEW_CANDIDATE_CONTEXT_MISMATCH");
-      return row;
-    }
-    var variants = variantInputs.map(function (input) {
-      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_VARIANT_DECISION_INVALID");
-      var row = claim_(input.stagingId, "VARIANT");
-      var parent = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
-      if (input.reviewStatus === "ACCEPTED" && parent !== primary.Staging_ID) fail_("REVIEW_VARIANT_PARENT_INVALID");
-      if (input.reviewStatus === "ACCEPTED" && !text_(row.Proposed_Model_Number, 160)) fail_("REVIEW_VARIANT_MODEL_NUMBER_REQUIRED");
-      return {
-        staging_id: row.Staging_ID, parent_staging_product_id: parent,
-        proposed_model_number: text_(row.Proposed_Model_Number, 160),
-        proposed_model_name: text_(row.Proposed_Model_Name, 250),
-        source_quote: text_(row.Extracted_Text, 4000),
-        review_status: input.reviewStatus
-      };
-    });
-    var acceptedVariants = {};
-    variants.forEach(function (v) { if (v.review_status === "ACCEPTED") acceptedVariants[v.staging_id] = true; });
-    var specifications = specInputs.map(function (input) {
-      if (!input || ["ACCEPTED", "REJECTED"].indexOf(input.reviewStatus) < 0) fail_("REVIEW_SPECIFICATION_DECISION_INVALID");
-      var row = claim_(input.stagingId, "SPECIFICATION");
-      var parentProduct = input.reviewStatus === "ACCEPTED" ? text_(input.parentProductStagingId, 160) : "";
-      var scope = input.reviewStatus === "ACCEPTED" ? text_(input.scope, 20).toUpperCase() : "";
-      var parentVariant = input.reviewStatus === "ACCEPTED" ? text_(input.parentVariantStagingId, 160) : "";
-      if (input.reviewStatus === "ACCEPTED" && parentProduct !== primary.Staging_ID) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_INVALID");
-      if (input.reviewStatus === "ACCEPTED" && ["PRODUCT", "VARIANT"].indexOf(scope) < 0) fail_("REVIEW_SPECIFICATION_SCOPE_REQUIRED");
-      if (scope === "PRODUCT" && parentVariant) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
-      if (scope === "VARIANT" && (!parentVariant || !acceptedVariants[parentVariant])) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_INVALID");
-      var originalValue = text_(row.Value_Raw, 1000);
-      var originalUnit = text_(row.Unit_Raw, 80);
-      var finalValue = input.reviewStatus === "ACCEPTED" && input.valueRaw !== undefined
-        ? text_(input.valueRaw, 1000) : originalValue;
-      if (input.reviewStatus === "ACCEPTED" && !finalValue) fail_("REVIEW_SPECIFICATION_VALUE_REQUIRED");
-      var reason = text_(input.editReason || "", 500);
-      var unit = input.reviewStatus === "ACCEPTED" && input.unitRaw !== undefined
-        ? text_(input.unitRaw, 80) : originalUnit;
-      if ((finalValue !== originalValue || unit !== originalUnit) && !reason) fail_("REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED");
-      return {
-        staging_id: row.Staging_ID, parent_staging_product_id: parentProduct,
-        parent_staging_variant_id: parentVariant, scope: scope,
-        attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
-        original_value_raw: originalValue, value_raw: finalValue,
-        original_unit_raw: originalUnit, unit_raw: unit,
-        edited: finalValue !== originalValue || unit !== originalUnit,
-        edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
-        source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
-      };
-    });
-    if (variants.length !== Object.keys(expectedVariants).length ||
-        specifications.length !== Object.keys(expectedSpecifications).length) {
-      fail_("REVIEW_CANDIDATE_DECISIONS_INCOMPLETE");
-    }
-    return { variants: variants, specifications: specifications };
-  }
-  function updateStatus(options, actor) {
-    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
-    var next = String(options.status || "");
-    if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
-    var notes = text_(options.notes || "", 1500);
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
-      if (!current) fail_("REVIEW_NOT_FOUND");
-      var from = String(current.Review_Status || "");
-      if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
-      var now = new Date().toISOString(), patch = { Review_Status: next, Decision_Notes: notes };
-      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = String(actor);
-      if (next === "REJECTED" || next === "DEFERRED") { patch.Reviewed_At = now; patch.Reviewed_By = String(actor); }
-      if (next === "OPEN") { patch.Assigned_Actor_ID = ""; patch.Reviewed_At = ""; patch.Reviewed_By = ""; }
-      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, patch);
-      return { reviewId: options.reviewId, previousStatus: from, status: next };
-    } finally { lock.releaseLock(); }
-  }
-  function approveProductReview(options, actor) {
-    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
-    var productName = text_(options.productName, 300);
-    if (!productName) fail_("REVIEW_PRODUCT_NAME_REQUIRED");
-    if (/[\u0600-\u06FF]/.test(productName)) fail_("REVIEW_PRODUCT_NAME_MUST_BE_ENGLISH");
-    var identityResolution = text_(options.identityResolution || "", 30).toUpperCase();
-    if (["CREATE_NEW", "MATCH_EXISTING"].indexOf(identityResolution) < 0) fail_("REVIEW_IDENTITY_RESOLUTION_REQUIRED");
-    var canonicalProductId = text_(options.canonicalProductId || "", 160);
-    var matchRationale = text_(options.matchRationale || "", 1000);
-    if (identityResolution === "MATCH_EXISTING") {
-      var matchedProduct = SheetsRepository.getBy("Products", "Product_ID", canonicalProductId);
-      if (!matchedProduct || matchedProduct.Lifecycle_Status !== "ACTIVE") fail_("REVIEW_MATCH_PRODUCT_NOT_ACTIVE");
-      if (!matchRationale) fail_("REVIEW_MATCH_RATIONALE_REQUIRED");
-    } else if (canonicalProductId) fail_("REVIEW_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
-    if (identityResolution === "CREATE_NEW" && !matchRationale) matchRationale = "Reviewer confirmed a new canonical product identity.";
-    var notes = text_(options.notes || "", 1500);
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var requestFingerprint = sha_(JSON.stringify({
-      productName: productName, identityResolution: identityResolution,
-      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
-      notes: notes, variants: options.variants || [], specifications: options.specifications || []
-    }));
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
-      if (!review) fail_("REVIEW_NOT_FOUND");
-      if (review.Review_Type !== "PRODUCT_MATCH") fail_("REVIEW_PRODUCT_TASK_REQUIRED");
-      if (review.Review_Status === "APPROVED") {
-        var approvedFile = DriveApp.getFileById(review.Decision_JSON_File_ID);
-        var approved = JSON.parse(approvedFile.getBlob().getDataAsString("UTF-8"));
-        if (approved.products && approved.products[0] &&
-            approved.products[0].proposed_product_name === productName &&
-            approved.products[0].identity_resolution === identityResolution &&
-            String(approved.products[0].canonical_product_id || "") === canonicalProductId &&
-            approved.products[0].review_request_sha256 === requestFingerprint) {
-          return { status: "APPROVED", decisionFileId: review.Decision_JSON_File_ID, decisionSha256: review.Decision_SHA256, reused: true };
-        }
-        fail_("REVIEW_DECISION_ALREADY_APPROVED");
-      }
-      if (["OPEN", "IN_REVIEW"].indexOf(review.Review_Status) < 0) fail_("REVIEW_TASK_NOT_ACTIONABLE");
-      var links = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
-        return link.Review_Queue_ID === options.reviewId && link.Review_Role === "PRIMARY";
-      });
-      if (links.length !== 1) fail_("REVIEW_PRIMARY_STAGING_LINK_INVALID");
-      var staging = SheetsRepository.getBy("Staging_Products", "Staging_ID", links[0].Staging_ID);
-      if (!staging) fail_("REVIEW_STAGING_PRODUCT_NOT_FOUND");
-      var reviewLinks = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
-        return link.Review_Queue_ID === options.reviewId;
-      });
-      var candidateDecisions = buildCandidateDecisions_(options, options.reviewId, staging, reviewLinks);
-      var payload = {
-        schema_version: 1,
-        run_id: staging.Run_ID,
-        catalog_id: staging.Catalog_ID,
-        source_key_algorithm_version: "source-key-v1",
-        products: [{
-          staging_id: staging.Staging_ID,
-          catalog_page_id: staging.Catalog_Page_ID,
-          proposed_product_name: productName,
-          identity_resolution: identityResolution,
-          canonical_product_id: canonicalProductId,
-          match_rationale: matchRationale,
-          review_request_sha256: requestFingerprint,
-          source_quote: text_(staging.Extracted_Text || "", 2000),
-          review_status: "ACCEPTED",
-          staging_record_hash: staging.Staging_Record_Hash
-        }],
-        variants: candidateDecisions.variants,
-        specifications: candidateDecisions.specifications
-      };
-      var saved = immutableJsonFile_(runFolder_(staging.Run_ID), "review-decision-" + options.reviewId + ".json", payload);
-      var now = new Date().toISOString();
-      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, {
-        Review_Status: "APPROVED", Decision_JSON_File_ID: saved.file.getId(),
-        Decision_SHA256: saved.sha256, Reviewed_Payload_Hash: saved.sha256,
-        Decision_Notes: notes, Reviewed_At: now, Reviewed_By: String(actor)
-      });
-      return { status: "APPROVED", decisionFileId: saved.file.getId(), decisionSha256: saved.sha256, reused: saved.reused };
-    } finally { lock.releaseLock(); }
-  }
-  function buildStagingSetForRun(runId, actor) {
-    var id = text_(runId, 120);
-    if (!id) fail_("REVIEW_RUN_ID_REQUIRED");
-    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var lock = LockService.getScriptLock(); lock.waitLock(30000);
-    try {
-      var queue = SheetsRepository.listAll("Review_Queue");
-      var products = [], variants = [], specifications = [], included = [], catalogId = "";
-      queue.filter(function (q) { return q.Review_Status === "APPROVED" && q.Decision_JSON_File_ID; }).forEach(function (q) {
-        var file = DriveApp.getFileById(q.Decision_JSON_File_ID);
-        if (!file) fail_("REVIEW_DECISION_FILE_NOT_FOUND");
-        var blob = file.getBlob(), bytes = blob.getBytes();
-        if (sha_(bytes) !== q.Decision_SHA256) fail_("REVIEW_DECISION_SHA_MISMATCH");
-        var decision;
-        try { decision = JSON.parse(blob.getDataAsString("UTF-8")); } catch (e) { fail_("REVIEW_DECISION_INVALID_JSON"); }
-        if (!decision || decision.run_id !== id) return;
-        if (!catalogId) catalogId = decision.catalog_id;
-        if (catalogId !== decision.catalog_id) fail_("REVIEW_DECISION_CATALOG_MISMATCH");
-        if (!Array.isArray(decision.products) || !Array.isArray(decision.variants) || !Array.isArray(decision.specifications)) fail_("REVIEW_DECISION_STRUCTURE_INVALID");
-        products = products.concat(decision.products);
-        variants = variants.concat(decision.variants);
-        specifications = specifications.concat(decision.specifications);
-        included.push(q);
-      });
-      if (!included.length || !products.length) fail_("REVIEW_NO_APPROVED_PRODUCTS_FOR_RUN");
-      function unique_(records, label) {
-        var seen = {};
-        records.forEach(function (record) {
-          if (!record || !record.staging_id || seen[record.staging_id]) fail_("REVIEW_DUPLICATE_OR_INVALID_" + label);
-          seen[record.staging_id] = true;
-        });
-        return seen;
-      }
-      var productIds = unique_(products, "PRODUCT");
-      var variantIds = unique_(variants, "VARIANT");
-      var variantsByStagingId = {};
-      variants.forEach(function (v) {
-        if (!v || v.review_status !== "ACCEPTED") return;
-        if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
-        variantsByStagingId[v.staging_id] = v;
-      });
-      specifications.forEach(function (s) {
-        if (!s || s.review_status !== "ACCEPTED") return;
-        if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
-        if (s.scope === "PRODUCT") {
-          if (s.parent_staging_variant_id) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
-          return;
-        }
-        if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
-        if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
-        var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
-        if (!parentVariant || parentVariant.parent_staging_product_id !== s.parent_staging_product_id) {
-          fail_("REVIEW_SPECIFICATION_PARENT_MISMATCH");
-        }
-      });
-      var stagingSet = {
-        run_id: id, catalog_id: catalogId, source_key_algorithm_version: "source-key-v1",
-        products: products, variants: variants, specifications: specifications
-      };
-      var content = JSON.stringify(stagingSet), digest = sha_(content);
-      var saved = immutableJsonFile_(runFolder_(id), "staging-set-" + digest.slice(0, 16) + ".json", stagingSet);
-      included.forEach(function (q) {
-        SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", q.Review_Queue_ID, {
-          Staging_Set_Manifest_File_ID: saved.file.getId(), Staging_Set_SHA256: digest
-        });
-      });
-      return { status: "READY_FOR_PROMOTION", runId: id, catalogId: catalogId,
-        products: products.length, variants: variants.length, specifications: specifications.length,
-        stagingSetFileId: saved.file.getId(), stagingSetSha256: digest, reused: saved.reused };
-    } finally { lock.releaseLock(); }
-  }
-  return {
-    updateStatus: updateStatus,
-    approveProductReview: approveProductReview,
-    buildStagingSetForRun: buildStagingSetForRun
-  };
-})();
-
-
 // ===== api/Api.js =====
 var Api = (function () {
   function requestId_(body) {
@@ -5562,6 +5746,13 @@ function intakeImagesFromBrowser(payload) {
   });
 }
 
+/** Owner-only decision endpoint for an actual IMAGE_QUALITY task. */
+function decideImageReviewFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("IMAGE_REVIEW_PAYLOAD_INVALID");
+  return ImageReviewService.decide(payload, APP.ACTOR_ID);
+}
+
 function doPost(e) {
   return Api.post(e);
 }
@@ -5609,4 +5800,5 @@ function buildStagingSetFromBrowser(payload) {
   if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
   return ReviewWorkspace.buildStagingSetForRun(payload.runId, APP.ACTOR_ID);
 }
+
 
