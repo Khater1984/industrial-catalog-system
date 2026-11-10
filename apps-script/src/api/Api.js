@@ -77,16 +77,7 @@ var Api = (function () {
         });
         return success_(requestId, promoted);
       }
-      if (body.action === "images.promote") {
-        var imgPayload = InputValidation.imagesPromotePayload(p);
-        var imgResult = ImagePromotion.promoteAcceptedImages({
-          images: imgPayload.images,
-          run_id: imgPayload.run_id,
-          catalog_id: imgPayload.catalog_id,
-          actor: actor
-        });
-        return success_(requestId, imgResult);
-      }
+      if (body.action === "images.promote") throw new Error("IMAGE_PROMOTION_REQUIRES_REVIEW_TASK");
       if (body.action === "images.intake") {
         var intakeResult = ImageReviewIntake.intake({
           imageManifestFileId: p.imageManifestFileId,
@@ -279,16 +270,12 @@ function promoteStagingFromBrowser(payload) {
   });
 }
 
-/** Owner-only endpoint for promoting accepted images. */
-function promoteImagesFromBrowser(payload) {
+/** Legacy direct image promotion is intentionally disabled.
+ * Images can only be promoted from a verified IMAGE_QUALITY review decision.
+ */
+function promoteImagesFromBrowser() {
   assertPrimaryUser_();
-  var validated = InputValidation.imagesPromotePayload(payload || {});
-  return ImagePromotion.promoteAcceptedImages({
-    images: validated.images,
-    run_id: validated.run_id,
-    catalog_id: validated.catalog_id,
-    actor: APP.ACTOR_ID
-  });
+  throw new Error("IMAGE_PROMOTION_REQUIRES_REVIEW_TASK");
 }
 
 /** Owner-only endpoint for image review intake. */
