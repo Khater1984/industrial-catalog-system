@@ -177,6 +177,7 @@ var CandidateReviewIntake = (function () {
       Source_Key_Algorithm_Version: "candidate-spec-v1",
       Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
       Source_Assertion_Key: sourceKey,
+      Parent_Staging_Product_ID: "UNASSIGNED",
       Scope: "VARIANT",
       Attribute_Key_Raw: key, Value_Raw: value, Unit_Raw: text_(candidate.unit_raw, 80),
       Normalized_Key: key, Normalized_Value_JSON: JSON.stringify(value),
