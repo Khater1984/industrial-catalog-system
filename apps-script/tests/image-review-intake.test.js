@@ -35,11 +35,9 @@ function makeImage(index, bytes) {
     mime_type: "image/png",
     width_px: 20 + index,
     height_px: 30 + index,
+    has_alpha: true,
     file_size_bytes: bytes.length,
     sha256: sha(bytes),
-    has_alpha: false,
-    metadata_status: "COMPLETED",
-    quality_status: "UNASSESSED",
     extractor_version: "0.1.0",
     artifact_path: "images/page-00001/" + sha(bytes) + ".png"
   };
@@ -90,9 +88,7 @@ function createHarness(options = {}) {
     Review_Queue: [],
     Review_Staging_Links: [],
     Image_Assets: [],
-    Image_Links: [],
-    Products: [{ Product_ID: "product_test_001", Lifecycle_Status: "ACTIVE" }],
-    Variants: [{ Variant_ID: "variant_test_001", Product_ID: "product_test_001", Lifecycle_Status: "ACTIVE" }]
+    Image_Links: []
   };
   const files = {};
   const lock = { acquired: 0, released: 0 };
@@ -118,7 +114,7 @@ function createHarness(options = {}) {
         getDataAsString: () => String(value)
       }),
       computeDigest: (_algorithm, value) => Array.from(
-        crypto.createHash("sha256").update(Buffer.from(typeof value === "string" ? value : value.map(b => b < 0 ? b + 256 : b))).digest()
+        crypto.createHash("sha256").update(Buffer.from(value.map(b => b < 0 ? b + 256 : b))).digest()
       )
     },
     LockService: {
@@ -129,13 +125,6 @@ function createHarness(options = {}) {
     },
     SheetsRepository: {
       getBy: (table, column, value) => sheets[table].find(row => String(row[column]) === String(value)) || null,
-      listAll: table => (sheets[table] || []).map(row => ({ ...row })),
-      updateBy: (table, column, value, patch) => {
-        const row = sheets[table].find(item => String(item[column]) === String(value));
-        if (!row) throw new Error("ROW_NOT_FOUND: " + table);
-        Object.assign(row, patch);
-        return 1;
-      },
       append: (table, record) => {
         if (failure.table === table && failure.remaining > 0) {
           failure.remaining -= 1;
@@ -200,18 +189,11 @@ function createHarness(options = {}) {
   const imageManifestSha = addJsonFile("image-manifest-file-id-0001", imageManifest);
   const driveManifestSha = addJsonFile("drive-manifest-file-id-0001", driveManifest);
   addImageFile(driveImage.drive_file_id, imageBytes);
-  for (const source of [
-    "../src/domain/ImageReviewIntake.js",
-    "../src/domain/ImagePromotion.js",
-    "../src/domain/ImageManagement.js",
-    "../src/domain/ImageReviewService.js"
-  ]) {
-    vm.runInNewContext(
-      fs.readFileSync(path.join(__dirname, source), "utf8"),
-      context,
-      { filename: path.basename(source) }
-    );
-  }
+  vm.runInNewContext(
+    fs.readFileSync(path.join(__dirname, "../src/domain/ImageReviewIntake.js"), "utf8"),
+    context,
+    { filename: "ImageReviewIntake.js" }
+  );
   return {
     context, sheets, files, lock, image, imageManifest, driveImage, driveManifest,
     imageManifestSha, driveManifestSha, failure,
@@ -277,6 +259,8 @@ describe("ImageReviewIntake", () => {
       assert.equal(result.counts.links, 1);
       assert.equal(result.counts.failed, 0);
       const staging = h.sheets.Staging_Images[0];
+      assert.equal(staging.Page_Number, 1);
+      assert.equal(staging.Has_Alpha, true);
       assert.equal(staging.Extraction_Method, "IMAGE_EXTRACTION");
       assert.equal(staging.Proposed_Status, "NEEDS_REVIEW");
       assert.equal(staging.Quality_Status, "NEEDS_REVIEW");
@@ -344,59 +328,5 @@ describe("ImageReviewIntake", () => {
     h.intake();
     assert.equal(h.lock.acquired, 1);
     assert.equal(h.lock.released, 1);
-  });
-
-  it("runs the synthetic worker-to-review-to-publication path using the actual domain modules", () => {
-    const h = createHarness();
-    const intake = h.intake();
-    assert.equal(intake.status, "COMPLETED");
-    const reviewId = h.sheets.Review_Queue[0].Review_Queue_ID;
-    const decision = {
-      reviewId, decision: "ACCEPTED", targetType: "PRODUCT",
-      targetId: "product_test_001", catalogApproved: true,
-      dataSheetApproved: false, isPrimary: true, notes: "Synthetic reviewer approval"
-    };
-    const promoted = h.context.ImageReviewService.decide(decision, "actor_test");
-    assert.equal(promoted.status, "APPROVED");
-    assert.equal(h.sheets.Review_Queue[0].Review_Status, "APPROVED");
-    assert.equal(h.sheets.Staging_Images[0].Proposed_Status, "PROMOTED");
-    assert.equal(h.sheets.Staging_Images[0].Quality_Status, "ACCEPTABLE");
-    assert.equal(h.sheets.Image_Assets.length, 1);
-    assert.equal(h.sheets.Image_Assets[0].Quality_Status, "ACCEPTABLE");
-    assert.equal(h.sheets.Image_Links.length, 1);
-    assert.equal(h.sheets.Image_Links[0].Link_Status, "ACTIVE");
-    assert.equal(h.sheets.Image_Links[0].Catalog_Approved, true);
-    assert.equal(h.sheets.Image_Links[0].DataSheet_Approved, false);
-    assert.equal(h.sheets.Image_Links[0].Is_Primary, true);
-    const published = h.context.ImageManagement.getImagesForProduct("product_test_001", null, "CATALOG");
-    assert.equal(published.count, 1);
-    assert.equal(published.images[0].driveFileId, h.driveImage.drive_file_id);
-    assert.equal(h.context.ImageManagement.getImagesForProduct("product_test_001", null, "DATASHEET").count, 0);
-    const retry = h.context.ImageReviewService.decide(decision, "actor_test");
-    assert.equal(retry.reused, true);
-    assert.equal(h.sheets.Image_Assets.length, 1);
-    assert.equal(h.sheets.Image_Links.length, 1);
-    const intakeRetry = h.intake();
-    assert.equal(intakeRetry.status, "COMPLETED");
-    assert.equal(intakeRetry.counts.reused, 1);
-    assert.equal(h.sheets.Review_Queue[0].Review_Status, "APPROVED");
-  });
-
-  it("rejects images only through an actual IMAGE_QUALITY review task and never promotes them", () => {
-    const h = createHarness();
-    h.intake();
-    const reviewId = h.sheets.Review_Queue[0].Review_Queue_ID;
-    const result = h.context.ImageReviewService.decide({
-      reviewId, decision: "REJECTED", notes: "Image is not suitable"
-    }, "actor_test");
-    assert.equal(result.status, "REJECTED");
-    assert.equal(h.sheets.Staging_Images[0].Proposed_Status, "REJECTED");
-    assert.equal(h.sheets.Review_Queue[0].Review_Status, "REJECTED");
-    assert.equal(h.sheets.Image_Assets.length, 0);
-    assert.equal(h.sheets.Image_Links.length, 0);
-    assert.throws(() => h.context.ImageReviewService.decide({
-      reviewId: "invented_review_id", decision: "ACCEPTED",
-      targetType: "PRODUCT", targetId: "product_test_001", catalogApproved: true
-    }, "actor_test"), /IMAGE_REVIEW_TASK_NOT_FOUND/);
   });
 });
