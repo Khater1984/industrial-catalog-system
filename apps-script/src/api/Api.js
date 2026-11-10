@@ -279,12 +279,6 @@ function doPost(e) {
 }
 
 
-/** Owner-only review inbox data for the DEV dashboard. */
-function getReviewInboxFromBrowser() {
-  assertPrimaryUser_();
-  return ReviewWorkspace.getInbox();
-}
-
 /** Owner-only review queue state update; this does not approve or promote staging data. */
 function updateReviewStatusFromBrowser(payload) {
   assertPrimaryUser_();
