@@ -26,7 +26,7 @@ from catalog_worker.ocr import extract_page_text, is_text_usable
 
 WORKER_VERSION = "0.2.3"
 PROTOCOL_VERSION = "1"
-OCR_RENDER_DPI = 150
+OCR_RENDER_DPI = 240
 
 
 class WorkerError(Exception):

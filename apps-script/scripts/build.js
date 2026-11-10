@@ -31,6 +31,8 @@ const order = [
   "domain/ImageReviewIntake.js",
   "domain/ImageReviewDecision.js",
   "domain/ImageManagement.js",
+  "domain/ReviewDashboard.js",
+  "domain/ReviewWorkspace.js",
 
   // Documents, backups, and design
   "domain/DocumentService.js",

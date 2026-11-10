@@ -32,9 +32,9 @@ except ImportError:
 from .ocr import extract_page_text, is_text_usable
 from .product_extractor import extract_candidates
 
-OCR_RENDER_DPI = 160
+OCR_RENDER_DPI = 240
 
-WORKER_VERSION = "0.2.4"
+WORKER_VERSION = "0.2.5"
 PROTOCOL_VERSION = "1"
 MANIFEST_VERSION = 2
 RUN_TYPE = "CATALOG_EXTRACTION"
@@ -383,7 +383,7 @@ def process_resumable_catalog_job(
     toolchain = (
         f"pypdf/{getattr(pypdf, '__version__', 'unknown')}|"
         f"pymupdf/{getattr(fitz, 'VersionBind', 'unavailable')}|"
-        f"ocr/{ocr_languages}/min-chars-{min_usable_chars}|product-extractor/heuristic-v1"
+        f"ocr/{ocr_languages}/min-chars-{min_usable_chars}/render-dpi-{OCR_RENDER_DPI}|product-extractor/heuristic-v1"
     )
     logical_input = {
         "catalog_id": catalog_id, "source_sha256": actual_sha, "page_count": page_count,

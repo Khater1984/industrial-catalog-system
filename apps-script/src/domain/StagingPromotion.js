@@ -68,9 +68,9 @@ var StagingPromotion = (function () {
       Related_Run_ID: runId || ""
     });
   }
-  function decision_(entityType, stagingType, stagingId, stagingHash, resultId, actor, parentDecisionId) {
+  function decision_(entityType, stagingType, stagingId, stagingHash, resultId, actor, parentDecisionId, decisionType, candidateCanonicalId, rationale) {
     var existing = existingBy_("Identity_Match_Decisions", "Source_Staging_ID", stagingId);
-    if (existing) return existing;
+    var selectedDecision = decisionType || "CREATE_NEW";
     var record = {
       Match_Decision_ID: stableId_("imd", stagingType + "|" + stagingId),
       Entity_Type: entityType,
@@ -78,12 +78,20 @@ var StagingPromotion = (function () {
       Source_Staging_ID: stagingId,
       Source_Staging_Hash: stagingHash,
       Parent_Product_Match_Decision_ID: parentDecisionId || "",
-      Decision: "CREATE_NEW",
+      Candidate_Canonical_ID: candidateCanonicalId || "",
+      Decision: selectedDecision,
       Result_Canonical_ID: resultId,
-      Rationale: "Accepted staging record promoted as a new canonical identity.",
+      Rationale: text_(rationale || "Reviewer approved this canonical identity resolution.", 1000),
       Decided_At: now_(),
       Decided_By: actor
     };
+    if (existing) {
+      require_(existing.Source_Staging_Hash === stagingHash &&
+        existing.Decision === selectedDecision &&
+        String(existing.Candidate_Canonical_ID || "") === String(candidateCanonicalId || "") &&
+        existing.Result_Canonical_ID === resultId, "PROMOTION_IDENTITY_DECISION_CONFLICT");
+      return existing;
+    }
     appendOnce_("Identity_Match_Decisions", record);
     return record;
   }
@@ -138,15 +146,29 @@ var StagingPromotion = (function () {
       var counts = { products: 0, variants: 0, specifications: 0, changes: 0, rejected: 0, skipped: 0 };
       var productIds = {};
       var variantIds = {};
+      var variantParentIds = {};
+      var variantSourceIds = {};
       var productSourceIds = {};
       var productDecisionIds = {};
 
       staging.products.forEach(function (product) {
         if (!accepted_(product)) { counts.rejected += 1; return; }
         var sourceKey = text_(catalogId + "|" + product.catalog_page_id + "|" + product.proposed_product_name, 160);
-        var productId = stableId_("prd", sourceKey);
+        var identityResolution = text_(product.identity_resolution || "", 30).toUpperCase();
+        require_(identityResolution === "CREATE_NEW" || identityResolution === "MATCH_EXISTING", "PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID");
+        var canonicalCandidateId = text_(product.canonical_product_id || "", 160);
+        if (identityResolution === "MATCH_EXISTING") {
+          require_(canonicalCandidateId, "PROMOTION_MATCH_PRODUCT_ID_REQUIRED");
+          var matchedCanonicalProduct = existingBy_("Products", "Product_ID", canonicalCandidateId);
+          require_(matchedCanonicalProduct && matchedCanonicalProduct.Lifecycle_Status === "ACTIVE", "PROMOTION_MATCH_PRODUCT_NOT_ACTIVE");
+        } else {
+          require_(!canonicalCandidateId, "PROMOTION_CREATE_NEW_CANONICAL_ID_FORBIDDEN");
+        }
+        var productId = identityResolution === "MATCH_EXISTING"
+          ? canonicalCandidateId : stableId_("prd", sourceKey);
         var existingSource = existingBy_("Product_Source_Records", "Source_Record_Key", sourceKey);
         if (existingSource) {
+          require_(existingSource.Product_ID === productId, "PROMOTION_EXISTING_SOURCE_PRODUCT_CONFLICT");
           productIds[product.staging_id] = existingSource.Product_ID;
           productSourceIds[product.staging_id] = existingSource.Product_Source_Record_ID;
           productDecisionIds[product.staging_id] = existingSource.Match_Decision_ID;
@@ -154,14 +176,25 @@ var StagingPromotion = (function () {
           return;
         }
         var hash = product.staging_record_hash || sha_(product.staging_id);
-        var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor);
-        if (!existingBy_("Products", "Product_ID", productId)) {
-          appendOnce_("Products", {
-            Product_ID: productId, Lifecycle_Status: "ACTIVE",
-            Canonical_Notes: text_(product.proposed_product_name, 2000),
-            Created_At: now_(), Created_By: actor
-          });
-          counts.products += 1;
+        var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor, "",
+          identityResolution, canonicalCandidateId, product.match_rationale);
+        if (identityResolution === "CREATE_NEW") {
+          if (!existingBy_("Products", "Product_ID", productId)) {
+            appendOnce_("Products", {
+              Product_ID: productId, Lifecycle_Status: "ACTIVE",
+              Canonical_Notes: "",
+              Created_At: now_(), Created_By: actor
+            });
+            counts.products += 1;
+          }
+          if (!existingBy_("Product_Company", "Product_ID", productId)) {
+            appendOnce_("Product_Company", {
+              Product_ID: productId, Product_Name_EN: "", Product_Name_AR: "",
+              Company_Description: "", Manufacturer_or_Product_Brand_Label: "",
+              Product_Family_ID: "", Company_Notes: "",
+              Updated_At: now_(), Updated_By: actor
+            });
+          }
         }
         var sourceId = stableId_("psr", sourceKey);
         appendOnce_("Product_Source_Records", {
@@ -170,12 +203,12 @@ var StagingPromotion = (function () {
           Source_Product_Name: text_(product.proposed_product_name, 300),
           Catalog_Page_ID: product.catalog_page_id, Source_Quote: text_(product.source_quote, 2000),
           Extraction_Run_ID: runId, Extraction_Record_ID: product.staging_id,
-          Identity_Resolution: "CREATE_NEW", Match_Decision_ID: decision.Match_Decision_ID,
+          Identity_Resolution: identityResolution, Match_Decision_ID: decision.Match_Decision_ID,
           Created_At: now_(), Created_By: actor
         });
         mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT", productId, "PRODUCT", productId, decision.Match_Decision_ID, product);
         mapping_(operationId, "PRODUCT", product.staging_id, "PRODUCT_SOURCE_RECORD", sourceId, "PRODUCT", productId, decision.Match_Decision_ID, product);
-        audit_(actor, "PROMOTE", "PRODUCT", productId, "Accepted staging product", runId, product);
+        audit_(actor, "PROMOTE", "PRODUCT", productId, "Accepted staging product using " + identityResolution, runId, product);
         productIds[product.staging_id] = productId;
         productSourceIds[product.staging_id] = sourceId;
         productDecisionIds[product.staging_id] = decision.Match_Decision_ID;
@@ -190,6 +223,8 @@ var StagingPromotion = (function () {
         var existingSource = existingBy_("Variant_Source_Records", "Source_Record_Key", sourceKey);
         if (existingSource) {
           variantIds[variant.staging_id] = existingSource.Variant_ID;
+          variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
+          variantSourceIds[variant.staging_id] = existingSource.Variant_Source_Record_ID;
           counts.skipped += 1;
           return;
         }
@@ -219,27 +254,55 @@ var StagingPromotion = (function () {
         mapping_(operationId, "VARIANT", variant.staging_id, "VARIANT_SOURCE_RECORD", sourceId, "VARIANT", variantId, decision.Match_Decision_ID, variant);
         audit_(actor, "PROMOTE", "VARIANT", variantId, "Accepted staging variant", runId, variant);
         variantIds[variant.staging_id] = variantId;
+        variantParentIds[variant.staging_id] = variant.parent_staging_product_id;
+        variantSourceIds[variant.staging_id] = sourceId;
       });
 
       staging.specifications.forEach(function (spec) {
         if (!accepted_(spec)) { counts.rejected += 1; return; }
         var productId = productIds[spec.parent_staging_product_id];
-        var variantId = variantIds[spec.parent_staging_variant_id];
-        if (!productId || !variantId) { counts.skipped += 1; return; }
+        var scope = text_(spec.scope, 20).toUpperCase();
+        var variantId = "";
+        var productSourceRecordId = "";
+        var variantSourceRecordId = "";
+        var canonicalEntityType = "PRODUCT";
+        var canonicalEntityId = productId;
+        require_(productId, "PROMOTION_SPEC_PRODUCT_PARENT_MISSING");
+        if (scope === "PRODUCT") {
+          require_(!spec.parent_staging_variant_id, "PROMOTION_SPEC_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+          productSourceRecordId = productSourceIds[spec.parent_staging_product_id];
+          require_(productSourceRecordId, "PROMOTION_SPEC_PRODUCT_SOURCE_MISSING");
+        } else if (scope === "VARIANT") {
+          variantId = variantIds[spec.parent_staging_variant_id];
+          require_(variantId, "PROMOTION_SPEC_VARIANT_PARENT_MISSING");
+          require_(variantParentIds[spec.parent_staging_variant_id] === spec.parent_staging_product_id, "PROMOTION_SPEC_PARENT_MISMATCH");
+          variantSourceRecordId = variantSourceIds[spec.parent_staging_variant_id];
+          require_(variantSourceRecordId, "PROMOTION_SPEC_VARIANT_SOURCE_MISSING");
+          canonicalEntityType = "VARIANT";
+          canonicalEntityId = variantId;
+        } else {
+          require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
+        }
         var original = text_(sourceValue_(spec), 2000);
-        var assertionKey = text_(variantId + "|" + spec.attribute_key_raw, 160);
+        var originalUnit = spec.edited && Object.prototype.hasOwnProperty.call(spec, "original_unit_raw")
+          ? text_(spec.original_unit_raw, 80) : text_(spec.unit_raw, 80);
+        var finalUnit = text_(spec.unit_raw, 80);
+        var sourceAssertionKey = text_(spec.source_assertion_key || spec.staging_id, 160);
+        var sourceRecordId = scope === "PRODUCT" ? productSourceRecordId : variantSourceRecordId;
+        var logicalAddKey = text_("ADD:" + canonicalEntityId + "|" + spec.attribute_key_raw, 180);
         if (original) {
-          var specId = stableId_("spec", assertionKey + "|" + original);
+          var specId = stableId_("spec", sourceRecordId + "|" + sourceAssertionKey);
           if (!existingBy_("Specifications", "Specification_ID", specId)) {
             appendOnce_("Specifications", {
-              Specification_ID: specId, Source_Assertion_Key: assertionKey,
-              Source_Key_Algorithm_Version: keyVersion, Scope: "VARIANT",
+              Specification_ID: specId, Source_Assertion_Key: sourceAssertionKey,
+              Source_Key_Algorithm_Version: keyVersion, Scope: scope,
+              Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
               Product_ID: productId, Variant_ID: variantId,
               Attribute_Key_Source: text_(spec.attribute_key_raw, 160),
-              Attribute_Value_Source: original, Unit_Source: text_(spec.unit_raw, 80),
+              Attribute_Value_Source: original, Unit_Source: originalUnit,
               Normalized_Key: text_(spec.normalized_key || spec.attribute_key_raw, 160),
               Normalized_Value_JSON: json_(original),
-              Normalized_Unit: text_(spec.normalized_unit || spec.unit_raw, 80),
+              Normalized_Unit: text_(spec.normalized_unit || originalUnit, 80),
               Catalog_Page_ID: spec.catalog_page_id, Source_Quote: text_(spec.source_quote, 2000),
               Extraction_Run_ID: runId, Extraction_Confidence: confidence_(spec.confidence),
               Created_At: now_(), Created_By: actor
@@ -247,13 +310,17 @@ var StagingPromotion = (function () {
             counts.specifications += 1;
             audit_(actor, "PROMOTE", "SPECIFICATION", specId, "Accepted source specification", runId, spec);
           } else counts.skipped += 1;
-          mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, "VARIANT", variantId, "", spec);
-          if (spec.edited && text_(spec.value_raw, 2000) && text_(spec.value_raw, 2000) !== original) {
-            var changePayload = { before: original, after: spec.value_raw };
-            var changeId = stableId_("chg", assertionKey + "|" + original + "|" + spec.value_raw);
+          mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
+          if (spec.edited && (text_(spec.value_raw, 2000) !== original || finalUnit !== originalUnit)) {
+            var changePayload = {
+              before: { value: original, unit: originalUnit },
+              after: { value: text_(spec.value_raw, 2000), unit: finalUnit }
+            };
+            var logicalSourceKey = "SRC:" + specId;
+            var changeId = stableId_("chg", logicalSourceKey + "|" + json_(changePayload));
             if (!existingBy_("Specification_Changes", "Specification_Change_ID", changeId)) {
               appendOnce_("Specification_Changes", {
-                Specification_Change_ID: changeId, Logical_Specification_Key: text_(assertionKey, 180),
+                Specification_Change_ID: changeId, Logical_Specification_Key: logicalSourceKey,
                 Sequence_No: 1, Operation: "UPDATE", Target_Specification_ID: specId,
                 Product_ID: productId, Variant_ID: variantId,
                 Attribute_Key: text_(spec.attribute_key_raw, 160),
@@ -266,10 +333,10 @@ var StagingPromotion = (function () {
             }
           }
         } else if (text_(spec.value_raw, 2000)) {
-          var addId = stableId_("chg", "ADD|" + assertionKey + "|" + spec.value_raw);
+          var addId = stableId_("chg", logicalAddKey + "|" + spec.value_raw);
           if (!existingBy_("Specification_Changes", "Specification_Change_ID", addId)) {
             appendOnce_("Specification_Changes", {
-              Specification_Change_ID: addId, Logical_Specification_Key: text_(assertionKey, 180),
+              Specification_Change_ID: addId, Logical_Specification_Key: logicalAddKey,
               Sequence_No: 1, Operation: "ADD", Product_ID: productId, Variant_ID: variantId,
               Attribute_Key: text_(spec.attribute_key_raw, 160), Value_JSON: json_(spec.value_raw),
               Unit_Code: text_(spec.unit_raw, 40), Change_Status: "APPROVED",

@@ -8,12 +8,12 @@ vm.runInNewContext(fs.readFileSync("src/config/Schema.js", "utf8"), context, { f
 
 test("contains the complete approved 52-table V2.1 registry", () => {
   assert.equal(Object.keys(context.TABLES).length, 52);
-  assert.equal(Object.values(context.TABLES).reduce((sum, columns) => sum + columns.length, 0), 711);
+  assert.equal(Object.values(context.TABLES).reduce((sum, columns) => sum + columns.length, 0), 713);
 });
 
 test("contains the authoritative 79-field enum registry", () => {
   assert.equal(Object.keys(context.ENUMS).length, 79);
-  assert.equal(Object.keys(context.FIELD_RULES).length, 711);
+  assert.equal(Object.keys(context.FIELD_RULES).length, 713);
   for (const [field, values] of Object.entries(context.ENUMS)) {
     assert.ok(field.includes("."), "enum key must identify its table and field");
     assert.ok(values.length > 0, "enum values must not be empty");

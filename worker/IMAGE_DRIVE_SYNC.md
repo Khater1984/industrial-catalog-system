@@ -21,6 +21,18 @@ export CATALOG_WORKER_IMAGE_DRIVE_FOLDER_ID=your-drive-folder-id
 
 Uses the existing `DriveClient` and Application Default Credentials. The service identity must have access to the configured folder.
 
+## PDF image enumeration
+
+- The extractor enumerates image blocks as they are placed on each PDF page using PyMuPDF. This records repeated placements of one shared PDF image object separately and retains each placement's page-space bounding box in PDF points.
+- Each occurrence gets a unique artifact path and unit key. Its bytes are hashed independently; identical bytes can still resolve to one Drive object.
+- This captures raster images represented in the PDF page content. Pure vector artwork is not an embedded raster image and is not converted into a product-image candidate by this stage. Page rendering for visual evidence is a separate capability.
+
+## Placement identity and duplicate bytes
+
+- Each image occurrence on a PDF page has its own artifact path containing the page number and image index. Repeated placement of the same image therefore remains a distinct, auditable page occurrence.
+- The binary artifact is still content-addressed by SHA-256. When two occurrences have identical bytes, Drive stores one immutable file and later occurrences receive the same Drive file ID with status `REUSED`.
+- This distinction is intentional: occurrence records preserve page evidence; the asset hash prevents unnecessary duplicate binary storage.
+
 ## Upload and retry behavior
 
 - Images use content-addressed filenames: `{sha256}{extension}`.
@@ -43,7 +55,7 @@ Uses the existing `DriveClient` and Application Default Credentials. The service
 
 ## Runner integration
 
-When `CATALOG_WORKER_EXTRACT_IMAGES=1`, `runner.py` extracts images and invokes this bridge before publishing the terminal run manifest. It publishes both:
+The Cloud Run Docker image sets `CATALOG_WORKER_EXTRACT_IMAGES=1`, so deployed catalog jobs extract and upload embedded images by default. Local runs remain opt-in: set the same environment variable or pass `enabled=True` to the extraction API. `runner.py` invokes this bridge before publishing the terminal run manifest. It publishes both:
 
 - `image-manifest.json` with Drive file IDs retained for the existing human-review / promotion contract.
 - `drive-image-manifest.json` as the separate upload audit record.

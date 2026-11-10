@@ -188,6 +188,15 @@ var ImageReviewIntake = (function () {
     return true;
   }
 
+  function stagingHashPayload_(record) {
+    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
+      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
+      Candidate_Variant_ID: true, Image_Role: true };
+    var out = {};
+    Object.keys(record).forEach(function (key) { if (!mutable[key]) out[key] = record[key]; });
+    return out;
+  }
+
   function buildStaging_(img, driveImage, options, catalogId, runId, stagingId) {
     var name = requireText_(img.original_name, "IMAGE_ORIGINAL_NAME_MISSING", 255);
     var mime = requireText_(driveImage.mime_type, "IMAGE_MIME_TYPE_MISSING", 100);
@@ -206,28 +215,17 @@ var ImageReviewIntake = (function () {
       MIME_Type: mime,
       File_Size_Bytes: size,
       SHA256: img.sha256,
-      Quality_Status: img.quality_status === "UNASSESSED" ? "UNASSESSED" : "NEEDS_REVIEW",
-      Extracted_Text: JSON.stringify({
-        source_manifest_sha256: options.sourceManifestSha256 || "",
-        source_manifest_internal_sha256: options.sourceManifestInternalSha256 || "",
-        image_output_sha256: img.output_sha256 || "",
-        artifact_path: img.artifact_path || "",
-        metadata_status: img.metadata_status || "UNKNOWN",
-        has_alpha: img.has_alpha,
-        color_space: img.color_space || "UNKNOWN",
-        orientation: img.orientation || "UNKNOWN",
-        page_number: img.page_number || null,
-        image_index: img.image_index || null
-      })
+      Quality_Status: "NEEDS_REVIEW"
     };
     if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
+    if (img.page_number !== null && img.page_number !== undefined) record.Page_Number = requireInteger_(img.page_number, "IMAGE_PAGE_NUMBER_INVALID", 1);
+    if (typeof img.has_alpha === "boolean") record.Has_Alpha = img.has_alpha;
     if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
       record.Extraction_Tool_Version = requireText_(img.extractor_version, "IMAGE_EXTRACTOR_VERSION_INVALID", 120);
     }
     if (img.width_px !== null && img.width_px !== undefined) record.Width_PX = requireInteger_(img.width_px, "IMAGE_WIDTH_INVALID", 1);
     if (img.height_px !== null && img.height_px !== undefined) record.Height_PX = requireInteger_(img.height_px, "IMAGE_HEIGHT_INVALID", 1);
-    var hashPayload = withoutKey_(record, "Staging_Record_Hash");
-    record.Staging_Record_Hash = sha_(canonicalJson_(hashPayload));
+    record.Staging_Record_Hash = sha_(canonicalJson_(stagingHashPayload_(record)));
     record.Created_At = now_();
     record.Updated_At = record.Created_At;
     return record;
@@ -282,13 +280,10 @@ var ImageReviewIntake = (function () {
           verifyDriveFile_(driveImage.drive_file_id, { file_size_bytes: size, mime_type: mime, sha256: img.sha256 });
 
           var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
-          var stagingOptions = Object.assign({}, options, {
-            sourceManifestSha256: imageManifest.sha,
-            sourceManifestInternalSha256: imgData.manifest_sha256
-          });
-          var staging = buildStaging_(img, driveImage, stagingOptions, catalogId, runId, stagingId);
+          var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
           var stagingFields = Object.keys(staging).filter(function (field) {
-            return field !== "Created_At" && field !== "Updated_At";
+            return ["Created_At", "Updated_At", "Proposed_Status", "Quality_Status",
+              "Candidate_Product_ID", "Candidate_Variant_ID", "Image_Role"].indexOf(field) < 0;
           });
           var stagingCreated = ensureRecord_("Staging_Images", "Staging_ID", staging, stagingFields, "STAGING_CONFLICT");
           if (stagingCreated) counts.staging += 1;
