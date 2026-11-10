@@ -123,7 +123,7 @@ The following columns appear in each staging sheet:
 ### `Staging_Variants`
 | Column | Type | Required | Rule |
 |---|---|---:|---|
-| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Parent_Staging_Product_ID | ID | No | Blank at intake; reviewer assigns the product parent explicitly before promotion |
 | Proposed_Model_Number | TEXT(160) | Yes | Exact supplier model number |
 | Proposed_Model_Name | TEXT(250) | No | Exact supplier model name |
 | Candidate_Variant_ID | ID | No | Suggested canonical candidate only |
@@ -135,11 +135,11 @@ The following columns appear in each staging sheet:
 ### `Staging_Specifications`
 | Column | Type | Required | Rule |
 |---|---|---:|---|
-| Parent_Staging_Product_ID | ID | Yes | FK → Staging_Products |
+| Parent_Staging_Product_ID | ID | No | Blank at intake; reviewer assigns the product parent explicitly before promotion |
 | Parent_Staging_Variant_ID | ID | No | FK → Staging_Variants; required iff Scope=VARIANT |
 | Source_Assertion_Key | TEXT(160) | Yes | Deterministic assertion locator |
 | Source_Key_Algorithm_Version | TEXT(80) | Yes | Must match common staging envelope |
-| Scope | ENUM | Yes | PRODUCT, VARIANT |
+| Scope | ENUM | No | PRODUCT, VARIANT; reviewer assigns scope explicitly before promotion |
 | Attribute_Key_Raw | TEXT(160) | Yes | Exact source label |
 | Value_Raw | TEXT(2000) | Yes | Exact source value |
 | Unit_Raw | TEXT(80) | No | Exact source unit |
@@ -165,6 +165,8 @@ Scope=VARIANT requires Parent_Staging_Variant_ID and the variant must belong to 
 | Candidate_Variant_ID | ID | No | Suggestion only |
 | Image_Role | TEXT(80) | No | Proposed role |
 | Quality_Status | ENUM | Yes | UNASSESSED, ACCEPTABLE, LOW_RESOLUTION, NEEDS_REVIEW |
+| Page_Number | INTEGER | No | 1-based source PDF page number |
+| Has_Alpha | BOOLEAN | No | True/false transparency metadata |
 
 ### `Staging_Documents`
 | Column | Type | Required | Rule |

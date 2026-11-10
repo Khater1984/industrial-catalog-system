@@ -18,8 +18,13 @@ from typing import Any
 
 from pypdf import PdfReader
 
+try:
+    import pymupdf as fitz
+except ImportError:  # pragma: no cover - declared production dependency
+    fitz = None
+
 IMAGE_EXTRACTION_ENV = "CATALOG_WORKER_EXTRACT_IMAGES"
-IMAGE_EXTRACTOR_VERSION = "0.1.0"
+IMAGE_EXTRACTOR_VERSION = "0.2.0"
 DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
@@ -197,71 +202,94 @@ def extract_embedded_images(
     images: list[dict[str, Any]] = []
     source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
 
-    for page_number, page in enumerate(reader.pages, start=1):
-        try:
-            page_images = list(page.images)
-        except Exception as exc:
-            raise ImageExtractionError(
-                "PAGE_IMAGE_ENUMERATION_FAILED", f"Could not enumerate images on page {page_number}."
-            ) from exc
+    if fitz is None:
+        raise ImageExtractionError(
+            "PDF_IMAGE_ENGINE_UNAVAILABLE",
+            "PyMuPDF is required to enumerate image placements in PDF pages.",
+        )
+    try:
+        image_document = fitz.open(str(source))
+    except Exception as exc:
+        raise ImageExtractionError("PDF_IMAGE_ENGINE_OPEN_FAILED", "Could not open PDF with the image extraction engine.") from exc
 
-        catalog_page_id = catalog_page_ids[page_number - 1] if catalog_page_ids else None
-        for image_index, image in enumerate(page_images, start=1):
+    try:
+        for page_number, page in enumerate(image_document, start=1):
             try:
-                raw = image.data
+                blocks = page.get_text("dict").get("blocks", [])
+                page_images = [
+                    block for block in blocks
+                    if isinstance(block, dict) and block.get("type") == 1
+                ]
+            except Exception as exc:
+                raise ImageExtractionError(
+                    "PAGE_IMAGE_ENUMERATION_FAILED", f"Could not enumerate image placements on page {page_number}."
+                ) from exc
+
+            catalog_page_id = catalog_page_ids[page_number - 1] if catalog_page_ids else None
+            for image_index, image_block in enumerate(page_images, start=1):
+                raw = image_block.get("image")
                 if isinstance(raw, memoryview):
                     raw = raw.tobytes()
                 elif isinstance(raw, bytearray):
                     raw = bytes(raw)
                 if not isinstance(raw, bytes) or not raw:
-                    raise ValueError("Image data is empty or not bytes.")
-            except Exception as exc:
-                raise ImageExtractionError(
-                    "IMAGE_DATA_UNAVAILABLE",
-                    f"Could not read embedded image {image_index} on page {page_number}.",
-                ) from exc
+                    raise ImageExtractionError(
+                        "IMAGE_DATA_UNAVAILABLE",
+                        f"Could not read image placement {image_index} on page {page_number}.",
+                    )
+                if len(raw) > max_image_bytes:
+                    raise ImageExtractionError(
+                        "IMAGE_TOO_LARGE",
+                        f"Image placement on page {page_number} exceeds the configured size limit.",
+                    )
 
-            if len(raw) > max_image_bytes:
-                raise ImageExtractionError(
-                    "IMAGE_TOO_LARGE",
-                    f"Embedded image on page {page_number} exceeds the configured size limit.",
-                )
+                digest = sha256_bytes(raw)
+                image_ext = str(image_block.get("ext") or "bin").lower().lstrip(".")
+                original_name = f"image-{image_index}.{image_ext}"
+                probe = _probe_image(raw)
+                extension = probe["extension"] if probe["metadata_status"] == "COMPLETED" else _safe_extension(original_name)
+                relative_path = Path("images") / f"page-{page_number:05d}" / f"{image_index:04d}-{digest}{extension}"
+                artifact_path = root / relative_path
+                _write_immutable(artifact_path, raw)
 
-            digest = sha256_bytes(raw)
-            original_name = str(getattr(image, "name", "") or f"image-{image_index}")
-            probe = _probe_image(raw)
-            extension = probe["extension"] if probe["metadata_status"] == "COMPLETED" else _safe_extension(original_name)
-            relative_path = Path("images") / f"page-{page_number:05d}" / f"{digest}{extension}"
-            artifact_path = root / relative_path
-            _write_immutable(artifact_path, raw)
+                bbox = image_block.get("bbox")
+                placement_bbox = None
+                if isinstance(bbox, (tuple, list)) and len(bbox) == 4:
+                    try:
+                        placement_bbox = [round(float(value), 3) for value in bbox]
+                    except (TypeError, ValueError):
+                        placement_bbox = None
 
-            unit_key = f"{catalog_page_id or 'page-' + str(page_number).zfill(5)}:image:{image_index:04d}:{digest[:16]}"
-            record: dict[str, Any] = {
-                "unit_type": "IMAGE",
-                "unit_key": unit_key,
-                "catalog_id": catalog_id,
-                "run_id": run_id,
-                "catalog_page_id": catalog_page_id,
-                "page_number": page_number,
-                "image_index": image_index,
-                "original_name": original_name,
-                "source_type": "CATALOG_EMBEDDED",
-                "mime_type": probe["mime_type"],
-                "width_px": probe["width_px"],
-                "height_px": probe["height_px"],
-                "has_alpha": probe["has_alpha"],
-                "metadata_status": probe["metadata_status"],
-                "metadata_error": probe.get("metadata_error", ""),
-                "quality_status": "UNASSESSED" if probe["metadata_status"] == "COMPLETED" else "NEEDS_REVIEW",
-                "file_size_bytes": len(raw),
-                "sha256": digest,
-                "source_pdf_sha256": source_sha,
-                "extractor_version": IMAGE_EXTRACTOR_VERSION,
-                "artifact_path": relative_path.as_posix(),
-                "unit_status": "COMPLETED",
-            }
-            record["output_sha256"] = _hash_record(record)
-            images.append(record)
+                unit_key = f"{catalog_page_id or 'page-' + str(page_number).zfill(5)}:image:{image_index:04d}:{digest[:16]}"
+                record: dict[str, Any] = {
+                    "unit_type": "IMAGE",
+                    "unit_key": unit_key,
+                    "catalog_id": catalog_id,
+                    "run_id": run_id,
+                    "catalog_page_id": catalog_page_id,
+                    "page_number": page_number,
+                    "image_index": image_index,
+                    "placement_bbox_pdf_points": placement_bbox,
+                    "original_name": original_name,
+                    "source_type": "CATALOG_EMBEDDED",
+                    "mime_type": probe["mime_type"],
+                    "width_px": probe["width_px"],
+                    "height_px": probe["height_px"],
+                    "has_alpha": probe["has_alpha"],
+                    "metadata_status": probe["metadata_status"],
+                    "metadata_error": probe.get("metadata_error", ""),
+                    "quality_status": "UNASSESSED" if probe["metadata_status"] == "COMPLETED" else "NEEDS_REVIEW",
+                    "file_size_bytes": len(raw),
+                    "sha256": digest,
+                    "source_pdf_sha256": source_sha,
+                    "extractor_version": IMAGE_EXTRACTOR_VERSION,
+                    "artifact_path": relative_path.as_posix(),
+                    "unit_status": "COMPLETED",
+                }
+                record["output_sha256"] = _hash_record(record)
+                images.append(record)
+    finally:
+        image_document.close()
 
     manifest: dict[str, Any] = {
         "manifest_version": 1,

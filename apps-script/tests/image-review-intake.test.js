@@ -35,6 +35,7 @@ function makeImage(index, bytes) {
     mime_type: "image/png",
     width_px: 20 + index,
     height_px: 30 + index,
+    has_alpha: true,
     file_size_bytes: bytes.length,
     sha256: sha(bytes),
     extractor_version: "0.1.0",
@@ -258,6 +259,8 @@ describe("ImageReviewIntake", () => {
       assert.equal(result.counts.links, 1);
       assert.equal(result.counts.failed, 0);
       const staging = h.sheets.Staging_Images[0];
+      assert.equal(staging.Page_Number, 1);
+      assert.equal(staging.Has_Alpha, true);
       assert.equal(staging.Extraction_Method, "IMAGE_EXTRACTION");
       assert.equal(staging.Proposed_Status, "NEEDS_REVIEW");
       assert.equal(staging.Quality_Status, "NEEDS_REVIEW");
