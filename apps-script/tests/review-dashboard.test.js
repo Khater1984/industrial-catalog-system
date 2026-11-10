@@ -52,7 +52,7 @@ test("review dashboard projects linked staging evidence and verified page candid
 
 test("review UI consumes the evidence projection type and extracted text fields", () => {
   const html = fs.readFileSync("Index.html", "utf8");
-  assert.match(html, /ev\\\\.type/);
-  assert.match(html, /ev\\\\.extractedText/);
-  assert.doesNotMatch(html, /ev\\\\.table|ev\\\\.quote/);
+  assert.match(html, /ev\\.type/);
+  assert.match(html, /ev\\.extractedText/);
+  assert.doesNotMatch(html, /ev\\.table|ev\\.quote/);
 });
