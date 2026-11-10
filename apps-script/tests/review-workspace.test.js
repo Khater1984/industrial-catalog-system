@@ -246,3 +246,23 @@ test("Staging Set rejects a product-scope specification carrying a variant paren
     /REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN/
   );
 });
+
+
+test("Staging Set keeps rejected unresolved candidates without requiring parent assignments", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  rewriteDecision(ctx, decision => {
+    decision.variants.push({
+      staging_id: "stg_variant_rejected", parent_staging_product_id: "",
+      proposed_model_number: "UNRESOLVED", review_status: "REJECTED"
+    });
+    decision.specifications.push({
+      staging_id: "stg_spec_rejected", parent_staging_product_id: "",
+      parent_staging_variant_id: "", scope: "", attribute_key_raw: "Power",
+      value_raw: "100", review_status: "REJECTED"
+    });
+  });
+  const result = ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary");
+  assert.equal(result.variants, 1);
+  assert.equal(result.specifications, 1);
+});
