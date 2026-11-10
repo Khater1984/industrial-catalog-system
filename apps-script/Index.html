@@ -476,6 +476,34 @@
       if(!evidence.length&&!item.pageArtifact)details.appendChild(reviewNode("p","لا تتوفر تفاصيل مرتبطة بهذا العنصر في الجداول الحالية.","notice"));
       card.appendChild(details);
       const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.notes||"";card.appendChild(notes);
+      const primaryProductEvidence=evidence.find(ev=>ev.type==="PRODUCT"&&ev.role==="PRIMARY");
+      const variantControls=[],specControls=[];
+      if(item.type==="PRODUCT_MATCH"&&primaryProductEvidence){
+        evidence.filter(ev=>ev.type==="VARIANT").forEach(ev=>{
+          const panel=reviewNode("div",null,"review-evidence");
+          panel.appendChild(reviewNode("strong","قرار الموديل: "+(ev.modelNumber||ev.stagingId)));
+          const decision=document.createElement("select");decision.className="review-filter";
+          [["","اختر القرار"],["ACCEPTED","قبول الموديل"],["REJECTED","رفض المرشح"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;decision.appendChild(o);});
+          panel.appendChild(decision);
+          panel.appendChild(reviewNode("div","اسم الموديل: "+(ev.modelName||"—")+" · رقم الموديل: "+(ev.modelNumber||"—"),"review-meta"));
+          card.appendChild(panel);variantControls.push({ev,decision});
+        });
+        evidence.filter(ev=>ev.type==="SPECIFICATION").forEach(ev=>{
+          const panel=reviewNode("div",null,"review-evidence");
+          panel.appendChild(reviewNode("strong","قرار المواصفة: "+(ev.attribute||ev.stagingId)));
+          const decision=document.createElement("select");decision.className="review-filter";
+          [["","اختر القرار"],["ACCEPTED","قبول المواصفة"],["REJECTED","رفض المرشح"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;decision.appendChild(o);});
+          const scope=document.createElement("select");scope.className="review-filter";
+          [["","حدد النطاق"],["PRODUCT","مواصفة المنتج"],["VARIANT","مواصفة الموديل"]].forEach(([v,t])=>{const o=document.createElement("option");o.value=v;o.textContent=t;scope.appendChild(o);});
+          const parentVariant=document.createElement("input");parentVariant.type="text";parentVariant.className="review-notes";parentVariant.placeholder="معرّف الموديل الأب عند اختيار نطاق الموديل";
+          const value=document.createElement("input");value.type="text";value.className="review-notes";value.value=ev.value||"";value.placeholder="القيمة النهائية";
+          const unit=document.createElement("input");unit.type="text";unit.className="review-notes";unit.value=ev.unit||"";unit.placeholder="الوحدة";
+          const reason=document.createElement("input");reason.type="text";reason.className="review-notes";reason.placeholder="سبب تعديل القيمة (إلزامي عند تغييرها)";
+          panel.appendChild(reviewNode("div","القيمة المستخرجة: "+(ev.value||"—")+" "+(ev.unit||""),"review-meta"));
+          panel.appendChild(decision);panel.appendChild(scope);panel.appendChild(parentVariant);panel.appendChild(value);panel.appendChild(unit);panel.appendChild(reason);
+          card.appendChild(panel);specControls.push({ev,decision,scope,parentVariant,value,unit,reason});
+        });
+      }
       const decisionActions=reviewNode("div",null,"review-actions");
       function addDecisionAction(label,nextStatus,style){
         const button=reviewNode("button",label,"review-action-btn"+(style?" "+style:""));button.type="button";
@@ -487,12 +515,18 @@
       if(item.status!=="DEFERRED"&&item.status!=="REJECTED"&&item.status!=="APPROVED")addDecisionAction("تأجيل","DEFERRED","");
       if(item.status!=="REJECTED"&&item.status!=="APPROVED")addDecisionAction("رفض مهمة المراجعة","REJECTED","danger");
       if(item.type==="PRODUCT_MATCH"&&["OPEN","IN_REVIEW"].includes(item.status)){
-        const productEvidence=(item.evidence||[]).find(ev=>ev.type==="PRODUCT");
+        const productEvidence=primaryProductEvidence;
         const productName=document.createElement("input");productName.type="text";productName.maxLength=300;productName.className="review-notes";
         productName.placeholder="اسم المنتج بالإنجليزية كما تريد اعتماده";productName.value=(productEvidence&&productEvidence.productName)||"";
         card.appendChild(productName);
-        const approve=reviewNode("button","اعتماد اسم المنتج","review-action-btn primary");approve.type="button";
-        approve.addEventListener("click",()=>approveReviewProduct(item.id,productName.value,notes.value,approve));
+        const approve=reviewNode("button","حفظ قرارات المنتج والموديلات والمواصفات","review-action-btn primary");approve.type="button";
+        approve.addEventListener("click",()=>{
+          const variants=variantControls.filter(x=>x.decision.value).map(x=>({stagingId:x.ev.stagingId,reviewStatus:x.decision.value,parentProductStagingId:primaryProductEvidence.stagingId}));
+          const specifications=specControls.filter(x=>x.decision.value).map(x=>({stagingId:x.ev.stagingId,reviewStatus:x.decision.value,parentProductStagingId:primaryProductEvidence.stagingId,scope:x.decision.value==="ACCEPTED"?x.scope.value:"",parentVariantStagingId:x.decision.value==="ACCEPTED"&&x.scope.value==="VARIANT"?x.parentVariant.value.trim():"",valueRaw:x.value.value,unitRaw:x.unit.value,editReason:x.reason.value}));
+          if(variantControls.some(x=>!x.decision.value)||specControls.some(x=>!x.decision.value)){alert("يجب تحديد قبول أو رفض كل موديل ومواصفة ظاهرة قبل الحفظ.");return;}
+          if(specifications.some(x=>x.reviewStatus==="ACCEPTED"&&!x.scope)){alert("حدد نطاق كل مواصفة مقبولة.");return;}
+          approveReviewProduct(item.id,productName.value,notes.value,approve,variants,specifications);
+        });
         decisionActions.appendChild(approve);
       }
       if(item.status==="APPROVED"&&item.runId){
@@ -519,7 +553,7 @@
       parent.appendChild(reviewNode("pre",artifact.pageText));
     }
   }
-  function approveReviewProduct(reviewId,productName,notes,button) {
+  function approveReviewProduct(reviewId,productName,notes,button,variants,specifications) {
     if(!productName.trim()){alert("أدخل اسم المنتج بالإنجليزية أولاً.");return;}
     if(!confirm("سيُحفظ قرار قبول اسم المنتج في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
     button.disabled=true;
@@ -528,7 +562,7 @@
       loadReviewQueue();
     }).withFailureHandler(err=>{
       button.disabled=false;const box=el("reviewStatus");box.textContent="تعذر اعتماد المرشح: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
-    }).approveProductReviewFromBrowser({reviewId:reviewId,productName:productName,notes:notes});
+    }).approveProductReviewFromBrowser({reviewId:reviewId,productName:productName,notes:notes,variants:variants||[],specifications:specifications||[]});
   }
   function buildReviewStagingSet(runId,button) {
     if(!confirm("سيجمع النظام قرارات المنتجات المعتمدة لهذه العملية في ملف Staging Set. لن يتم ترحيل أي بيانات إلى الجداول الأساسية. متابعة؟"))return;
