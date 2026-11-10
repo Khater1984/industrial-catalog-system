@@ -15,6 +15,111 @@ var ReviewWorkspace = (function () {
     if (s.length > limit) fail_("REVIEW_NOTES_TOO_LONG");
     return s;
   }
+  function fileUrl_(id) {
+    if (!id || !/^[A-Za-z0-9_-]{10,200}$/.test(String(id))) return "";
+    try { return DriveApp.getFileById(String(id)).getUrl(); } catch (e) { return ""; }
+  }
+  function readArtifact_(fileId, cache) {
+    if (!fileId) return null;
+    if (Object.prototype.hasOwnProperty.call(cache, fileId)) return cache[fileId];
+    try {
+      var raw = DriveApp.getFileById(fileId).getBlob().getDataAsString("UTF-8");
+      var a = JSON.parse(raw);
+      cache[fileId] = {
+        pageNumber: a.page_number || null,
+        pageText: text_(a.extracted_text || "", 4000),
+        extractionMethod: text_(a.extraction_method || "", 40),
+        products: Array.isArray(a.product_candidates && a.product_candidates.products) ? a.product_candidates.products.slice(0, 30) : [],
+        variants: Array.isArray(a.product_candidates && a.product_candidates.variants) ? a.product_candidates.variants.slice(0, 60) : [],
+        specifications: Array.isArray(a.product_candidates && a.product_candidates.specifications) ? a.product_candidates.specifications.slice(0, 100) : [],
+        fileUrl: fileUrl_(fileId)
+      };
+    } catch (e) {
+      cache[fileId] = { warning: "PAGE_ARTIFACT_UNAVAILABLE", fileUrl: fileUrl_(fileId) };
+    }
+    return cache[fileId];
+  }
+  function getInbox() {
+    var queue = SheetsRepository.listAll("Review_Queue");
+    var links = SheetsRepository.listAll("Review_Staging_Links");
+    var tableNames = ["Staging_Products", "Staging_Variants", "Staging_Specifications", "Staging_Images", "Staging_Documents"];
+    var tables = {};
+    tableNames.forEach(function (name) { tables[name] = SheetsRepository.listAll(name); });
+    var catalogs = {};
+    SheetsRepository.listAll("Catalogs").forEach(function (row) { catalogs[row.Catalog_ID] = row; });
+    var pages = {};
+    SheetsRepository.listAll("Catalog_Pages").forEach(function (row) { pages[row.Catalog_Page_ID] = row; });
+    var runUnits = SheetsRepository.listAll("Run_Units");
+    var artifactCache = {};
+    var items = queue.filter(function (q) { return ALLOWED[q.Review_Status] === true; }).slice(0, 100).map(function (q) {
+      var related = links.filter(function (link) { return link.Review_Queue_ID === q.Review_Queue_ID; }).map(function (link) {
+        var found = null;
+        for (var i = 0; i < tableNames.length; i++) {
+          var rows = tables[tableNames[i]];
+          var record = rows.find(function (row) { return row.Staging_ID === link.Staging_ID; });
+          if (record) { found = { type: tableNames[i], record: record }; break; }
+        }
+        if (!found) return { stagingId: link.Staging_ID, role: link.Review_Role, missing: true };
+        var r = found.record;
+        return {
+          stagingId: r.Staging_ID, role: link.Review_Role, table: found.type,
+          status: r.Proposed_Status || r.Quality_Status || "",
+          productName: text_(r.Proposed_Product_Name_EN || "", 300),
+          productReference: text_(r.Proposed_Product_Reference || "", 160),
+          modelNumber: text_(r.Proposed_Model_Number || "", 160),
+          modelName: text_(r.Proposed_Model_Name || "", 250),
+          attribute: text_(r.Attribute_Key_Raw || "", 160),
+          value: text_(r.Value_Raw || "", 2000),
+          unit: text_(r.Unit_Raw || "", 80),
+          quote: text_(r.Extracted_Text || "", 4000),
+          pageId: text_(r.Catalog_Page_ID || "", 120),
+          runId: text_(r.Run_ID || "", 120),
+          catalogId: text_(r.Catalog_ID || "", 120),
+          confidence: r.Confidence || "",
+          extractionMethod: text_(r.Extraction_Method || "", 40),
+          fileUrl: fileUrl_(r.Proposed_Image_File_ID || r.Proposed_Document_File_ID || ""),
+          artifact: readArtifact_(r.Raw_Extract_File_ID, artifactCache)
+        };
+      });
+      var match = String(q.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      var runId = (related[0] && related[0].runId) || (match && match[2]) || "";
+      var pageId = (related[0] && related[0].pageId) || (match && match[1]) || "";
+      var unit = runUnits.find(function (row) { return row.Run_ID === runId && row.Catalog_Page_ID === pageId; });
+      var pageArtifact = null;
+      if (unit && unit.Output_Manifest_File_ID && !related.some(function (link) { return link.artifact; })) {
+        pageArtifact = readArtifact_(unit.Output_Manifest_File_ID, artifactCache);
+      }
+      var catalogId = (related[0] && related[0].catalogId) || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {};
+      var page = pages[pageId] || {};
+      return {
+        id: q.Review_Queue_ID, type: q.Review_Type, priority: q.Priority,
+        status: q.Review_Status, action: text_(q.Proposed_Action || "", 500),
+        notes: text_(q.Decision_Notes || "", 1500), createdAt: q.Created_At || "",
+        runId: runId, catalogId: catalogId, pageId: pageId,
+        pageNumber: page.Page_Number || (pageArtifact && pageArtifact.pageNumber) || "",
+        pageLabel: page.Page_Label || "",
+        supplierName: text_(catalog.Supplier_Name || "", 160),
+        catalogTitle: text_(catalog.Catalog_Title || catalog.Source_File_Name || "", 240),
+        sourcePdfUrl: fileUrl_(catalog.Source_File_ID || ""),
+        pageArtifact: pageArtifact,
+        links: related
+      };
+    });
+    return {
+      items: items,
+      counts: {
+        open: items.filter(function (x) { return x.status === "OPEN"; }).length,
+        inReview: items.filter(function (x) { return x.status === "IN_REVIEW"; }).length,
+        deferred: items.filter(function (x) { return x.status === "DEFERRED"; }).length,
+        rejected: items.filter(function (x) { return x.status === "REJECTED"; }).length
+      }
+    };
+  }
   function updateStatus(options, actor) {
     if (!options || typeof options.reviewId !== "string" ||
         !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
@@ -48,5 +153,5 @@ var ReviewWorkspace = (function () {
       lock.releaseLock();
     }
   }
-  return { updateStatus: updateStatus };
+  return { getInbox: getInbox, updateStatus: updateStatus };
 })();
