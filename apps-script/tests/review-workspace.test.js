@@ -34,6 +34,7 @@ function fixture() {
     Catalog_Page_ID: "page_test_0001", Extracted_Text: "Industrial Generator DG-100",
     Staging_Record_Hash: "a".repeat(64)
   };
+  const stagingRows = {};
   const files = {};
   let fileSeq = 0;
   const runFolder = {
@@ -75,6 +76,7 @@ function fixture() {
       getBy: (table, key, value) => {
         if (table === "Review_Queue") return queue.find(row => row[key] === value) || null;
         if (table === "Staging_Products") return staging[key] === value ? staging : null;
+        if (table === "Staging_Variants" || table === "Staging_Specifications") return stagingRows[table] && stagingRows[table][value] || null;
         return null;
       },
       updateBy: (_table, key, value, patch) => {
@@ -86,8 +88,61 @@ function fixture() {
     Date
   };
   vm.runInNewContext(source, context);
-  return { service: context.ReviewWorkspace, queue, staging, files, runFolder };
+  return { service: context.ReviewWorkspace, queue, staging, links, stagingRows, files, runFolder };
 }
+
+test("review approval persists explicitly accepted model and scoped specification decisions from linked evidence", () => {
+  const ctx = fixture();
+  const productId = ctx.staging.Staging_ID;
+  const variant = {
+    Staging_ID: "stg_variant_review_1", Run_ID: ctx.staging.Run_ID, Catalog_ID: ctx.staging.Catalog_ID,
+    Proposed_Model_Number: "DG100-A", Proposed_Model_Name: "Open Frame", Extracted_Text: "Model DG100-A"
+  };
+  const spec = {
+    Staging_ID: "stg_spec_review_1", Run_ID: ctx.staging.Run_ID, Catalog_ID: ctx.staging.Catalog_ID,
+    Attribute_Key_Raw: "Power", Value_Raw: "100", Unit_Raw: "kW",
+    Source_Assertion_Key: "assertion-power-1", Extracted_Text: "Power 100 kW"
+  };
+  ctx.stagingRows.Staging_Variants = { [variant.Staging_ID]: variant };
+  ctx.stagingRows.Staging_Specifications = { [spec.Staging_ID]: spec };
+  ctx.links.push(
+    { Review_Queue_ID: "rev_product_123456", Staging_ID: variant.Staging_ID, Review_Role: "EVIDENCE" },
+    { Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" }
+  );
+  const result = ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator DG-100",
+    variants: [{ stagingId: variant.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: productId }],
+    specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: productId,
+      scope: "VARIANT", parentVariantStagingId: variant.Staging_ID, valueRaw: "110", unitRaw: "kW", editReason: "Verified against source table" }]
+  }, "actor_primary");
+  const decision = JSON.parse(ctx.files[result.decisionFileId].content);
+  assert.equal(decision.variants[0].review_status, "ACCEPTED");
+  assert.equal(decision.variants[0].parent_staging_product_id, productId);
+  assert.equal(decision.specifications[0].scope, "VARIANT");
+  assert.equal(decision.specifications[0].original_value_raw, "100");
+  assert.equal(decision.specifications[0].value_raw, "110");
+  assert.equal(decision.specifications[0].edit_reason, "Verified against source table");
+});
+
+test("review approval refuses unlinked candidates and edited values without a reason", () => {
+  const ctx = fixture();
+  const spec = {
+    Staging_ID: "stg_spec_review_2", Run_ID: ctx.staging.Run_ID, Catalog_ID: ctx.staging.Catalog_ID,
+    Attribute_Key_Raw: "Voltage", Value_Raw: "400", Unit_Raw: "V"
+  };
+  ctx.stagingRows.Staging_Specifications = { [spec.Staging_ID]: spec };
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: ctx.staging.Staging_ID,
+      scope: "PRODUCT", valueRaw: "415" }]
+  }, "actor_primary"), /REVIEW_CANDIDATE_NOT_LINKED_EVIDENCE/);
+  ctx.links.push({ Review_Queue_ID: "rev_product_123456", Staging_ID: spec.Staging_ID, Review_Role: "EVIDENCE" });
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    specifications: [{ stagingId: spec.Staging_ID, reviewStatus: "ACCEPTED", parentProductStagingId: ctx.staging.Staging_ID,
+      scope: "PRODUCT", valueRaw: "415" }]
+  }, "actor_primary"), /REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED/);
+});
 
 test("product approval writes an immutable accepted decision and records its SHA", () => {
   const ctx = fixture();
