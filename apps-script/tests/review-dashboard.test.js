@@ -48,3 +48,11 @@ test("review dashboard projects linked staging evidence and verified page candid
   assert.equal(result.items[0].artifact.variants[0].proposed_model_number, "DG-100");
   assert.equal(result.items[0].decisionNotes, "Check the page");
 });
+
+
+test("review UI consumes the evidence projection type and extracted text fields", () => {
+  const html = fs.readFileSync("Index.html", "utf8");
+  assert.match(html, /ev\\\\.type/);
+  assert.match(html, /ev\\\\.extractedText/);
+  assert.doesNotMatch(html, /ev\\\\.table|ev\\\\.quote/);
+});
