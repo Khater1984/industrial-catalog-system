@@ -106,6 +106,7 @@ var ReviewDashboard = (function () {
         reviewId: review.Review_Queue_ID, type: review.Review_Type,
         status: review.Review_Status, priority: review.Priority,
         proposedAction: short_(review.Proposed_Action, 1800),
+        decisionNotes: short_(review.Decision_Notes || "", 1500),
         createdAt: review.Created_At || "", runId: runId, catalogId: catalogId,
         supplierName: catalog.Supplier_Name || "", catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
         sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""),
