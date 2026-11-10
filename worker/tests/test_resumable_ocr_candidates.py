@@ -110,11 +110,19 @@ def test_real_tesseract_arabic_english_runtime_smoke(tmp_path):
     if not tesseract_available():
         pytest.skip("Tesseract is not installed in this environment")
 
-    image = Image.new("RGB", (1800, 360), "white")
+    image = Image.new("RGB", (2200, 520), "white")
     draw = ImageDraw.Draw(image)
-    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    font = ImageFont.truetype(font_path, 72)
-    draw.text((60, 90), "INDUSTRIAL GENERATOR MODEL DG-100", fill="black", font=font)
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    font = ImageFont.truetype(font_path, 88, layout_engine=ImageFont.Layout.RAQM)
+    draw.text((70, 70), "INDUSTRIAL GENERATOR MODEL DG-100", fill="black", font=font)
+    draw.text(
+        (70, 260),
+        "مولد كهربائي قدرة 100 كيلو فولت أمبير",
+        fill="black",
+        font=font,
+        direction="rtl",
+        language="ar",
+    )
     path = tmp_path / "ocr-smoke.png"
     image.save(path)
 
@@ -122,4 +130,5 @@ def test_real_tesseract_arabic_english_runtime_smoke(tmp_path):
     normalized = result["extracted_text"].upper()
     assert "GENERATOR" in normalized
     assert "DG-100" in normalized
+    assert "مولد" in result["extracted_text"]
     assert result["confidence"] is not None
