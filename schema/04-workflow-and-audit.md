@@ -129,7 +129,7 @@ The following columns appear in each staging sheet:
 | Candidate_Variant_ID | ID | No | Suggested canonical candidate only |
 | Identity_Match_Method | TEXT(80) | No | Method/version used to suggest candidate |
 | Match_Confidence | DECIMAL(5,4) | No | 0..1; not approval |
-| Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within parent source record |
+| Source_Record_Key | TEXT(160) | Yes | Deterministic model occurrence key within run/page until a reviewer assigns a parent product |
 | Source_Key_Algorithm_Version | TEXT(80) | Yes | Must match common staging envelope |
 
 ### `Staging_Specifications`
