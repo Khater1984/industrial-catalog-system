@@ -88,19 +88,29 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   assert.equal(result.counts.staging_products, 1);
   assert.equal(result.counts.product_names_unassigned, 1);
   assert.equal(result.counts.review_items, 2);
-  assert.equal(result.counts.variants_unassigned, 1);
-  assert.equal(result.counts.specifications_unassigned, 1);
+  assert.equal(result.counts.staging_variants, 1);
+  assert.equal(result.counts.staging_specifications, 1);
+  assert.equal(result.counts.variants_not_stageable, 0);
+  assert.equal(result.counts.specifications_not_stageable, 0);
   assert.equal(ctx.rows.Staging_Products.length, 1);
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Status, "NEEDS_REVIEW");
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Product_Name_EN, "Industrial Generator");
   assert.equal(ctx.rows.Staging_Products.some((row) => /[\u0600-\u06FF]/.test(row.Proposed_Product_Name_EN)), false);
-  assert.equal(ctx.rows.Staging_Variants, undefined);
-  assert.equal(ctx.rows.Staging_Specifications, undefined);
+  assert.equal(ctx.rows.Staging_Variants.length, 1);
+  assert.equal(ctx.rows.Staging_Variants[0].Proposed_Model_Number, "DG100");
+  assert.equal(ctx.rows.Staging_Variants[0].Parent_Staging_Product_ID, "");
+  assert.equal(ctx.rows.Staging_Variants[0].Proposed_Status, "NEEDS_REVIEW");
+  assert.equal(ctx.rows.Staging_Specifications.length, 1);
+  assert.equal(ctx.rows.Staging_Specifications[0].Attribute_Key_Raw, "Power");
+  assert.equal(ctx.rows.Staging_Specifications[0].Parent_Staging_Product_ID, "");
+  assert.equal(ctx.rows.Staging_Specifications[0].Parent_Staging_Variant_ID, "");
+  assert.equal(ctx.rows.Staging_Specifications[0].Scope, "");
+  assert.equal(ctx.rows.Staging_Specifications[0].Parse_Status, "AMBIGUOUS");
   assert.equal(ctx.rows.Review_Queue.length, 2);
   assert.equal(ctx.rows.Staging_Products[0].Raw_Extract_File_ID, "artifact-file-id");
   assert.equal(ctx.rows.Review_Queue.find((row) => row.Review_Type === "EXTRACTION_AMBIGUITY").Decision_JSON_File_ID, undefined);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.find((row) => row.Review_Role === "EVIDENCE").Staging_ID, ctx.rows.Staging_Products[0].Staging_ID);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 4);
+  assert.equal(ctx.rows.Review_Staging_Links.filter((row) => row.Review_Role === "EVIDENCE").length, 3);
 });
 
 test("candidate intake is idempotent across poller retries", () => {
@@ -108,8 +118,10 @@ test("candidate intake is idempotent across poller retries", () => {
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   assert.equal(ctx.rows.Staging_Products.length, 1);
+  assert.equal(ctx.rows.Staging_Variants.length, 1);
+  assert.equal(ctx.rows.Staging_Specifications.length, 1);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 4);
 });
 
 test("candidate intake rejects artifacts with altered bytes or identity", () => {
