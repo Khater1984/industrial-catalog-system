@@ -27,6 +27,8 @@ test("deployment bundle contains every active domain module", () => {
     "domain/StagingPromotion.js",
     "domain/ImagePromotion.js",
     "domain/ImageReviewIntake.js",
+    "domain/ReviewDashboard.js",
+    "domain/ReviewWorkspace.js",
     "domain/DocumentService.js",
     "domain/BackupService.js",
     "domain/DesignService.js",
@@ -44,6 +46,8 @@ test("browser-called Apps Script functions are present in deployment bundle", ()
     "getCatalogDashboard",
     "uploadCatalogFromBrowser",
     "promoteStagingFromBrowser",
+    "getReviewQueueForBrowser",
+    "updateReviewStatusFromBrowser",
     "createDocumentFromBrowser",
     "addDocumentVersionFromBrowser",
     "listDocumentsForBrowser",
@@ -71,4 +75,10 @@ test("all inline JavaScript in the main UI parses successfully", () => {
       "Inline script " + (index + 1) + " has a JavaScript syntax error"
     );
   });
+});
+
+test("main UI exposes the existing review inbox and its owner-only actions", () => {
+  assert.match(html, /id="humanReviewPanel"/);
+  assert.match(html, /getReviewQueueForBrowser/);
+  assert.match(html, /updateReviewStatusFromBrowser/);
 });
