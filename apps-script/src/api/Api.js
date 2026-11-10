@@ -271,3 +271,17 @@ function intakeImagesFromBrowser(payload) {
 function doPost(e) {
   return Api.post(e);
 }
+
+
+/** Owner-only, read-only projection of the human review queue. */
+function getReviewQueueForBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
+/** Owner-only review queue state update; never approves or promotes staging data. */
+function updateReviewStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
+}
