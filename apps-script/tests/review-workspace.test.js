@@ -80,7 +80,9 @@ test("review status controls allow only workflow states and never promote record
   assert.equal(ctx.queue[0].Decision_Notes,"Checking source page");
   assert.equal(ctx.updates.length,1);
   assert.throws(()=>ctx.workspace.setStatus({reviewQueueId:"review-1",status:"APPROVED"}),/REVIEW_STATUS_TRANSITION_NOT_ALLOWED/);
-  assert.throws(()=>ctx.workspace.setStatus({reviewQueueId:"review-2",status:"OPEN"}),/REVIEW_STATUS_TRANSITION_NOT_ALLOWED|REVIEW_ITEM_IS_TERMINAL/);
+  assert.equal(ctx.workspace.setStatus({reviewQueueId:"review-2",status:"OPEN"}).review_status,"OPEN");
+  ctx.queue[1].Review_Status = "APPROVED";
+  assert.throws(()=>ctx.workspace.setStatus({reviewQueueId:"review-2",status:"IN_REVIEW"}),/REVIEW_ITEM_IS_TERMINAL/);
 });
 
 test("review dashboard limits candidate evidence and tolerates inaccessible artifacts", () => {
