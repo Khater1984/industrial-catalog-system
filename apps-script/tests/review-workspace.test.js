@@ -35,6 +35,7 @@ function fixture() {
     Staging_Record_Hash: "a".repeat(64)
   };
   const stagingRows = {};
+  const products = [];
   const files = {};
   let fileSeq = 0;
   const runFolder = {
@@ -76,6 +77,7 @@ function fixture() {
       getBy: (table, key, value) => {
         if (table === "Review_Queue") return queue.find(row => row[key] === value) || null;
         if (table === "Staging_Products") return staging[key] === value ? staging : null;
+        if (table === "Products") return products.find(row => row[key] === value) || null;
         if (table === "Staging_Variants" || table === "Staging_Specifications") return stagingRows[table] && stagingRows[table][value] || null;
         return null;
       },
@@ -88,7 +90,7 @@ function fixture() {
     Date
   };
   vm.runInNewContext(source, context);
-  return { service: context.ReviewWorkspace, queue, staging, links, stagingRows, files, runFolder };
+  return { service: context.ReviewWorkspace, queue, staging, links, stagingRows, products, files, runFolder };
 }
 
 test("review approval persists explicitly accepted model and scoped specification decisions from linked evidence", () => {
@@ -144,6 +146,39 @@ test("review approval refuses unlinked candidates and edited values without a re
   }, "actor_primary"), /REVIEW_SPECIFICATION_EDIT_REASON_REQUIRED/);
 });
 
+test("review approval records an explicit MATCH_EXISTING product identity", () => {
+  const ctx = fixture();
+  ctx.products.push({ Product_ID: "prd_existing_123456", Lifecycle_Status: "ACTIVE" });
+  const result = ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    identityResolution: "MATCH_EXISTING", canonicalProductId: "prd_existing_123456",
+    matchRationale: "Same manufacturer and matching product reference"
+  }, "actor_primary");
+  const decision = JSON.parse(ctx.files[result.decisionFileId].content);
+  assert.equal(decision.products[0].identity_resolution, "MATCH_EXISTING");
+  assert.equal(decision.products[0].canonical_product_id, "prd_existing_123456");
+  assert.equal(decision.products[0].match_rationale, "Same manufacturer and matching product reference");
+});
+
+test("review approval rejects missing, inactive, or unexplained existing-product matches", () => {
+  const ctx = fixture();
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    identityResolution: "MATCH_EXISTING", canonicalProductId: "prd_missing"
+  }, "actor_primary"), /REVIEW_MATCH_PRODUCT_NOT_ACTIVE/);
+  ctx.products.push({ Product_ID: "prd_archived", Lifecycle_Status: "ARCHIVED" });
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    identityResolution: "MATCH_EXISTING", canonicalProductId: "prd_archived",
+    matchRationale: "Same model"
+  }, "actor_primary"), /REVIEW_MATCH_PRODUCT_NOT_ACTIVE/);
+  ctx.products.push({ Product_ID: "prd_active", Lifecycle_Status: "ACTIVE" });
+  assert.throws(() => ctx.service.approveProductReview({
+    reviewId: "rev_product_123456", productName: "Industrial Generator",
+    identityResolution: "MATCH_EXISTING", canonicalProductId: "prd_active"
+  }, "actor_primary"), /REVIEW_MATCH_RATIONALE_REQUIRED/);
+});
+
 test("product approval writes an immutable accepted decision and records its SHA", () => {
   const ctx = fixture();
   const result = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity", notes: "Checked source" }, "actor_primary");
@@ -154,6 +189,8 @@ test("product approval writes an immutable accepted decision and records its SHA
   const decision = JSON.parse(ctx.files[result.decisionFileId].content);
   assert.equal(decision.products[0].review_status, "ACCEPTED");
   assert.equal(decision.products[0].staging_id, "stg_product_123456");
+  assert.equal(decision.products[0].identity_resolution, "CREATE_NEW");
+  assert.equal(decision.products[0].canonical_product_id, "");
   assert.equal(decision.variants.length, 0);
 });
 
