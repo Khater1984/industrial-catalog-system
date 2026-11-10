@@ -166,7 +166,9 @@ test("images.promoteReviewed accepts only a review queue identifier", () => {
   });
   assert.equal(result.ok, true);
   assert.equal(calls.imagePromotions.length, 1);
-  assert.deepEqual(calls.imagePromotions[0], { reviewQueueId: "revimg_1234567890abcdef", actor: undefined });
+  assert.equal(calls.imagePromotions[0].reviewQueueId, "revimg_1234567890abcdef");
+  assert.equal(calls.imagePromotions[0].actor, undefined);
+  assert.equal(Object.keys(calls.imagePromotions[0]).length, 2);
 });
 
 test("images.reviewDecision routes the human decision to the persisted decision service", () => {
