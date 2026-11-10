@@ -2,12 +2,14 @@
 
 Local resumable PDF extraction worker for industrial catalogs.
 
-## Current capabilities (v0.2.2)
+## Current capabilities (v0.2.4)
 
 - Page-by-page embedded text extraction with checkpoints.
+- Automatic rendered-page OCR fallback for pages with insufficient embedded text (Arabic and English in the hosted DEV workflow).
+- Heuristic product/model/specification candidates attached to each page artifact with page provenance and mandatory human review.
 - Optional OCR fallback (local Tesseract) for pages with insufficient embedded text.
 - Supports Arabic (`ara`), English (`eng`), and `ara+eng`.
-- Optional embedded image extraction (feature-flagged or job flag).
+- Embedded image extraction enabled in the hosted DEV workflow; locally it remains opt-in.
 - SHA-256 content addressing for images and manifests.
 - Local review server (Flask) with image thumbnails.
 - Heuristic product/model/spec candidate extraction (rule-based, no external AI).
