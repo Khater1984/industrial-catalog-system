@@ -3579,6 +3579,10 @@ var ReviewWorkspace = (function () {
     if (s.length > limit) fail_("REVIEW_NOTES_TOO_LONG");
     return s;
   }
+  function clip_(value, limit) {
+    var s = value === null || value === undefined ? "" : String(value);
+    return s.length > limit ? s.slice(0, limit) + "…" : s;
+  }
   function fileUrl_(id) {
     if (!id || !/^[A-Za-z0-9_-]{10,200}$/.test(String(id))) return "";
     try { return DriveApp.getFileById(String(id)).getUrl(); } catch (e) { return ""; }
@@ -3628,19 +3632,19 @@ var ReviewWorkspace = (function () {
         return {
           stagingId: r.Staging_ID, role: link.Review_Role, table: found.type,
           status: r.Proposed_Status || r.Quality_Status || "",
-          productName: text_(r.Proposed_Product_Name_EN || "", 300),
-          productReference: text_(r.Proposed_Product_Reference || "", 160),
-          modelNumber: text_(r.Proposed_Model_Number || "", 160),
-          modelName: text_(r.Proposed_Model_Name || "", 250),
-          attribute: text_(r.Attribute_Key_Raw || "", 160),
-          value: text_(r.Value_Raw || "", 2000),
-          unit: text_(r.Unit_Raw || "", 80),
-          quote: text_(r.Extracted_Text || "", 4000),
-          pageId: text_(r.Catalog_Page_ID || "", 120),
-          runId: text_(r.Run_ID || "", 120),
-          catalogId: text_(r.Catalog_ID || "", 120),
+          productName: clip_(r.Proposed_Product_Name_EN || "", 300),
+          productReference: clip_(r.Proposed_Product_Reference || "", 160),
+          modelNumber: clip_(r.Proposed_Model_Number || "", 160),
+          modelName: clip_(r.Proposed_Model_Name || "", 250),
+          attribute: clip_(r.Attribute_Key_Raw || "", 160),
+          value: clip_(r.Value_Raw || "", 2000),
+          unit: clip_(r.Unit_Raw || "", 80),
+          quote: clip_(r.Extracted_Text || "", 4000),
+          pageId: clip_(r.Catalog_Page_ID || "", 120),
+          runId: clip_(r.Run_ID || "", 120),
+          catalogId: clip_(r.Catalog_ID || "", 120),
           confidence: r.Confidence || "",
-          extractionMethod: text_(r.Extraction_Method || "", 40),
+          extractionMethod: clip_(r.Extraction_Method || "", 40),
           fileUrl: fileUrl_(r.Proposed_Image_File_ID || r.Proposed_Document_File_ID || ""),
           artifact: readArtifact_(r.Raw_Extract_File_ID, artifactCache)
         };
@@ -3662,13 +3666,13 @@ var ReviewWorkspace = (function () {
       var page = pages[pageId] || {};
       return {
         id: q.Review_Queue_ID, type: q.Review_Type, priority: q.Priority,
-        status: q.Review_Status, action: text_(q.Proposed_Action || "", 500),
-        notes: text_(q.Decision_Notes || "", 1500), createdAt: q.Created_At || "",
+        status: q.Review_Status, action: clip_(q.Proposed_Action || "", 500),
+        notes: clip_(q.Decision_Notes || "", 1500), createdAt: q.Created_At || "",
         runId: runId, catalogId: catalogId, pageId: pageId,
         pageNumber: page.Page_Number || (pageArtifact && pageArtifact.pageNumber) || "",
         pageLabel: page.Page_Label || "",
-        supplierName: text_(catalog.Supplier_Name || "", 160),
-        catalogTitle: text_(catalog.Catalog_Title || catalog.Source_File_Name || "", 240),
+        supplierName: clip_(catalog.Supplier_Name || "", 160),
+        catalogTitle: clip_(catalog.Catalog_Title || catalog.Source_File_Name || "", 240),
         sourcePdfUrl: fileUrl_(catalog.Source_File_ID || ""),
         pageArtifact: pageArtifact,
         links: related
