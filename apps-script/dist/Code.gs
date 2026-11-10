@@ -2392,8 +2392,8 @@ var CandidateReviewIntake = (function () {
   function createProduct_(candidate, page, artifact, manifest, actor, index, counts) {
     var name = text_(candidate.proposed_product_name, 300);
     require_(name, "CANDIDATE_PRODUCT_NAME_MISSING");
-    // The destination column is explicitly English; never put Arabic/mixed text in it.
-    if (/[\u0600-\u06FF]/.test(name)) { counts.product_names_unassigned += 1; return null; }
+    // Keep Arabic/mixed names as evidence, but never write them into the English-only name column.
+    var unassignedName = /[\u0600-\u06FF]/.test(name);
     var quote = text_(candidate.source_quote, 4000);
     var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|" + index + "|" + name + "|" + quote;
     var sourceKey = "candidate-v1|" + sha_(sourceSeed).slice(0, 48);
@@ -2408,7 +2408,7 @@ var CandidateReviewIntake = (function () {
       Extraction_Tool_Version: text_(artifact.extraction_tool_version, 120),
       Source_Key_Algorithm_Version: "candidate-intake-v1",
       Confidence: confidence_(candidate.confidence), Proposed_Status: "NEEDS_REVIEW",
-      Proposed_Product_Name_EN: name, Identity_Match_Method: "UNRESOLVED",
+      Proposed_Product_Name_EN: unassignedName ? "" : name, Identity_Match_Method: "UNRESOLVED",
       Source_Record_Key: sourceKey
     };
     var record = Object.assign({}, stablePayload, {
@@ -2419,6 +2419,7 @@ var CandidateReviewIntake = (function () {
       ["Run_ID", "Catalog_ID", "Catalog_Page_ID", "Raw_Extract_File_ID", "Extracted_Text",
        "Extraction_Method", "Source_Key_Algorithm_Version", "Proposed_Product_Name_EN", "Source_Record_Key"],
       "STAGING_PRODUCT_CONFLICT")) counts.staging_products += 1;
+    if (unassignedName) return stagingId;
     var reviewId = stableId_("revprd", stagingId);
     var review = {
       Review_Queue_ID: reviewId, Review_Type: "PRODUCT_MATCH", Priority: "NORMAL",
@@ -2506,9 +2507,10 @@ var CandidateReviewIntake = (function () {
         var productStagingIds = [];
         var unassignedProductNames = 0;
         products.forEach(function (candidate, index) {
+          var unassignedName = /[\u0600-\u06FF]/.test(text_(candidate.proposed_product_name, 300));
           var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
           if (stagingId) productStagingIds.push(stagingId);
-          else unassignedProductNames += 1;
+          if (unassignedName) unassignedProductNames += 1;
         });
         createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
