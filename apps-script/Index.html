@@ -89,6 +89,27 @@
       <div class="notice">اعتماد المنتج النهائي وربط الموديلات والمواصفات يحتاجان خطوة اعتماد منفصلة؛ لم يتم تفعيلها قبل اختبار تكوين ملف Staging Set والتحقق من عقد الترحيل.</div>
       <div class="status" id="reviewStatus" role="status" aria-live="polite"></div>
     </section>
+    <section class="panel" style="margin-top:18px" id="humanReviewPanel">
+      <div class="review-toolbar">
+        <div><h3 style="margin:0">مراجعة نتائج الاستخراج</h3><div class="notice">المرشحات المستخرجة وأدلتها قبل اعتماد أي بيانات.</div></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="reviewStatusFilter" class="review-filter" aria-label="تصفية حالة المراجعة">
+            <option value="OPEN">مفتوحة</option><option value="IN_REVIEW">قيد المراجعة</option><option value="DEFERRED">مؤجلة</option><option value="ALL">كل الحالات</option>
+          </select>
+          <button class="refresh" id="reviewRefresh" type="button">تحديث</button>
+        </div>
+      </div>
+      <div class="review-stats">
+        <div class="stat"><b id="reviewOpenCount">—</b><span>مفتوحة</span></div>
+        <div class="stat"><b id="reviewInProgressCount">—</b><span>قيد المراجعة</span></div>
+        <div class="stat"><b id="reviewDeferredCount">—</b><span>مؤجلة</span></div>
+        <div class="stat"><b id="reviewTotalCount">—</b><span>آخر 250 عنصرًا</span></div>
+      </div>
+      <div class="notice">هذه النسخة تعرض الأدلة والمرشحات للقراءة فقط. لم تُفعّل بعد قرارات القبول والرفض والربط أو نقل السجلات إلى البيانات الأساسية.</div>
+      <div id="reviewQueueList"><div class="empty">جارٍ تحميل قائمة المراجعة...</div></div>
+      <div class="status" id="reviewStatus" role="status" aria-live="polite"></div>
+    </section>
+    
     <section class="panel" style="margin-top:18px">
       <h3>اعتماد دفعة المراجعة</h3>
       <p class="notice">أدخل معرف ملف Staging على Google Drive وبصمة SHA256 المسجلة أثناء المراجعة. النظام سيقرأ الملف من Drive ويتحقق من البصمة قبل الاعتماد.</p>
