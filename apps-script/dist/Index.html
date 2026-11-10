@@ -508,6 +508,42 @@
           card.appendChild(panel);specControls.push({ev,decision,scope,parentVariant,value,unit,reason});
         });
       }
+      if(item.type==="IMAGE_QUALITY"&&["OPEN","IN_REVIEW"].includes(item.status)){
+        const imagePanel=reviewNode("div",null,"review-evidence");
+        imagePanel.appendChild(reviewNode("strong","قرار اعتماد الصورة وربطها"));
+        const targetType=document.createElement("select");targetType.className="review-filter";
+        targetType.innerHTML='<option value="PRODUCT">منتج</option><option value="VARIANT">موديل</option>';
+        const targetId=document.createElement("input");targetId.type="text";targetId.className="review-notes";targetId.placeholder="معرف المنتج أو الموديل الأساسي";
+        const channels=reviewNode("div",null,"review-actions");
+        const catalogLabel=reviewNode("label","اعتماد للكتالوج");const catalog=document.createElement("input");catalog.type="checkbox";catalogLabel.prepend(catalog);
+        const sheetLabel=reviewNode("label","اعتماد لورقة البيانات");const dataSheet=document.createElement("input");dataSheet.type="checkbox";sheetLabel.prepend(dataSheet);
+        const primaryLabel=reviewNode("label","الصورة الرئيسية");const primary=document.createElement("input");primary.type="checkbox";primaryLabel.prepend(primary);
+        channels.appendChild(catalogLabel);channels.appendChild(sheetLabel);channels.appendChild(primaryLabel);
+        imagePanel.appendChild(targetType);imagePanel.appendChild(targetId);imagePanel.appendChild(channels);
+        const imageActions=reviewNode("div",null,"review-actions");
+        const acceptImage=reviewNode("button","اعتماد الصورة وربطها","review-action-btn primary");acceptImage.type="button";
+        acceptImage.addEventListener("click",()=>{
+          if(!targetId.value.trim()){alert("أدخل معرف المنتج أو الموديل.");return;}
+          if(!catalog.checked&&!dataSheet.checked){alert("اختر قناة نشر واحدة على الأقل.");return;}
+          acceptImage.disabled=true;
+          google.script.run.withSuccessHandler(result=>{
+            const box=el("reviewStatus");box.textContent="تم اعتماد الصورة وربطها. الحالة: "+result.status+" · المعرف: "+(result.imageId||"—");box.className="status show ok";loadReviewQueue();
+          }).withFailureHandler(err=>{
+            acceptImage.disabled=false;const box=el("reviewStatus");box.textContent="تعذر اعتماد الصورة: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
+          }).decideImageReviewFromBrowser({reviewId:item.id,decision:"ACCEPTED",targetType:targetType.value,targetId:targetId.value.trim(),catalogApproved:catalog.checked,dataSheetApproved:dataSheet.checked,isPrimary:primary.checked,notes:notes.value});
+        });
+        const rejectImage=reviewNode("button","رفض الصورة","review-action-btn danger");rejectImage.type="button";
+        rejectImage.addEventListener("click",()=>{
+          if(!confirm("تأكيد رفض الصورة؟"))return;
+          rejectImage.disabled=true;
+          google.script.run.withSuccessHandler(()=>{
+            const box=el("reviewStatus");box.textContent="تم رفض الصورة وتسجيل القرار.";box.className="status show ok";loadReviewQueue();
+          }).withFailureHandler(err=>{
+            rejectImage.disabled=false;const box=el("reviewStatus");box.textContent="تعذر رفض الصورة: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
+          }).decideImageReviewFromBrowser({reviewId:item.id,decision:"REJECTED",notes:notes.value});
+        });
+        imageActions.appendChild(acceptImage);imageActions.appendChild(rejectImage);imagePanel.appendChild(imageActions);card.appendChild(imagePanel);
+      }
       const decisionActions=reviewNode("div",null,"review-actions");
       function addDecisionAction(label,nextStatus,style){
         const button=reviewNode("button",label,"review-action-btn"+(style?" "+style:""));button.type="button";
