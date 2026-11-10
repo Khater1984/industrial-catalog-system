@@ -34,3 +34,18 @@ test("review dashboard projects linked staging evidence and verified page candid
   assert.equal(result.items[0].artifact.variants[0].proposed_model_number, "DG-100");
   assert.equal(result.items[0].decisionNotes, "Check the page");
 });
+
+
+test("review dashboard HTML consumes the exact ReviewDashboard response contract", () => {
+  const html = fs.readFileSync("Index.html", "utf8");
+  assert.match(html, /item\\.reviewId/);
+  assert.match(html, /item\\.proposedAction/);
+  assert.match(html, /item\\.evidence/);
+  assert.match(html, /item\\.decisionNotes/);
+  assert.match(html, /item\\.pageArtifactUrl/);
+  assert.match(html, /item\\.artifact/);
+  assert.doesNotMatch(html, /item\\.id\\b|item\\.action\\b|item\\.links\\b|item\\.pageArtifact\\b|item\\.notes\\b/);
+  assert.match(html, /ev\\.sourceArtifactUrl/);
+  assert.match(html, /ev\\.imageFileUrl/);
+  assert.match(html, /artifact\\.extractedText/);
+});
