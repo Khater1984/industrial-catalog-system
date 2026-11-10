@@ -81,6 +81,10 @@ var ReviewDashboard = (function () {
           imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
           fileUrl: safeUrl_(row.Proposed_Image_File_ID || row.Proposed_Document_File_ID || ""),
           imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
+          parentProductStagingId: row.Parent_Staging_Product_ID || "",
+          parentVariantStagingId: row.Parent_Staging_Variant_ID || "",
+          scope: row.Scope || "", parseStatus: row.Parse_Status || "",
+          proposedStatus: row.Proposed_Status || "",
           confidence: row.Confidence === undefined ? "" : row.Confidence,
           extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
           sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
