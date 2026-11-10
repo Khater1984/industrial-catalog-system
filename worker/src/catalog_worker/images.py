@@ -24,7 +24,7 @@ except ImportError:  # pragma: no cover - declared production dependency
     fitz = None
 
 IMAGE_EXTRACTION_ENV = "CATALOG_WORKER_EXTRACT_IMAGES"
-IMAGE_EXTRACTOR_VERSION = "0.1.0"
+IMAGE_EXTRACTOR_VERSION = "0.2.0"
 DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024
 
 
