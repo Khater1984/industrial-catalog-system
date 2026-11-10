@@ -132,6 +132,7 @@ var ReviewWorkspace = (function () {
       var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
       if (!current) fail_("REVIEW_NOT_FOUND");
       var from = String(current.Review_Status || "");
+      if (current.Review_Type === "IMAGE_QUALITY" && next === "REJECTED") fail_("IMAGE_REVIEW_REQUIRES_DECISION_SERVICE");
       if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
       var now = new Date().toISOString(), patch = { Review_Status: next, Decision_Notes: notes };
       if (next === "IN_REVIEW") patch.Assigned_Actor_ID = String(actor);
