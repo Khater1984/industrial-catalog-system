@@ -465,7 +465,7 @@
       evidence.forEach(ev=>{
         const row=reviewNode("div",null,"review-row");
         row.appendChild(reviewNode("strong",(ev.table||"عنصر") +" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
-        const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
+        const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"ارتباط المنتج: "+(ev.parentProductStagingId||"غير محدد"),"ارتباط الموديل: "+(ev.parentVariantStagingId||"غير محدد"),"نطاق المواصفة: "+(ev.scope||"غير محدد"),"حالة الاستخراج: "+(ev.proposedStatus||"—"),"حالة تحليل المواصفة: "+(ev.parseStatus||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
         row.appendChild(reviewNode("div",parts.join(" · "),"review-meta"));
         if(ev.quote)row.appendChild(reviewNode("div",ev.quote,"review-meta"));
         if(ev.fileUrl){const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.fileUrl,"فتح الملف المرتبط");row.appendChild(evLinks);}
