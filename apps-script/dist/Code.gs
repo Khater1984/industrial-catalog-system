@@ -2392,6 +2392,8 @@ var CandidateReviewIntake = (function () {
   function createProduct_(candidate, page, artifact, manifest, actor, index, counts) {
     var name = text_(candidate.proposed_product_name, 300);
     require_(name, "CANDIDATE_PRODUCT_NAME_MISSING");
+    // The destination column is explicitly English; never put Arabic/mixed text in it.
+    if (/[\u0600-\u06FF]/.test(name)) { counts.product_names_unassigned += 1; return null; }
     var quote = text_(candidate.source_quote, 4000);
     var sourceSeed = manifest.run_id + "|" + page.catalog_page_id + "|" + index + "|" + name + "|" + quote;
     var sourceKey = "candidate-v1|" + sha_(sourceSeed).slice(0, 48);
@@ -2437,17 +2439,17 @@ var CandidateReviewIntake = (function () {
       "CANDIDATE_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
     return stagingId;
   }
-  function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, counts) {
+  function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts) {
     var candidates = artifact.product_candidates || {};
     var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
     var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
-    if (!variants.length && !specs.length) return;
+    if (!variants.length && !specs.length && !unassignedProductNames) return;
     var reviewId = stableId_("revamb", manifest.run_id + "|" + page.catalog_page_id);
     var createdAt = now_();
     var review = {
       Review_Queue_ID: reviewId, Review_Type: "EXTRACTION_AMBIGUITY", Priority: "NORMAL",
       Review_Status: "OPEN",
-      Proposed_Action: "Resolve parent product/model for model and specification candidates on page " + page.catalog_page_id + " in run " + manifest.run_id + ". Inspect the page artifact referenced by Run_Units; no parent relationship was inferred.",
+      Proposed_Action: "Review unassigned product-name, model, and specification candidates on page " + page.catalog_page_id + " in run " + manifest.run_id + ". Inspect the page artifact referenced by Run_Units; non-English product names were not written into the English-name field and no parent relationship was inferred.",
       Created_At: createdAt, Created_By: actor
     };
     if (ensure_("Review_Queue", "Review_Queue_ID", review,
@@ -2484,7 +2486,7 @@ var CandidateReviewIntake = (function () {
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
-      var counts = { pages: 0, staging_products: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
+      var counts = { pages: 0, staging_products: 0, product_names_unassigned: 0, review_items: 0, review_links: 0, variants_unassigned: 0, specifications_unassigned: 0 };
       manifest.pages.forEach(function (page) {
         var file = DriveApp.getFileById(page.artifact_file_id);
         var blob = file.getBlob(), bytes = blob.getBytes();
@@ -2502,10 +2504,13 @@ var CandidateReviewIntake = (function () {
         var variants = Array.isArray(candidateSet.variants) ? candidateSet.variants : [];
         var specs = Array.isArray(candidateSet.specifications) ? candidateSet.specifications : [];
         var productStagingIds = [];
+        var unassignedProductNames = 0;
         products.forEach(function (candidate, index) {
-          productStagingIds.push(createProduct_(candidate, page, artifact, manifest, actor, index, counts));
+          var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
+          if (stagingId) productStagingIds.push(stagingId);
+          else unassignedProductNames += 1;
         });
-        createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, counts);
+        createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
         counts.variants_unassigned += variants.length;
         counts.specifications_unassigned += specs.length;
