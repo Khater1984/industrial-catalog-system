@@ -145,7 +145,9 @@ var WorkerIntegration = (function () {
   function processCompletedRuns() {
     var runs = SheetsRepository.listAll("Run_Log"), processed = [], errors = [];
     runs.forEach(function (run) {
-      if (["RUNNING", "RETRY_PENDING"].indexOf(run.Run_Status) < 0 || !run.Input_Manifest_File_ID) return;
+      var retryCandidateIntake = run.Run_Status === "COMPLETED" && run.Current_Step === "REVIEW_INTAKE_PENDING";
+      if (["RUNNING", "RETRY_PENDING"].indexOf(run.Run_Status) < 0 && !retryCandidateIntake) return;
+      if (!run.Input_Manifest_File_ID) return;
       try {
         var jobFile = DriveApp.getFileById(run.Input_Manifest_File_ID);
         var parents = jobFile.getParents();
@@ -168,14 +170,30 @@ var WorkerIntegration = (function () {
         var result = Ingest.ingestManifest({
           runId: run.Run_ID, resultManifestFileId: resultFile.getId()
         });
-        processed.push(result);
+        if (result.run_status === "COMPLETED") {
+          run.Run_Status = "COMPLETED";
+          run.Current_Step = "INGESTED";
+        }
+        var reviewIntake = CandidateReviewIntake.intakeRun({
+          runId: run.Run_ID, resultManifestFileId: resultFile.getId()
+        });
+        SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
+          Current_Step: "REVIEW_READY", Error_Code: "", Error_Summary: ""
+        });
+        processed.push(Object.assign({}, result, { review_intake: reviewIntake }));
       } catch (err) {
         var code = String(err && err.message ? err.message : "INGEST_FAILED").slice(0, 120);
-        if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) < 0) {
+        if (run.Run_Status === "COMPLETED") {
           try {
             SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
-              Error_Code: "RESULT_INGEST_REJECTED",
-              Error_Summary: code
+              Current_Step: "REVIEW_INTAKE_PENDING",
+              Error_Code: "CANDIDATE_REVIEW_INTAKE_FAILED", Error_Summary: code
+            });
+          } catch (ignore) {}
+        } else if (["COMPLETED", "FAILED", "CANCELLED"].indexOf(run.Run_Status) < 0) {
+          try {
+            SheetsRepository.updateBy("Run_Log", "Run_ID", run.Run_ID, {
+              Error_Code: "RESULT_INGEST_REJECTED", Error_Summary: code
             });
           } catch (ignore) {}
         }
