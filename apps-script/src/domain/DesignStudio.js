@@ -2,6 +2,7 @@
  * Brand identities + templates + domain-aware snapshot generation.
  * Uses Script Properties only. No new Sheets tables.
  * Reads EffectiveSpecificationResolver for real product data.
+ * Populates approved images from existing Image_Links / Image_Assets.
  */
 var DesignStudio = (function () {
   var BRAND_KEY = "DS_BRANDS";
@@ -25,8 +26,6 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: "",
       fontBoldPath: "",
       watermarkText: "",
@@ -49,8 +48,6 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: "",
       fontBoldPath: "",
       watermarkText: "",
@@ -73,8 +70,6 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "COMPANY",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: "",
       fontBoldPath: "",
       watermarkText: "",
@@ -97,8 +92,6 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "NONE",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: "",
       fontBoldPath: "",
       watermarkText: "",
@@ -121,8 +114,6 @@ var DesignStudio = (function () {
       paperSize: "A4",
       orientation: "portrait",
       logoPreference: "SUPPLIER",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: "",
       fontBoldPath: "",
       watermarkText: "",
@@ -181,8 +172,6 @@ var DesignStudio = (function () {
       paperSize: preset.paperSize || "A4",
       orientation: preset.orientation || "portrait",
       logoPreference: preset.logoPreference || "COMPANY",
-      fontRegular: "",
-      fontBold: "",
       fontRegularPath: String(preset.fontRegularPath || "").slice(0, 500),
       fontBoldPath: String(preset.fontBoldPath || "").slice(0, 500),
       watermarkText: String(preset.watermarkText || "").slice(0, 60),
@@ -200,7 +189,6 @@ var DesignStudio = (function () {
     return record;
   }
 
-  // --- Templates with version history ---
   function listTemplates() {
     return load_(TEMPLATE_KEY);
   }
@@ -213,7 +201,6 @@ var DesignStudio = (function () {
     var items = load_(TEMPLATE_KEY);
     var existing = items.find(function (x) { return x.name === t.name; });
     var version = existing ? (existing.version || 1) + 1 : 1;
-    // Keep history of previous published version
     var history = existing && existing.history ? existing.history.slice() : [];
     if (existing && existing.status === "PUBLISHED") {
       history.push({ version: existing.version, snapshot: Object.assign({}, existing), archivedAt: new Date().toISOString() });
@@ -227,7 +214,7 @@ var DesignStudio = (function () {
       groupByFamily: !!t.groupByFamily,
       showProvenance: !!t.showProvenance,
       excludeUnpublished: !!t.excludeUnpublished,
-      blockOnConflict: !!t.blockOnConflict,
+      blockOnConflict: true,
       defaultBrandName: String(t.defaultBrandName || "Apple").slice(0, 80),
       version: version,
       history: history.slice(-5),
@@ -259,7 +246,33 @@ var DesignStudio = (function () {
     return saveTemplate(Object.assign({}, src, { name: newName, status: "DRAFT" }));
   }
 
-  // --- Domain-aware snapshot ---
+  function collectApprovedImages_(productId, variantId) {
+    var images = [];
+    function addLinks(targetType, targetId) {
+      if (!targetId) return;
+      var links = SheetsRepository.findAll("Image_Links", function (row) {
+        return row.Target_Type === targetType && row.Target_ID === targetId &&
+               row.Link_Status === "ACTIVE" && (row.Catalog_Approved || row.DataSheet_Approved);
+      }) || [];
+      links.forEach(function (link) {
+        var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", link.Image_ID);
+        if (!asset || asset.Lifecycle_Status !== "ACTIVE") return;
+        images.push({
+          image_id: asset.Image_ID,
+          drive_file_id: asset.Original_File_ID,
+          path: asset.Local_Path || "", // filled by a later Drive sync if needed
+          display_width_mm: 70,
+          is_primary: !!link.Is_Primary,
+          catalog_approved: !!link.Catalog_Approved,
+          datasheet_approved: !!link.DataSheet_Approved
+        });
+      });
+    }
+    addLinks("VARIANT", variantId);
+    addLinks("PRODUCT", productId);
+    return images;
+  }
+
   function resolveItem_(productId, variantId) {
     var product = SheetsRepository.getBy("Products", "Product_ID", productId);
     if (!product) throw new Error("PRODUCT_NOT_FOUND: " + productId);
@@ -312,7 +325,7 @@ var DesignStudio = (function () {
       family: family ? (family.Family_Name_EN || family.Family_Name_AR || "") : "",
       model_number: variantNameEn || variantNameAr || "",
       specifications: specs,
-      images: [],
+      images: collectApprovedImages_(productId, variantId),
       publishable: product.Lifecycle_Status === "ACTIVE",
       conflicts: resolved.conflicts || [],
       validation_errors: resolved.validation_errors || []
@@ -348,8 +361,6 @@ var DesignStudio = (function () {
     if (isFinal && allValidationErrors.length) {
       throw new Error("SPECIFICATION_VALIDATION_ERRORS_BLOCK_FINAL: " + allValidationErrors.length);
     }
-    // ADR-040 conflicts must never enter a FINAL snapshot. This is a safety invariant,
-    // not an optional template preference or UI checkbox.
     if (isFinal && allConflicts.length) {
       throw new Error("CONFLICTS_BLOCK_FINAL_ISSUE: " + allConflicts.length);
     }
@@ -370,7 +381,10 @@ var DesignStudio = (function () {
           tableHeader: brand.tableHeader,
           border: brand.border
         },
-        fonts: { regular: brand.fontRegularPath || null, bold: brand.fontBoldPath || null },
+        fonts: {
+          regular: brand.fontRegularPath || null,
+          bold: brand.fontBoldPath || null
+        },
         logoPreference: brand.logoPreference
       },
       paper: {
@@ -403,7 +417,6 @@ var DesignStudio = (function () {
       templateName: template ? template.name : null
     };
 
-    // Store in simple issue library
     var issues = load_(ISSUE_KEY);
     issues.unshift({
       id: Utilities.getUuid(),
