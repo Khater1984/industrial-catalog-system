@@ -6,9 +6,10 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("src/domain/CandidateReviewIntake.js", "utf8");
 function canonical(value) {
+  if (typeof value === "string") return value.normalize("NFC");
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(canonical);
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
+  return Object.fromEntries(Object.keys(value).map((key) => key.normalize("NFC")).sort().map((key) => [key, canonical(value[key])]));
 }
 function canonicalText(value) { return JSON.stringify(canonical(value)); }
 function sha(value) { return crypto.createHash("sha256").update(value).digest("hex"); }
@@ -35,6 +36,7 @@ function fixture(imageExtraction) {
     run_id: "run_test", catalog_id: "cat_test", run_status: "COMPLETED",
     pages: [page], ...(imageExtraction ? { image_extraction: imageExtraction } : {})
   };
+  manifest.manifest_sha256 = sha(canonicalText(manifest));
   const files = {
     "manifest-file-id": Buffer.from(JSON.stringify(manifest)),
     "artifact-file-id": artifactBytes
