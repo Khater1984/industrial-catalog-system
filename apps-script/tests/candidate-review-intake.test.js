@@ -45,6 +45,7 @@ function fixture(imageExtraction) {
   };
   const rows = {};
   const imageCalls = [];
+  let lockHeld = false;
   const context = {
     APP: { ACTOR_ID: "actor_primary" },
     Utilities: {
@@ -52,8 +53,8 @@ function fixture(imageExtraction) {
       newBlob: (value) => ({ getBytes: () => Array.from(Buffer.from(value, "utf8")) }),
       computeDigest: (_algorithm, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes)).digest())
     },
-    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
-    ImageReviewIntake: { intake: (options) => { imageCalls.push(options); return { status: "COMPLETED" }; } },
+    LockService: { getScriptLock: () => ({ waitLock() { if (lockHeld) throw new Error("LOCK_ALREADY_HELD"); lockHeld = true; }, releaseLock() { lockHeld = false; } }) },
+    ImageReviewIntake: { intake: (options) => { if (lockHeld) throw new Error("IMAGE_INTAKE_CALLED_WITH_LOCK_HELD"); imageCalls.push(options); return { status: "COMPLETED" }; } },
     DriveApp: { getFileById: (id) => ({
       getBlob: () => ({
         getBytes: () => Array.from(files[id]),
@@ -72,7 +73,7 @@ function fixture(imageExtraction) {
     }
   };
   vm.runInNewContext(source, context);
-  return { intake: context.CandidateReviewIntake, rows, imageCalls };
+  return { intake: context.CandidateReviewIntake, rows, imageCalls, context };
 }
 
 test("candidate intake stages products and queues unresolved model/spec evidence without guessing parents", () => {
@@ -123,4 +124,11 @@ test("candidate intake forwards completed image manifests to image review intake
   assert.equal(ctx.imageCalls.length, 1);
   assert.equal(ctx.imageCalls[0].imageManifestFileId, "image-manifest-id");
   assert.equal(ctx.imageCalls[0].driveManifestFileId, "drive-manifest-id");
+});
+
+test("candidate intake fails retryably when image review intake is partial", () => {
+  const imageExtraction = { enabled: true, status: "COMPLETED", manifest_file_id: "image-manifest-id", manifest_sha256: "a".repeat(64), drive_manifest_file_id: "drive-manifest-id", drive_manifest_sha256: "b".repeat(64) };
+  const ctx = fixture(imageExtraction);
+  ctx.context.ImageReviewIntake.intake = () => ({ status: "PARTIAL" });
+  assert.throws(() => ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" }), /IMAGE_REVIEW_INTAKE_INCOMPLETE/);
 });
