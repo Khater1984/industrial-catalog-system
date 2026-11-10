@@ -2510,7 +2510,7 @@ var CandidateReviewIntake = (function () {
           var unassignedName = /[\u0600-\u06FF]/.test(text_(candidate.proposed_product_name, 300));
           var stagingId = createProduct_(candidate, page, artifact, manifest, actor, index, counts);
           if (stagingId) productStagingIds.push(stagingId);
-          if (unassignedName) unassignedProductNames += 1;
+          if (unassignedName) { unassignedProductNames += 1; counts.product_names_unassigned += 1; }
         });
         createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, unassignedProductNames, counts);
         counts.pages += 1;
