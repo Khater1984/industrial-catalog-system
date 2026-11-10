@@ -74,7 +74,8 @@ var WorkerIntegration = (function () {
         source_sha256: catalog.SHA256, attempt_number: Number(run.Attempt_Number) || 1,
         parent_run_id: run.Parent_Run_ID || null, retry_reason: run.Retry_Reason || null,
         idempotency_key: idempotencyKey,
-        extraction_profile: "embedded-text-v1", run_folder_id: folder.getId()
+        extraction_profile: "text-ocr-candidates-v2", ocr_languages: "ara+eng",
+        ocr_min_usable_chars: 40, run_folder_id: folder.getId()
       };
       var jobFile = immutableJobFile_(folder, job);
       var now = new Date().toISOString();
