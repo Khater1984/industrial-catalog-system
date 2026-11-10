@@ -85,21 +85,24 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   const ctx = fixture();
   const result = ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   assert.equal(result.status, "COMPLETED");
-  assert.equal(result.counts.staging_products, 1);
+  assert.equal(result.counts.staging_products, 2);
   assert.equal(result.counts.product_names_unassigned, 1);
   assert.equal(result.counts.review_items, 2);
   assert.equal(result.counts.variants_unassigned, 1);
   assert.equal(result.counts.specifications_unassigned, 1);
-  assert.equal(ctx.rows.Staging_Products.length, 1);
+  assert.equal(ctx.rows.Staging_Products.length, 2);
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Status, "NEEDS_REVIEW");
   assert.equal(ctx.rows.Staging_Products[0].Proposed_Product_Name_EN, "Industrial Generator");
   assert.equal(ctx.rows.Staging_Products.some((row) => /[\u0600-\u06FF]/.test(row.Proposed_Product_Name_EN)), false);
+  const arabicEvidence = ctx.rows.Staging_Products.find((row) => row.Extracted_Text === "مولد كهربائي");
+  assert.ok(arabicEvidence);
+  assert.equal(arabicEvidence.Proposed_Product_Name_EN, "UNASSIGNED");
   assert.equal(ctx.rows.Staging_Variants, undefined);
   assert.equal(ctx.rows.Staging_Specifications, undefined);
   assert.equal(ctx.rows.Review_Queue.length, 2);
   assert.equal(ctx.rows.Staging_Products[0].Raw_Extract_File_ID, "artifact-file-id");
   assert.equal(ctx.rows.Review_Queue.find((row) => row.Review_Type === "EXTRACTION_AMBIGUITY").Decision_JSON_File_ID, undefined);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 3);
   assert.equal(ctx.rows.Review_Staging_Links.find((row) => row.Review_Role === "EVIDENCE").Staging_ID, ctx.rows.Staging_Products[0].Staging_ID);
 });
 
@@ -107,9 +110,9 @@ test("candidate intake is idempotent across poller retries", () => {
   const ctx = fixture();
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
   ctx.intake.intakeRun({ runId: "run_test", resultManifestFileId: "manifest-file-id" });
-  assert.equal(ctx.rows.Staging_Products.length, 1);
+  assert.equal(ctx.rows.Staging_Products.length, 2);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 2);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 3);
 });
 
 test("candidate intake rejects artifacts with altered bytes or identity", () => {
