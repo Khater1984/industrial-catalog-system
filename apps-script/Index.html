@@ -30,6 +30,21 @@
     .review-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:12px 0 18px}.review-stat{background:#f7f9fb;border:1px solid var(--line);border-radius:10px;padding:10px}.review-stat b{display:block;font-size:20px}.review-stat span{font-size:11px;color:var(--muted)}.review-card{border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0;background:#fff}.review-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.review-title{font-weight:700;line-height:1.6}.review-meta{font-size:11px;color:var(--muted);margin:5px 0 10px}.review-evidence{background:#f7f9fb;border-radius:9px;padding:10px;margin-top:9px;font-size:12px;line-height:1.7}.review-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin:5px 0}.review-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.review-actions button{border:1px solid var(--line);background:#fff;color:var(--accent);padding:8px 11px;border-radius:8px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.review-actions button.primary{background:var(--accent);color:#fff}.review-actions button.danger{color:var(--bad)}.review-notes{width:100%;margin-top:9px;padding:9px;border:1px solid var(--line);border-radius:8px;font:inherit}.review-link{color:var(--accent);font-weight:700;text-decoration:none}
     @media(max-width:700px){.review-grid{grid-template-columns:repeat(2,1fr)}.review-head{display:block}}
     .footer{color:#8a96a3;text-align:center;font-size:11px;margin-top:24px}
+    .review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .review-filter{min-width:180px;border:1px solid var(--line);border-radius:8px;padding:9px;background:#fff;font:inherit}
+    .review-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:14px 0}
+    .review-card{border:1px solid var(--line);border-radius:12px;padding:14px;margin:10px 0;background:#fff}
+    .review-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .review-card h4{font-size:14px;margin:0 0 5px;overflow-wrap:anywhere}
+    .review-meta{font-size:11px;color:var(--muted);line-height:1.8}
+    .review-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .review-link{display:inline-block;color:var(--accent2);font-size:12px;font-weight:700;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+    .review-evidence{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+    .review-evidence h5{font-size:12px;margin:12px 0 6px}
+    .review-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border-radius:8px;padding:10px;font:12px/1.7 Arial,sans-serif;max-height:220px;overflow:auto;direction:auto}
+    .review-row{padding:8px 0;border-bottom:1px solid #edf0f3;font-size:12px;line-height:1.7}
+    @media(max-width:600px){.review-stats{grid-template-columns:repeat(2,1fr)}.review-card{padding:11px}.review-card-head{display:block}}
+
     @media(max-width:800px){.shell{padding:18px 13px 40px}.grid{grid-template-columns:1fr}.top{margin-bottom:22px}.intro h2{font-size:21px}.panel{padding:17px}.stats{gap:7px}.stat{padding:10px}.stat b{font-size:20px}}
   </style>
 </head>
@@ -39,7 +54,7 @@
       <div class="brand"><div class="mark">IC</div><div><h1>Industrial Catalog Studio</h1><div class="sub">منصة إدارة الكتالوجات الفنية</div></div></div>
       <div class="env">بيئة التطوير · DEV</div>
     </header>
-    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF، وسجّل بيانات المصدر، وتابع حالة المعالجة من مكان واحد. هذه النسخة تسجل الكتالوج وتتحقق من الملف؛ استخراج المنتجات سيضاف في المرحلة التالية.</p></section>
+    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF وتابع استخلاص الصفحات والمنتجات والمرشحات. تظهر النتائج في قائمة مراجعة بشرية قبل أي اعتماد أو نقل إلى البيانات الأساسية.</p></section>
     <section class="grid">
       <div class="panel">
         <h3>إضافة كتالوج جديد</h3>
