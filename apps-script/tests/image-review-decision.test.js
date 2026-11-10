@@ -22,7 +22,8 @@ function harness(reviewStatus = "OPEN", linkCount = 1) {
       Review_Queue_ID: review.Review_Queue_ID,
       Staging_ID: staging.Staging_ID, Review_Role: "PRIMARY"
     })),
-    Staging_Images: [staging]
+    Staging_Images: [staging],
+    Products: [{ Product_ID: "product_1", Lifecycle_Status: "ACTIVE" }]
   };
   const files = [];
   const context = {
