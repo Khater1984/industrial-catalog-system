@@ -75,9 +75,9 @@ test("publication queries return only active links approved for the requested us
   service.setApproval(one.linkId, { catalogApproved: true, linkStatus: "ACTIVE" });
   const two = service.linkToTarget("img2", "PRODUCT", "P1");
   service.setApproval(two.linkId, { dataSheetApproved: true, linkStatus: "ACTIVE" });
-  assert.deepEqual(service.getImagesForProduct("P1", null, "CATALOG").images.map(x => x.imageId), ["img1"]);
-  assert.deepEqual(service.getImagesForProduct("P1", null, "DATASHEET").images.map(x => x.imageId), ["img2"]);
-  assert.deepEqual(service.getImagesForProduct("P1").images.map(x => x.imageId).sort(), ["img1", "img2"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1", null, "CATALOG").images, x => x.imageId), ["img1"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1", null, "DATASHEET").images, x => x.imageId), ["img2"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1").images, x => x.imageId).sort(), ["img1", "img2"]);
 });
 
 test("variant images take precedence only within their approved publication channel", () => {
@@ -86,8 +86,8 @@ test("variant images take precedence only within their approved publication chan
   service.setApproval(product.linkId, { catalogApproved: true, dataSheetApproved: true, linkStatus: "ACTIVE" });
   const variant = service.linkToTarget("img2", "VARIANT", "V1");
   service.setApproval(variant.linkId, { dataSheetApproved: true, linkStatus: "ACTIVE" });
-  assert.deepEqual(service.getImagesForProduct("P1", "V1", "CATALOG").images.map(x => x.imageId), ["img1"]);
-  assert.deepEqual(service.getImagesForProduct("P1", "V1", "DATASHEET").images.map(x => x.imageId), ["img2"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1", "V1", "CATALOG").images, x => x.imageId), ["img1"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1", "V1", "DATASHEET").images, x => x.imageId), ["img2"]);
 });
 
 test("rejects a variant belonging to another product", () => {
@@ -118,7 +118,7 @@ test("orders images by primary then publication order", () => {
   service.setApproval(one.linkId, { catalogApproved: true, linkStatus: "ACTIVE" });
   const two = service.linkToTarget("img2", "PRODUCT", "P1", { catalogOrder: 10 });
   service.setApproval(two.linkId, { catalogApproved: true, linkStatus: "ACTIVE" });
-  assert.deepEqual(service.getImagesForProduct("P1", null, "CATALOG").images.map(x => x.imageId), ["img2", "img1"]);
+  assert.deepEqual(Array.from(service.getImagesForProduct("P1", null, "CATALOG").images, x => x.imageId), ["img2", "img1"]);
 });
 
 test("finds exact SHA256 duplicates case-insensitively", () => {
