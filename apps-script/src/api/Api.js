@@ -227,12 +227,6 @@ function getCatalogDashboard() {
   return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
 }
 
-/** Owner-only, read-only projection of the human review queue. */
-function getReviewQueueForBrowser() {
-  assertPrimaryUser_();
-  return ReviewDashboard.getQueue();
-}
-
 /** Run manually from the Apps Script editor after DEV properties are configured. */
 function initializeDevSchema() {
   assertPrimaryUser_();
@@ -276,6 +270,19 @@ function intakeImagesFromBrowser(payload) {
 
 function doPost(e) {
   return Api.post(e);
+}
+
+/** Owner-only review inbox data for the DEV dashboard. */
+function getReviewInboxFromBrowser() {
+  assertPrimaryUser_();
+  return ReviewWorkspace.getInbox();
+}
+
+/** Owner-only review queue state update; this does not approve or promote staging data. */
+function updateReviewStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
 }
 
 
