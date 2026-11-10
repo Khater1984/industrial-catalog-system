@@ -242,3 +242,30 @@ def test_drive_runner_records_images_disabled_by_default(tmp_path, monkeypatch):
         "image_count": 0,
         "uploaded_count": 0,
     }
+
+
+
+def test_github_cli_fallback_publishes_terminal_failure_manifest(tmp_path):
+    from catalog_worker.github_actions_cli import _publish_terminal_failure
+
+    pdf_bytes = make_pdf(tmp_path / "source-fallback.pdf")
+    source_sha = hashlib.sha256(pdf_bytes).hexdigest()
+    job = {
+        "run_id": "run_test_fallback",
+        "logical_job_id": "job_test_fallback",
+        "catalog_id": "cat_test_fallback",
+        "source_sha256": source_sha,
+        "attempt_number": 1,
+        "run_folder_id": "folder-run",
+    }
+    drive = FakeDrive(job, pdf_bytes)
+
+    result = _publish_terminal_failure(
+        drive, job, RuntimeError("DRIVE_UPLOAD_FAILED: simulated transport error"), tmp_path / "fallback"
+    )
+
+    assert result is not None
+    assert result["run_status"] == "FAILED"
+    manifest = json.loads(drive.files[result["result_manifest_file_id"]]["content"])
+    assert manifest["error_code"] == "DRIVE_UPLOAD_FAILED"
+    assert manifest["run_id"] == "run_test_fallback"
