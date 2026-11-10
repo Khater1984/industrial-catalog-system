@@ -127,11 +127,6 @@ var ReviewWorkspace = (function () {
     if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
     var notes = text_(options.notes || "", 1500);
     if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
-    var requestFingerprint = sha_(JSON.stringify({
-      productName: productName, identityResolution: identityResolution,
-      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
-      notes: notes, variants: options.variants || [], specifications: options.specifications || []
-    }));
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
       var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
@@ -163,6 +158,11 @@ var ReviewWorkspace = (function () {
     if (identityResolution === "CREATE_NEW" && !matchRationale) matchRationale = "Reviewer confirmed a new canonical product identity.";
     var notes = text_(options.notes || "", 1500);
     if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var requestFingerprint = sha_(JSON.stringify({
+      productName: productName, identityResolution: identityResolution,
+      canonicalProductId: canonicalProductId, matchRationale: matchRationale,
+      notes: notes, variants: options.variants || [], specifications: options.specifications || []
+    }));
     var lock = LockService.getScriptLock(); lock.waitLock(30000);
     try {
       var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
