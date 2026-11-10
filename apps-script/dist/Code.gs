@@ -4850,10 +4850,12 @@ var ReviewWorkspace = (function () {
       var variantIds = unique_(variants, "VARIANT");
       var variantsByStagingId = {};
       variants.forEach(function (v) {
+        if (!v || v.review_status !== "ACCEPTED") return;
         if (!productIds[v.parent_staging_product_id]) fail_("REVIEW_VARIANT_PARENT_MISSING");
         variantsByStagingId[v.staging_id] = v;
       });
       specifications.forEach(function (s) {
+        if (!s || s.review_status !== "ACCEPTED") return;
         if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
         if (s.scope === "PRODUCT") {
           if (s.parent_staging_variant_id) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
