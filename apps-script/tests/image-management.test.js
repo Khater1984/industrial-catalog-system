@@ -55,6 +55,14 @@ test("cannot create a primary link before an approval and activation", () => {
   assert.equal(store.Image_Links.length, 0);
 });
 
+test("cannot activate a link until at least one publication channel is approved", () => {
+  const { service } = buildContext();
+  const link = service.linkToTarget("img1", "PRODUCT", "P1");
+  assert.throws(() => service.setApproval(link.linkId, { linkStatus: "ACTIVE" }), /IMAGE_ACTIVE_REQUIRES_APPROVAL/);
+  service.setApproval(link.linkId, { catalogApproved: true, linkStatus: "ACTIVE" });
+  assert.equal(service.getImagesForProduct("P1", null, "CATALOG").count, 1);
+});
+
 test("approval is independent and primary selection clears the previous primary", () => {
   const { service, store } = buildContext();
   const one = service.linkToTarget("img1", "PRODUCT", "P1");
