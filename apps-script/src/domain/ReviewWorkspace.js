@@ -155,6 +155,10 @@ var ReviewWorkspace = (function () {
       });
       specifications.forEach(function (s) {
         if (!productIds[s.parent_staging_product_id]) fail_("REVIEW_SPECIFICATION_PRODUCT_PARENT_MISSING");
+        if (s.scope === "PRODUCT") {
+          if (s.parent_staging_variant_id) fail_("REVIEW_SPECIFICATION_PRODUCT_SCOPE_VARIANT_FORBIDDEN");
+          return;
+        }
         if (s.scope !== "VARIANT") fail_(s.scope ? "REVIEW_SPECIFICATION_SCOPE_UNSUPPORTED" : "REVIEW_SPECIFICATION_SCOPE_REQUIRED");
         if (!variantIds[s.parent_staging_variant_id]) fail_("REVIEW_SPECIFICATION_VARIANT_PARENT_MISSING");
         var parentVariant = variantsByStagingId[s.parent_staging_variant_id];
