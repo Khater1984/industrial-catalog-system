@@ -303,6 +303,13 @@ function intakeImagesFromBrowser(payload) {
   });
 }
 
+/** Owner-only decision endpoint for an actual IMAGE_QUALITY task. */
+function decideImageReviewFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("IMAGE_REVIEW_PAYLOAD_INVALID");
+  return ImageReviewService.decide(payload, APP.ACTOR_ID);
+}
+
 function doPost(e) {
   return Api.post(e);
 }
