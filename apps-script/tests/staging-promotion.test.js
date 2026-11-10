@@ -192,3 +192,31 @@ test("promotion refuses specifications without the supported explicit VARIANT sc
     /PROMOTION_SPEC_SCOPE_UNSUPPORTED/
   );
 });
+
+
+test("promotion writes product-scope specifications against Product_Source_Records", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "PRODUCT";
+  staging.specifications[0].parent_staging_variant_id = "";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
+  assert.equal(result.counts.specifications, 1);
+  const spec = ctx.store.Specifications[0];
+  assert.equal(spec.Scope, "PRODUCT");
+  assert.ok(spec.Product_Source_Record_ID);
+  assert.equal(spec.Variant_Source_Record_ID, "");
+  assert.equal(spec.Variant_ID, "");
+});
+
+test("promotion rejects product-scope specifications with a variant parent", () => {
+  const staging = stagingObject();
+  staging.specifications[0].scope = "PRODUCT";
+  staging.specifications[0].parent_staging_variant_id = "stg_var_1";
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_SPEC_PRODUCT_SCOPE_VARIANT_FORBIDDEN/
+  );
+});
