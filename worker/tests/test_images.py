@@ -65,7 +65,7 @@ def test_extracts_embedded_image_and_writes_sha256_manifest(tmp_path):
     assert image["width_px"] == 3
     assert image["height_px"] == 2
     assert image["has_alpha"] is False
-    assert image["file_size_bytes"] == len(image_bytes)
+    assert image["file_size_bytes"] == artifact.stat().st_size
     assert artifact.is_file()
 
     manifest = json.loads((output / "image-manifest.json").read_text(encoding="utf-8"))
