@@ -43,10 +43,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run tests
-        run: npm test
       - name: Build Apps Script bundle
         run: npm run build
+      - name: Run tests
+        run: npm test
+      - name: Check generated JavaScript syntax
+        run: node --check < dist/Code.gs
 
   cross-contract:
     runs-on: ubuntu-latest
