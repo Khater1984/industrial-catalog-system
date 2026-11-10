@@ -38,7 +38,7 @@
     .review-card h4{font-size:14px;margin:0 0 5px;overflow-wrap:anywhere}
     .review-meta{font-size:11px;color:var(--muted);line-height:1.8}
     .review-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .review-link{display:inline-block;color:var(--accent2);font-size:12px;font-weight:700;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+    .review-link{display:inline-block;color:var(--accent2);font-size:12px;font-weight:700;text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:7px 10px}.review-action-btn{border:1px solid var(--line);border-radius:8px;padding:8px 11px;background:#fff;color:var(--accent);font:inherit;font-size:12px;font-weight:700;cursor:pointer}.review-action-btn.primary{background:var(--accent);color:#fff}.review-action-btn.danger{color:var(--bad)}.review-action-btn:disabled{opacity:.5;cursor:wait}.review-notes{width:100%;min-height:54px;margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:9px;font:inherit;font-size:12px}
     .review-evidence{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
     .review-evidence h5{font-size:12px;margin:12px 0 6px}
     .review-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f9fb;border-radius:8px;padding:10px;font:12px/1.7 Arial,sans-serif;max-height:220px;overflow:auto;direction:auto}
@@ -75,26 +75,12 @@
         <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
       </div>
     </section>
-    <section class="panel" style="margin-top:18px" id="reviewWorkspace">
-      <div class="toolbar"><h3>مركز مراجعة نتائج الاستخراج</h3><button class="refresh" id="reviewRefresh" type="button">تحديث المراجعات</button></div>
-      <p class="notice">هنا تظهر مرشحات المنتجات والموديلات والمواصفات والصور المرتبطة بصفحات الكتالوج. الإجراءات الحالية لتنظيم المراجعة فقط؛ لا تعتمد المنتجات ولا تنقلها إلى السجلات الأساسية.</p>
-      <div class="review-grid">
-        <div class="review-stat"><b id="reviewOpen">—</b><span>مفتوحة</span></div>
-        <div class="review-stat"><b id="reviewInProgress">—</b><span>قيد المراجعة</span></div>
-        <div class="review-stat"><b id="reviewDeferred">—</b><span>مؤجلة</span></div>
-        <div class="review-stat"><b id="reviewRejected">—</b><span>مرفوضة</span></div>
-      </div>
-      <div class="field"><label for="reviewFilter">تصفية المهام</label><select id="reviewFilter"><option value="ACTIVE">النشطة (مفتوحة وقيد المراجعة)</option><option value="ALL">كل الحالات</option><option value="OPEN">مفتوحة</option><option value="IN_REVIEW">قيد المراجعة</option><option value="DEFERRED">مؤجلة</option><option value="REJECTED">مرفوضة</option></select></div>
-      <div id="reviewList"><div class="empty">جارٍ تحميل قائمة المراجعة...</div></div>
-      <div class="notice">اعتماد المنتج النهائي وربط الموديلات والمواصفات يحتاجان خطوة اعتماد منفصلة؛ لم يتم تفعيلها قبل اختبار تكوين ملف Staging Set والتحقق من عقد الترحيل.</div>
-      <div class="status" id="reviewStatus" role="status" aria-live="polite"></div>
-    </section>
     <section class="panel" style="margin-top:18px" id="humanReviewPanel">
       <div class="review-toolbar">
         <div><h3 style="margin:0">مراجعة نتائج الاستخراج</h3><div class="notice">المرشحات المستخرجة وأدلتها قبل اعتماد أي بيانات.</div></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="reviewStatusFilter" class="review-filter" aria-label="تصفية حالة المراجعة">
-            <option value="OPEN">مفتوحة</option><option value="IN_REVIEW">قيد المراجعة</option><option value="DEFERRED">مؤجلة</option><option value="ALL">كل الحالات</option>
+            <option value="OPEN">مفتوحة</option><option value="IN_REVIEW">قيد المراجعة</option><option value="DEFERRED">مؤجلة</option><option value="REJECTED">مرفوضة</option><option value="ALL">كل الحالات</option>
           </select>
           <button class="refresh" id="reviewRefresh" type="button">تحديث</button>
         </div>
@@ -397,78 +383,6 @@
       }).createDocumentFromBrowser({title:el("docTitle").value,documentType:el("docType").value,languageCode:el("docLanguage").value,description:el("docDescription").value,versionLabel:el("docVersion").value,fileName:f.name,base64:String(reader.result||"").split(",")[1]||""});
     };reader.readAsDataURL(f);
   });
-  let reviewItems = [];
-  function reviewStatusMessage(message,type){
-    const box=el("reviewStatus");box.textContent=message;box.className="status show "+type;
-  }
-  function appendReviewText(parent,tag,value,className){
-    const node=document.createElement(tag);if(className)node.className=className;node.textContent=value||"";parent.appendChild(node);return node;
-  }
-  function renderReviewEvidence(parent,link){
-    const wrap=document.createElement("div");wrap.className="review-evidence";
-    const title=link.productName||link.modelNumber||link.attribute||link.table||"عنصر مرتبط";
-    appendReviewText(wrap,"strong",title);
-    const detail=[link.table,link.status,link.pageId?"الصفحة: "+link.pageId:"",link.confidence?"الثقة: "+link.confidence:""].filter(Boolean).join(" · ");
-    if(detail)appendReviewText(wrap,"div",detail,"review-meta");
-    if(link.quote)appendReviewText(wrap,"div","اقتباس الاستخراج: "+link.quote);
-    if(link.modelName)appendReviewText(wrap,"div","اسم الموديل: "+link.modelName);
-    if(link.value)appendReviewText(wrap,"div","المواصفة: "+link.attribute+" = "+link.value+" "+link.unit);
-    if(link.fileUrl){const a=document.createElement("a");a.className="review-link";a.href=link.fileUrl;a.target="_blank";a.rel="noopener";a.textContent="فتح الصورة/المستند في Drive";wrap.appendChild(a);}
-    const artifact=link.artifact;
-    if(artifact){
-      if(artifact.warning)appendReviewText(wrap,"div","تعذر قراءة ملف صفحة المصدر: "+artifact.warning);
-      else{
-        if(artifact.pageNumber)appendReviewText(wrap,"div","رقم الصفحة: "+artifact.pageNumber+" · طريقة الاستخراج: "+(artifact.extractionMethod||"—"));
-        const lists=[["مرشحات المنتجات",artifact.products||[]],["مرشحات الموديلات",artifact.variants||[]],["مرشحات المواصفات",artifact.specifications||[]]];
-        lists.forEach(([label,items])=>{
-          if(!items.length)return;appendReviewText(wrap,"strong",label);
-          items.forEach(item=>{
-            const bits=[item.proposed_product_name,item.proposed_model_number,item.proposed_model_name,item.attribute_key_raw,item.value_raw,item.unit_raw,item.source_quote,item.confidence].filter(Boolean);
-            appendReviewText(wrap,"div","• "+bits.join(" | "));
-          });
-        });
-        if(artifact.pageText){const details=document.createElement("details");const summary=document.createElement("summary");summary.textContent="عرض النص المستخرج من الصفحة";details.appendChild(summary);appendReviewText(details,"pre",artifact.pageText);wrap.appendChild(details);}
-        if(artifact.fileUrl){const a=document.createElement("a");a.className="review-link";a.href=artifact.fileUrl;a.target="_blank";a.rel="noopener";a.textContent="فتح ملف بيانات الصفحة في Drive";wrap.appendChild(a);}
-      }
-    }
-    parent.appendChild(wrap);
-  }
-  function renderReviewInbox(data){
-    const counts=data.counts||{};el("reviewOpen").textContent=counts.open||0;el("reviewInProgress").textContent=counts.inReview||0;el("reviewDeferred").textContent=counts.deferred||0;el("reviewRejected").textContent=counts.rejected||0;
-    reviewItems=data.items||[];const filter=el("reviewFilter").value;const shown=reviewItems.filter(item=>filter==="ALL"|| (filter==="ACTIVE"&&["OPEN","IN_REVIEW"].includes(item.status))||item.status===filter);
-    const root=el("reviewList");root.textContent="";
-    if(!shown.length){appendReviewText(root,"div","لا توجد مهام مراجعة ضمن هذا التصفية.","empty");return;}
-    shown.forEach(item=>{
-      const card=document.createElement("article");card.className="review-card";
-      const head=document.createElement("div");head.className="review-head";appendReviewText(head,"div",item.type+" · "+item.id,"review-title");appendReviewText(head,"span",item.status,"pill");card.appendChild(head);
-      appendReviewText(card,"div",item.action,"review-meta");
-      if(item.notes)appendReviewText(card,"div","ملاحظات سابقة: "+item.notes,"review-meta");
-      (item.links||[]).forEach(link=>renderReviewEvidence(card,link));
-      const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.notes||"";card.appendChild(notes);
-      const actions=document.createElement("div");actions.className="review-actions";
-      function action(label,status,cls){
-        const btn=document.createElement("button");btn.type="button";btn.textContent=label;if(cls)btn.className=cls;
-        btn.addEventListener("click",()=>saveReviewStatus(item.id,status,notes.value,btn));actions.appendChild(btn);
-      }
-      if(item.status==="OPEN"||item.status==="DEFERRED")action("استلام للمراجعة","IN_REVIEW","primary");
-      if(item.status==="IN_REVIEW")action("إعادة فتح","OPEN","");
-      if(item.status!=="DEFERRED"&&item.status!=="REJECTED")action("تأجيل","DEFERRED","");
-      if(item.status!=="REJECTED")action("رفض المهمة","REJECTED","danger");
-      card.appendChild(actions);root.appendChild(card);
-    });
-  }
-  function loadReviewInbox(){
-    el("reviewList").textContent="جارٍ تحميل قائمة المراجعة...";
-    google.script.run.withSuccessHandler(renderReviewInbox).withFailureHandler(err=>{el("reviewList").textContent="تعذر تحميل المراجعات: "+(err&&err.message||"خطأ غير معروف");}).getReviewInboxFromBrowser();
-  }
-  function saveReviewStatus(reviewId,status,notes,button){
-    button.disabled=true;
-    google.script.run.withSuccessHandler(result=>{reviewStatusMessage("تم تحديث حالة المهمة إلى "+result.status+". لم يتم اعتماد أي سجل أساسي.","ok");loadReviewInbox();}).withFailureHandler(err=>{button.disabled=false;reviewStatusMessage("تعذر تحديث المهمة: "+(err&&err.message||"خطأ"),"err");}).updateReviewStatusFromBrowser({reviewId,status,notes});
-  }
-  el("reviewRefresh").addEventListener("click",loadReviewInbox);
-  el("reviewFilter").addEventListener("change",()=>renderReviewInbox({items:reviewItems,counts:{open:reviewItems.filter(x=>x.status==="OPEN").length,inReview:reviewItems.filter(x=>x.status==="IN_REVIEW").length,deferred:reviewItems.filter(x=>x.status==="DEFERRED").length,rejected:reviewItems.filter(x=>x.status==="REJECTED").length}}));
-  loadReviewInbox();
-
   loadDashboard();
   loadDocuments();
   el("promoteForm").addEventListener("submit", event => {
@@ -492,6 +406,119 @@
   function showPromoteStatus(message, type) {
     const box = el("promoteStatus"); box.textContent = message; box.className = "status show " + type;
   }
+
+  let reviewItems = [];
+  const reviewTypeLabels = {
+    PRODUCT_MATCH:"مطابقة منتج", VARIANT_MATCH:"مطابقة موديل",
+    SPECIFICATION:"مراجعة مواصفة", IMAGE_QUALITY:"جودة صورة",
+    IMAGE_DUPLICATE:"تكرار صورة", EXTRACTION_AMBIGUITY:"التباس في الاستخراج",
+    DOCUMENT_MATCH:"مطابقة مستند", OTHER:"مراجعة أخرى"
+  };
+  function reviewNode(tag, text, className) {
+    const node=document.createElement(tag);
+    if(text!==undefined&&text!==null)node.textContent=String(text);
+    if(className)node.className=className;
+    return node;
+  }
+  function reviewLink(parent, url, label) {
+    if(!url)return;
+    const a=reviewNode("a",label,"review-link");a.href=url;a.target="_blank";a.rel="noopener noreferrer";parent.appendChild(a);
+  }
+  function loadReviewQueue() {
+    el("reviewQueueList").textContent="جارٍ تحميل عناصر المراجعة...";
+    google.script.run.withSuccessHandler(data=>{
+      reviewItems=(data&&data.items)||[];
+      const counts=(data&&data.counts)||{};
+      el("reviewOpenCount").textContent=counts.open||0;
+      el("reviewInProgressCount").textContent=counts.inReview||0;
+      el("reviewDeferredCount").textContent=counts.deferred||0;
+      el("reviewTotalCount").textContent=reviewItems.length;
+      renderReviewQueue();
+    }).withFailureHandler(err=>{
+      el("reviewQueueList").textContent="تعذر تحميل قائمة المراجعة. تحقق من صلاحيات DEV وتهيئة الجداول.";
+      const box=el("reviewStatus");box.textContent=(err&&err.message)||"تعذر تحميل القائمة.";box.className="status show err";
+    }).getReviewInboxFromBrowser();
+  }
+  function renderReviewQueue() {
+    const root=el("reviewQueueList");root.textContent="";
+    const filter=el("reviewStatusFilter").value;
+    const visible=reviewItems.filter(item=>filter==="ALL"||item.status===filter);
+    if(!visible.length){root.appendChild(reviewNode("div","لا توجد عناصر بهذه الحالة.","empty"));return;}
+    visible.forEach(item=>{
+      const card=reviewNode("article",null,"review-card");
+      const head=reviewNode("div",null,"review-card-head");
+      const titleWrap=reviewNode("div");
+      titleWrap.appendChild(reviewNode("h4",reviewTypeLabels[item.type]||item.type||"مراجعة"));
+      titleWrap.appendChild(reviewNode("div",[item.supplierName,item.catalogTitle].filter(Boolean).join(" · ")||"كتالوج غير محدد","review-meta"));
+      titleWrap.appendChild(reviewNode("div",["الصفحة: "+(item.pageNumber||item.pageLabel||"غير محددة"),"الحالة: "+(item.status||"—"),"الأولوية: "+(item.priority||"—")].join(" · "),"review-meta"));
+      head.appendChild(titleWrap);
+      head.appendChild(reviewNode("span",item.status||"—","pill "+(item.status==="OPEN"?"queued":"")));
+      card.appendChild(head);
+      if(item.action)card.appendChild(reviewNode("p",item.action,"notice"));
+      const actions=reviewNode("div",null,"review-actions");
+      reviewLink(actions,item.sourcePdfUrl,"فتح كتالوج PDF");
+      if(item.pageArtifact&&item.pageArtifact.fileUrl)reviewLink(actions,item.pageArtifact.fileUrl,"فتح ملف الصفحة المستخرج");
+      card.appendChild(actions);
+      const details=document.createElement("details");details.className="review-evidence";
+      details.appendChild(reviewNode("summary","عرض المرشحات والأدلة"));
+      const evidence=item.links||[];
+      evidence.forEach(ev=>{
+        const row=reviewNode("div",null,"review-row");
+        row.appendChild(reviewNode("strong",(ev.table||"عنصر") +" · "+(ev.productName||ev.modelNumber||ev.imageName||ev.attribute||ev.stagingId)));
+        const parts=["مرجع المنتج: "+(ev.productReference||"—"),"الموديل: "+([ev.modelNumber,ev.modelName].filter(Boolean).join(" / ")||"—"),"المواصفة: "+([ev.attribute,ev.value,ev.unit].filter(Boolean).join(" ")||"—"),"الثقة: "+(ev.confidence===""?"—":ev.confidence),"طريقة الاستخراج: "+(ev.extractionMethod||"—"),"الدور: "+(ev.role||"—")];
+        row.appendChild(reviewNode("div",parts.join(" · "),"review-meta"));
+        if(ev.quote)row.appendChild(reviewNode("div",ev.quote,"review-meta"));
+        if(ev.fileUrl){const evLinks=reviewNode("div",null,"review-actions");reviewLink(evLinks,ev.fileUrl,"فتح الملف المرتبط");row.appendChild(evLinks);}
+        if(ev.artifact)renderArtifactEvidence(row,ev.artifact);
+        details.appendChild(row);
+      });
+      if(item.pageArtifact)renderArtifactEvidence(details,item.pageArtifact);
+      if(!evidence.length&&!item.pageArtifact)details.appendChild(reviewNode("p","لا تتوفر تفاصيل مرتبطة بهذا العنصر في الجداول الحالية.","notice"));
+      card.appendChild(details);
+      const notes=document.createElement("textarea");notes.className="review-notes";notes.rows=2;notes.maxLength=1500;notes.placeholder="ملاحظات المراجع (اختياري)";notes.value=item.notes||"";card.appendChild(notes);
+      const decisionActions=reviewNode("div",null,"review-actions");
+      function addDecisionAction(label,nextStatus,style){
+        const button=reviewNode("button",label,"review-action-btn"+(style?" "+style:""));button.type="button";
+        button.addEventListener("click",()=>updateReviewQueueStatus(item.id,nextStatus,notes.value,button));
+        decisionActions.appendChild(button);
+      }
+      if(item.status==="OPEN"||item.status==="DEFERRED")addDecisionAction("استلام للمراجعة","IN_REVIEW","primary");
+      if(item.status==="IN_REVIEW")addDecisionAction("إعادة فتح","OPEN","");
+      if(item.status!=="DEFERRED"&&item.status!=="REJECTED")addDecisionAction("تأجيل","DEFERRED","");
+      if(item.status!=="REJECTED")addDecisionAction("رفض مهمة المراجعة","REJECTED","danger");
+      card.appendChild(decisionActions);root.appendChild(card);
+    });
+  }
+  function renderArtifactEvidence(parent,artifact) {
+    if(artifact.warning){parent.appendChild(reviewNode("p","تعذر قراءة ملف الصفحة من Drive.","notice"));return;}
+    [["products","أسماء المنتجات"],["variants","الموديلات"],["specifications","المواصفات"]].forEach(([key,label])=>{
+      const values=artifact[key]||[];if(!values.length)return;
+      parent.appendChild(reviewNode("h5",label+" ("+values.length+")"));
+      values.forEach(value=>{
+        const bits=Object.keys(value).map(k=>k+": "+value[k]).filter(Boolean);
+        parent.appendChild(reviewNode("div",bits.join(" · "),"review-row"));
+      });
+    });
+    if(artifact.pageText) {
+      parent.appendChild(reviewNode("h5","مقتطف النص المستخرج · "+(artifact.extractionMethod||"")));
+      parent.appendChild(reviewNode("pre",artifact.pageText));
+    }
+  }
+  function updateReviewQueueStatus(reviewId,status,notes,button) {
+    if(status==="REJECTED"&&!confirm("سيتم إغلاق مهمة المراجعة فقط. لن يُحذف المرشح أو يُعتمد المنتج. هل تريد المتابعة؟"))return;
+    button.disabled=true;
+    google.script.run.withSuccessHandler(result=>{
+      const box=el("reviewStatus");box.textContent="تم تحديث حالة مهمة المراجعة إلى "+result.status+". لم يتم اعتماد أو ترحيل أي منتج.";box.className="status show ok";
+      loadReviewQueue();
+    }).withFailureHandler(err=>{
+      button.disabled=false;
+      const box=el("reviewStatus");box.textContent="تعذر تحديث المهمة: "+(err&&err.message||"خطأ غير معروف");box.className="status show err";
+    }).updateReviewStatusFromBrowser({reviewId:reviewId,status:status,notes:notes});
+  }
+  el("reviewRefresh").addEventListener("click",loadReviewQueue);
+  el("reviewStatusFilter").addEventListener("change",renderReviewQueue);
+  loadReviewQueue();
+
 </script>
 </body>
 </html>
