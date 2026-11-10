@@ -97,10 +97,19 @@ var ImagePromotion = (function () {
       catalogApproved: decision.catalog_approved,
       dataSheetApproved: decision.datasheet_approved,
       linkStatus: "ACTIVE",
-      isPrimary: decision.is_primary === true,
+      isPrimary: false,
       catalogOrder: Number.isSafeInteger(decision.catalog_order) ? decision.catalog_order : 0,
       dataSheetOrder: Number.isSafeInteger(decision.datasheet_order) ? decision.datasheet_order : 0
     });
+    // Idempotent replay also repairs a previously-created candidate link instead
+    // of treating its existence as proof that it is already publication-ready.
+    ImageManagement.setApproval(link.linkId, {
+      actor: options.actor || APP.ACTOR_ID,
+      catalogApproved: decision.catalog_approved,
+      dataSheetApproved: decision.datasheet_approved,
+      linkStatus: "ACTIVE"
+    });
+    if (decision.is_primary === true) ImageManagement.setPrimary(link.linkId, options.actor || APP.ACTOR_ID);
     return { status: "COMPLETED", reviewQueueId: review.Review_Queue_ID, stagingId: staging.Staging_ID, imageId: imageId, link: link };
   }
   return { promoteReviewedImage: promoteReviewedImage };
