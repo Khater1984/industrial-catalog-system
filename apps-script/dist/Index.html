@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Industrial Catalog Studio</title>
+  <style>
+    :root{--bg:#f4f6f8;--panel:#fff;--ink:#17212b;--muted:#697786;--line:#e5eaf0;--accent:#173f5f;--accent2:#2d6b83;--ok:#18794e;--warn:#a15c00;--bad:#b42318}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,"Noto Sans Arabic",sans-serif}
+    .shell{max-width:1180px;margin:auto;padding:28px 22px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:28px}
+    .brand{display:flex;align-items:center;gap:13px}.mark{width:44px;height:44px;border-radius:13px;background:var(--accent);color:white;display:grid;place-items:center;font-weight:800;font-size:19px}
+    h1{font-size:22px;margin:0 0 5px}.sub{font-size:13px;color:var(--muted)}.env{font-size:12px;padding:7px 11px;border-radius:30px;background:#eaf2f6;color:var(--accent);font-weight:700}
+    .intro{margin-bottom:22px}.intro h2{font-size:25px;margin:0 0 8px}.intro p{color:var(--muted);margin:0;line-height:1.8}
+    .grid{display:grid;grid-template-columns:minmax(320px, .9fr) minmax(0,1.4fr);gap:18px;align-items:start}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 4px 18px #162b3b08}
+    .panel h3{font-size:16px;margin:0 0 18px}.field{margin-bottom:14px}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:7px}
+    input[type=text],input[type=date],textarea{width:100%;border:1px solid #d7dee6;border-radius:9px;padding:11px 12px;font:inherit;font-size:14px;background:#fff;color:var(--ink);outline:none}
+    input:focus,textarea:focus{border-color:var(--accent2);box-shadow:0 0 0 3px #2d6b8318}
+    .drop{border:1.5px dashed #b9c7d2;border-radius:12px;padding:22px 14px;text-align:center;background:#f9fbfc;cursor:pointer}
+    .drop strong{display:block;margin-bottom:6px;font-size:14px}.drop span{font-size:12px;color:var(--muted)}.drop input{display:none}
+    .file-name{font-size:12px;color:var(--accent);margin-top:9px;overflow-wrap:anywhere}
+    .btn{border:0;border-radius:9px;background:var(--accent);color:white;padding:12px 18px;font:inherit;font-weight:700;cursor:pointer;width:100%;margin-top:4px}
+    .btn:disabled{opacity:.55;cursor:wait}.notice{font-size:12px;color:var(--muted);line-height:1.7;margin-top:12px}
+    .status{padding:11px 13px;border-radius:9px;font-size:13px;margin-top:14px;display:none;line-height:1.7}.status.show{display:block}.status.ok{background:#eaf6ef;color:var(--ok)}.status.err{background:#fff0ef;color:var(--bad)}.status.wait{background:#edf4f8;color:var(--accent)}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.toolbar h3{margin:0}.refresh{border:1px solid var(--line);background:white;border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--accent);font-weight:700}
+    .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:17px}.stat{background:#f7f9fb;border:1px solid var(--line);border-radius:11px;padding:13px}.stat b{font-size:23px;display:block;margin-bottom:4px}.stat span{font-size:11px;color:var(--muted)}
+    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:460px}th,td{text-align:right;padding:12px 9px;border-bottom:1px solid var(--line);font-size:12px;white-space:nowrap}th{color:var(--muted);font-weight:700;background:#fbfcfd}
+    .pill{display:inline-block;padding:5px 8px;border-radius:20px;font-size:11px;background:#edf2f6;color:#425466}.pill.queued{background:#fff5e5;color:var(--warn)}.empty{text-align:center;color:var(--muted);padding:32px 10px;font-size:13px}
+    .footer{color:#8a96a3;text-align:center;font-size:11px;margin-top:24px}
+    @media(max-width:800px){.shell{padding:18px 13px 40px}.grid{grid-template-columns:1fr}.top{margin-bottom:22px}.intro h2{font-size:21px}.panel{padding:17px}.stats{gap:7px}.stat{padding:10px}.stat b{font-size:20px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top">
+      <div class="brand"><div class="mark">IC</div><div><h1>Industrial Catalog Studio</h1><div class="sub">منصة إدارة الكتالوجات الفنية</div></div></div>
+      <div class="env">بيئة التطوير · DEV</div>
+    </header>
+    <section class="intro"><h2>إدارة كتالوجات الموردين</h2><p>ارفع ملف PDF، وسجّل بيانات المصدر، وتابع حالة المعالجة من مكان واحد. هذه النسخة تسجل الكتالوج وتتحقق من الملف؛ استخراج المنتجات سيضاف في المرحلة التالية.</p></section>
+    <section class="grid">
+      <div class="panel">
+        <h3>إضافة كتالوج جديد</h3>
+        <form id="uploadForm">
+          <div class="field"><label for="supplier">اسم المورد *</label><input id="supplier" type="text" maxlength="160" placeholder="مثال: Turkish Machinery Co." required></div>
+          <div class="field"><label for="title">عنوان الكتالوج</label><input id="title" type="text" maxlength="240" placeholder="اسم المجموعة أو المنتج"></div>
+          <div class="field"><label for="revision">رقم الإصدار</label><input id="revision" type="text" maxlength="80" placeholder="Rev. 02"></div>
+          <div class="field"><label>ملف الكتالوج PDF *</label><label class="drop" for="pdf"><strong>اختر ملف PDF من جهازك</strong><span>الحد الأقصى 12 ميجابايت · PDF فقط</span><input id="pdf" type="file" accept="application/pdf,.pdf" required><div class="file-name" id="fileName">لم يتم اختيار ملف</div></label></div>
+          <button class="btn" id="submitBtn" type="submit">رفع وتسجيل الكتالوج</button>
+          <div class="status" id="status" role="status" aria-live="polite"></div>
+          <div class="notice">يُحفظ الملف داخل مجلد DEV المخصص، ثم يسجل النظام بصمته الرقمية لمنع التكرار. لا ترفع كتالوجات سرية أو ملفات عمل حقيقية قبل اعتماد بيئة التشغيل.</div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="toolbar"><h3>الكتالوجات المسجلة</h3><button class="refresh" id="refreshBtn" type="button">تحديث القائمة</button></div>
+        <div class="stats"><div class="stat"><b id="totalCount">—</b><span>إجمالي الكتالوجات</span></div><div class="stat"><b id="queuedCount">—</b><span>بانتظار المعالجة</span></div><div class="stat"><b id="doneCount">—</b><span>مكتملة</span></div></div>
+        <div class="table-wrap"><table><thead><tr><th>المورد</th><th>الكتالوج</th><th>تاريخ التسجيل</th><th>الحالة</th></tr></thead><tbody id="catalogRows"><tr><td colspan="4" class="empty">جارٍ تحميل البيانات...</td></tr></tbody></table></div>
+        <div class="notice">تعرض القائمة آخر 30 كتالوجاً. حالة QUEUED تعني أن التسجيل اكتمل وأن المعالجة لم تبدأ بعد.</div>
+      </div>
+    </section>
+    <section class="panel" style="margin-top:18px">
+      <h3>اعتماد دفعة المراجعة</h3>
+      <p class="notice">أدخل معرف ملف Staging على Google Drive وبصمة SHA256 المسجلة أثناء المراجعة. النظام سيقرأ الملف من Drive ويتحقق من البصمة قبل الاعتماد.</p>
+      <form id="promoteForm">
+        <div class="field"><label for="fileId">معرف ملف Staging (Drive File ID) *</label><input id="fileId" type="text" maxlength="200" placeholder="مثال: 1a2b3c4d5e6f..." required></div>
+        <div class="field"><label for="sha256">بصمة SHA256 *</label><input id="sha256" type="text" maxlength="64" placeholder="64 حرفاً سداسياً" pattern="[a-f0-9]{64}" required></div>
+        <button class="btn" id="promoteBtn" type="submit">اعتماد ونقل إلى Sheets</button>
+        <div class="status" id="promoteStatus" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section class="panel" style="margin-top:18px">
+      <div class="toolbar"><h3>مكتبة المستندات وإصداراتها</h3><button class="refresh" id="documentsRefresh" type="button">تحديث</button></div>
+      <p class="notice">أضف كتيبات التشغيل والبروشورات والشهادات والضمانات. كل إصدار يُحفظ كملف مستقل ولا يستبدل الإصدار السابق.</p>
+      <form id="documentForm">
+        <div class="field"><label for="docTitle">عنوان المستند *</label><input id="docTitle" type="text" maxlength="250" required placeholder="مثال: Operating and Maintenance Manual"></div>
+        <div class="field"><label for="docType">نوع المستند *</label><select id="docType" required><option value="USER_MANUAL">دليل تشغيل</option><option value="BROCHURE">بروشور</option><option value="CERTIFICATE">شهادة</option><option value="WARRANTY">ضمان</option><option value="OTHER">أخرى</option></select></div>
+        <div class="field"><label for="docLanguage">اللغة</label><input id="docLanguage" type="text" maxlength="10" placeholder="en أو ar"></div>
+        <div class="field"><label for="docVersion">اسم الإصدار *</label><input id="docVersion" type="text" maxlength="80" value="Version 1" required></div>
+        <div class="field"><label for="docDescription">الوصف</label><textarea id="docDescription" rows="2" maxlength="1500" placeholder="وصف مختصر للمستند"></textarea></div>
+        <div class="field"><label>ملف PDF *</label><label class="drop" for="docPdf"><strong>اختر ملف PDF</strong><span>حتى 12 ميجابايت</span><input id="docPdf" type="file" accept="application/pdf,.pdf"><div class="file-name" id="docFileName">لم يتم اختيار ملف</div></label></div>
+        <button class="btn" id="docSubmit" type="submit">حفظ المستند والإصدار الأول</button>
+        <div class="status" id="docStatus" role="status" aria-live="polite"></div>
+      </form>
+      <div id="documentsList" style="margin-top:18px"><div class="empty">جارٍ تحميل المستندات...</div></div>
+    </section>
+    <section class="panel" style="margin-top:18px" id="designStudioPanel">
+      <div class="toolbar"><h3>استوديو التصميم وتوليد المستندات</h3></div>
+      <p class="notice">هوية → قالب → منتجات → Snapshot → PDF. المواصفات من EffectiveSpecificationResolver. لا جداول Schema جديدة.</p>
+    
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="ds-grid">
+        <div>
+          <h4 style="margin:0 0 8px">الهوية</h4>
+          <select id="dsBrand" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"></select>
+          <div id="dsBrandPreview" class="notice" style="margin-top:6px"></div>
+          <button type="button" class="refresh" id="dsEditBrand" style="margin-top:8px">تعديل الهوية</button>
+        </div>
+        <div>
+          <h4 style="margin:0 0 8px">القالب</h4>
+          <select id="dsTemplate" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line)"><option value="">(بدون)</option></select>
+          <div style="margin-top:8px"><button type="button" class="refresh" id="dsNewTpl">قالب جديد</button> <button type="button" class="refresh" id="dsPublishTpl">نشر</button></div>
+        </div>
+      </div>
+    
+      <div id="dsBrandEditor" style="display:none;margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fbfcfd">
+        <h4 style="margin:0 0 10px">محرر الهوية</h4>
+        <div class="field"><label>الاسم</label><input id="beName" type="text"></div>
+        <div class="field"><label>الشركة</label><input id="beCompany" type="text"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field"><label>أساسي</label><input id="bePrimary" type="color" value="#173F5F"></div>
+          <div class="field"><label>ثانوي</label><input id="beSecondary" type="color" value="#2D6B83"></div>
+          <div class="field"><label>نص</label><input id="beText" type="color" value="#17212B"></div>
+          <div class="field"><label>خلفية</label><input id="beBg" type="color" value="#FFFFFF"></div>
+        </div>
+        <div class="field"><label>الورق</label><select id="bePaper"><option>A4</option><option>A3</option><option>LETTER</option></select></div>
+        <div class="field"><label>الاتجاه</label><select id="beOrient"><option>portrait</option><option>landscape</option></select></div>
+        <div class="field"><label>شعار</label><select id="beLogoPref"><option>COMPANY</option><option>SUPPLIER</option><option>NONE</option></select></div>
+        <div class="field"><label>علامة مائية</label><input id="beWatermark" type="text" placeholder="نص اختياري"></div>\n    <div class="field"><label>مسار ملف الخط العادي داخل بيئة العامل</label><input id="beFontRegularPath" type="text" placeholder="assets/fonts/NotoSansArabic-Regular.ttf"></div>\n    <div class="field"><label>مسار ملف الخط العريض داخل بيئة العامل</label><input id="beFontBoldPath" type="text" placeholder="assets/fonts/NotoSansArabic-Bold.ttf"></div>
+        <button class="btn" type="button" id="beSave" style="background:#2d6b83">حفظ الهوية</button>
+      </div>
+    
+      <div class="field" style="margin-top:14px"><label>نوع المستند</label>
+        <select id="dsDocType"><option value="TECHNICAL_DATASHEET">ورقة بيانات فنية</option><option value="PRODUCT_CATALOG">كتالوج منتجات</option><option value="MASTER_CATALOG">كتالوج رئيسي</option></select>
+      </div>
+      <div class="field"><label>معرفات المنتجات (مفصولة بفاصلة)</label><input id="dsProductIds" type="text" placeholder="P001, P002"></div>\n  <div class="field"><label>معرفات الموديلات المرتبطة (اختياري: PRODUCT_ID=VARIANT_ID)</label><input id="dsVariantMap" type="text" placeholder="P001=V001, P002=V004"></div>
+      <div class="field"><label>العنوان</label><input id="dsTitle" type="text" value="Industrial Catalog"></div>
+      <div class="field"><label>الحالة</label><select id="dsDocumentStatus"><option>ORIGINAL</option><option>PRELIMINARY</option><option>FINAL</option></select></div>
+      <div class="notice" role="note">حماية ADR-040 مفعّلة دائمًا: لن يُنشأ Snapshot بحالة FINAL إذا وُجد تعارض.</div>
+      <div class="field"><label><input type="checkbox" id="dsDedicatedCover"> غلاف مخصص</label></div>
+    
+      <button class="btn" type="button" id="dsGenerate">توليد Snapshot</button>
+      <div class="status" id="dsGenerationStatus" role="status"></div>
+      <pre id="dsOutput" style="display:none;background:#f7f9fb;padding:12px;border-radius:8px;font-size:11px;overflow:auto;max-height:240px;margin-top:8px"></pre>
+      <button class="btn" type="button" id="dsDownload" style="display:none;margin-top:6px;background:#2d6b83">تحميل snapshot.json</button>
+    
+      <h4 style="margin:18px 0 8px">مكتبة الإصدارات</h4>
+      <div id="dsIssues" class="notice">...</div>
+    </section>
+    
+    <style>@media(max-width:700px){.ds-grid{grid-template-columns:1fr!important}}</style>
+    
+    <script>
+    (function(){
+      const el=id=>document.getElementById(id);
+      function show(msg,type){const b=el("dsGenerationStatus");b.textContent=msg;b.className="status show "+type;}
+      function loadBrands(){
+        if(typeof google==="undefined")return;
+        google.script.run.withSuccessHandler(brands=>{
+          const sel=el("dsBrand");
+          sel.innerHTML=brands.map(b=>`<option value="${b.name}" ${b.isDefault?"selected":""}>${b.name}${b.isDefault?" (افتراضي)":""}</option>`).join("");
+          updatePreview();
+        }).listBrandsForBrowser();
+      }
+      function loadTemplates(){
+        if(typeof google==="undefined")return;
+        google.script.run.withSuccessHandler(tpls=>{
+          const sel=el("dsTemplate");const cur=sel.value;
+          sel.innerHTML='<option value="">(بدون)</option>'+(tpls||[]).map(t=>`<option value="${t.name}">${t.name} · v${t.version} · ${t.status}</option>`).join("");
+          if(cur)sel.value=cur;
+        }).listTemplatesForBrowser();
+      }
+      function loadIssues(){
+        if(typeof google==="undefined"){el("dsIssues").textContent="(تجريبي)";return;}
+        google.script.run.withSuccessHandler(list=>{
+          const r=el("dsIssues");
+          if(!list||!list.length){r.textContent="لا توجد إصدارات.";return;}
+          r.innerHTML=list.slice(0,8).map(i=>`<div style="margin:3px 0">${i.title} · ${i.documentType} · ${i.itemCount} · ${i.conflictCount} تعارض</div>`).join("");
+        }).listIssuesForBrowser();
+      }
+      function updatePreview(){
+        const name=el("dsBrand").value;
+        if(typeof google==="undefined")return;
+        google.script.run.withSuccessHandler(brands=>{
+          const b=brands.find(x=>x.name===name);if(!b)return;
+          el("dsBrandPreview").innerHTML=`<span style="color:${b.primary}">■</span> ${b.primary} · ${b.paperSize} · ${b.logoPreference}`;
+        }).listBrandsForBrowser();
+      }
+      loadBrands();loadTemplates();loadIssues();
+      el("dsBrand").addEventListener("change",updatePreview);
+      el("dsEditBrand").addEventListener("click",()=>{
+        const ed=el("dsBrandEditor");ed.style.display=ed.style.display==="none"?"block":"none";
+        if(ed.style.display==="block"){
+          google.script.run.withSuccessHandler(brands=>{
+            const b=brands.find(x=>x.name===el("dsBrand").value);if(!b)return;
+            el("beName").value=b.name;el("beCompany").value=b.companyName||"";
+            el("bePrimary").value=b.primary;el("beSecondary").value=b.secondary||b.primary;
+            el("beText").value=b.text;el("beBg").value=b.background;
+            el("bePaper").value=b.paperSize;el("beOrient").value=b.orientation;
+            el("beLogoPref").value=b.logoPreference;el("beWatermark").value=b.watermarkText||"";\n        el("beFontRegularPath").value=b.fontRegularPath||"";el("beFontBoldPath").value=b.fontBoldPath||"";
+          }).listBrandsForBrowser();
+        }
+      });
+      el("beSave").addEventListener("click",()=>{
+        const p={name:el("beName").value,companyName:el("beCompany").value,primary:el("bePrimary").value,secondary:el("beSecondary").value,text:el("beText").value,background:el("beBg").value,paperSize:el("bePaper").value,orientation:el("beOrient").value,logoPreference:el("beLogoPref").value,watermarkText:el("beWatermark").value,fontRegularPath:el("beFontRegularPath").value,fontBoldPath:el("beFontBoldPath").value};
+        google.script.run.withSuccessHandler(()=>{show("تم حفظ الهوية.","ok");loadBrands();el("dsBrandEditor").style.display="none";}).withFailureHandler(e=>show(e.message,"err")).saveBrandFromBrowser(p);
+      });
+      el("dsNewTpl").addEventListener("click",()=>{
+        const name=prompt("اسم القالب:");if(!name)return;
+        google.script.run.withSuccessHandler(()=>{show("تم.","ok");loadTemplates();}).withFailureHandler(e=>show(e.message,"err")).saveTemplateFromBrowser({name,documentType:el("dsDocType").value,status:"DRAFT",defaultBrandName:el("dsBrand").value});
+      });
+      el("dsPublishTpl").addEventListener("click",()=>{
+        const name=el("dsTemplate").value;if(!name){show("اختر قالبًا.","err");return;}
+        google.script.run.withSuccessHandler(()=>{show("تم النشر.","ok");loadTemplates();}).withFailureHandler(e=>show(e.message,"err")).publishTemplateFromBrowser(name);
+      });
+      let lastSnap=null;
+      el("dsGenerate").addEventListener("click",()=>{
+        const ids=el("dsProductIds").value.split(",").map(s=>s.trim()).filter(Boolean);
+        if(!ids.length){show("أدخل معرف منتج.","err");return;}
+        const variantMap={};
+        const rawVariantMap=el("dsVariantMap").value.trim();
+        if(rawVariantMap){
+          try {
+            rawVariantMap.split(",").forEach(pair=>{
+              const parts=pair.split("=").map(x=>x.trim());
+              if(parts.length!==2||!parts[0]||!parts[1]) throw new Error("صيغة الموديل غير صحيحة. استخدم PRODUCT_ID=VARIANT_ID.");
+              if(!ids.includes(parts[0])) throw new Error("معرف الموديل مرتبط بمنتج غير موجود في القائمة: "+parts[0]);
+              if(variantMap[parts[0]]) throw new Error("تم إدخال أكثر من موديل للمنتج نفسه: "+parts[0]);
+              variantMap[parts[0]]=parts[1];
+            });
+          } catch(err) { show(err.message,"err"); return; }
+        }
+        const config={documentType:el("dsDocType").value,productIds:ids,variantMap,brandName:el("dsBrand").value,templateName:el("dsTemplate").value||null,title:el("dsTitle").value,documentStatus:el("dsDocumentStatus").value,blockOnConflict:true,dedicated_cover:el("dsDedicatedCover").checked};
+        show("جارٍ...","wait");
+        google.script.run.withSuccessHandler(snap=>{
+          lastSnap=snap;el("dsOutput").textContent=JSON.stringify(snap,null,2);el("dsOutput").style.display="block";el("dsDownload").style.display="block";
+          show(`تم. ${snap.items.length} عنصر · ${snap.conflicts.length} تعارض.`,"ok");loadIssues();
+        }).withFailureHandler(e=>show(e.message||"خطأ","err")).buildSnapshotFromDomainForBrowser(config);
+      });
+      el("dsDownload").addEventListener("click",()=>{
+        if(!lastSnap)return;const blob=new Blob([JSON.stringify(lastSnap,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="snapshot.json";a.click();
+      });
+    })();
+    </script>
+    
+    <div class="footer">Industrial Catalog System · DEV build</div>
+  </main>
+<script>
+  const el = id => document.getElementById(id);
+  let selectedFile = null;
+  el("pdf").addEventListener("change", event => {
+    selectedFile = event.target.files && event.target.files[0] || null;
+    el("fileName").textContent = selectedFile ? selectedFile.name + " · " + (selectedFile.size/1024/1024).toFixed(2) + " MB" : "لم يتم اختيار ملف";
+  });
+  function showStatus(message, type) {
+    const box=el("status"); box.textContent=message; box.className="status show "+type;
+  }
+  function formatDate(value) {
+    if(!value)return "—";
+    const d=new Date(value); return isNaN(d.getTime())?String(value):d.toLocaleDateString("ar-EG");
+  }
+  function loadDashboard() {
+    el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">جارٍ تحميل البيانات...</td></tr>';
+    google.script.run.withSuccessHandler(renderDashboard).withFailureHandler(err=>{
+      el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">تعذر تحميل البيانات. تحقق من إعدادات DEV.</td></tr>';
+    }).getCatalogDashboard();
+  }
+  function renderDashboard(data) {
+    const catalogs=data.catalogs||[], runs=data.runs||[];
+    el("totalCount").textContent=data.totalCount||catalogs.length;
+    el("queuedCount").textContent=runs.filter(r=>r.Run_Status==="QUEUED").length;
+    el("doneCount").textContent=runs.filter(r=>r.Run_Status==="COMPLETED").length;
+    if(!catalogs.length){el("catalogRows").innerHTML='<tr><td colspan="4" class="empty">لا توجد كتالوجات مسجلة حتى الآن.</td></tr>';return;}
+    el("catalogRows").innerHTML=catalogs.map(c=>{
+      const run=runs.find(r=>r.Catalog_ID===c.Catalog_ID);
+      const state=run?run.Run_Status:"REGISTERED";
+      const safe=s=>String(s||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      return '<tr><td>'+safe(c.Supplier_Name)+'</td><td>'+safe(c.Catalog_Title||c.Source_File_Name)+'</td><td>'+formatDate(c.Received_At)+'</td><td><span class="pill '+(state==="QUEUED"?"queued":"")+'">'+safe(state)+'</span></td></tr>';
+    }).join("");
+  }
+  el("refreshBtn").addEventListener("click",loadDashboard);
+  el("uploadForm").addEventListener("submit",event=>{
+    event.preventDefault();
+    if(!selectedFile){showStatus("اختر ملف PDF أولاً.","err");return;}
+    if(selectedFile.type!=="application/pdf"&&!selectedFile.name.toLowerCase().endsWith(".pdf")){showStatus("الملف يجب أن يكون بصيغة PDF.","err");return;}
+    if(selectedFile.size>12*1024*1024){showStatus("حجم الملف يتجاوز الحد المسموح (12 MB).","err");return;}
+    const button=el("submitBtn");button.disabled=true;button.textContent="جارٍ رفع الملف وتسجيله...";
+    showStatus("جارٍ التحقق من الملف وحفظه في مجلد DEV...","wait");
+    const reader=new FileReader();
+    reader.onerror=()=>{button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";showStatus("تعذرت قراءة الملف من الجهاز.","err");};
+    reader.onload=()=>{
+      const dataUrl=String(reader.result||"");const base64=dataUrl.split(",")[1]||"";
+      const payload={supplierName:el("supplier").value,catalogTitle:el("title").value,catalogRevision:el("revision").value,fileName:selectedFile.name,mimeType:selectedFile.type||"application/pdf",base64:base64};
+      google.script.run.withSuccessHandler(result=>{
+        button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";
+        showStatus("تم تسجيل الكتالوج بنجاح. رقم العملية: "+result.runId,"ok");
+        el("uploadForm").reset();selectedFile=null;el("fileName").textContent="لم يتم اختيار ملف";loadDashboard();
+      }).withFailureHandler(error=>{
+        button.disabled=false;button.textContent="رفع وتسجيل الكتالوج";
+        showStatus("لم يكتمل التسجيل: "+(error&&error.message?error.message:"خطأ غير معروف"),"err");
+      }).uploadCatalogFromBrowser(payload);
+    };
+    reader.readAsDataURL(selectedFile);
+  });
+  let selectedDocumentFile = null;
+  el("docPdf").addEventListener("change", event => {
+    selectedDocumentFile = event.target.files && event.target.files[0] || null;
+    el("docFileName").textContent = selectedDocumentFile ? selectedDocumentFile.name + " · " + (selectedDocumentFile.size/1024/1024).toFixed(2) + " MB" : "لم يتم اختيار ملف";
+  });
+  function showDocumentStatus(message,type) {
+    const box=el("docStatus");box.textContent=message;box.className="status show "+type;
+  }
+  function loadDocuments() {
+    el("documentsList").textContent="جارٍ تحميل المستندات...";
+    google.script.run.withSuccessHandler(renderDocuments).withFailureHandler(error=>{
+      el("documentsList").textContent="تعذر تحميل المستندات. تحقق من إعداد DEV_DOCUMENTS_FOLDER_ID.";
+    }).listDocumentsForBrowser();
+  }
+  function renderDocuments(items) {
+    const root=el("documentsList");root.textContent="";
+    if(!items||!items.length){root.textContent="لا توجد مستندات مسجلة حتى الآن.";root.className="empty";return;}
+    root.className="";
+    items.forEach(item=>{
+      const doc=item.document, versions=item.versions||[];
+      const card=document.createElement("div");card.style.cssText="border:1px solid var(--line);border-radius:11px;padding:13px;margin:10px 0;background:#fbfcfd";
+      const title=document.createElement("strong");title.textContent=doc.Title+" · "+doc.Document_Type;card.appendChild(title);
+      const meta=document.createElement("div");meta.className="notice";meta.textContent="الحالة: "+doc.Lifecycle_Status+" · عدد الإصدارات: "+versions.length+" · الإصدار الحالي: "+(versions.find(v=>v.Version_ID===doc.Current_Version_ID)?.Version_Label||"—");card.appendChild(meta);
+      const row=document.createElement("div");row.style.cssText="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px";
+      const file=document.createElement("input");file.type="file";file.accept="application/pdf,.pdf";file.style.maxWidth="220px";
+      const label=document.createElement("input");label.type="text";label.placeholder="اسم الإصدار الجديد";label.value="Rev "+(versions.length+1);label.style.cssText="max-width:150px;padding:8px;border:1px solid var(--line);border-radius:8px";
+      const button=document.createElement("button");button.type="button";button.className="refresh";button.textContent="إضافة إصدار";
+      button.addEventListener("click",()=>{
+        const f=file.files&&file.files[0];if(!f){alert("اختر ملف PDF أولاً.");return;}
+        if(f.size>12*1024*1024||(!f.type.includes("pdf")&&!f.name.toLowerCase().endsWith(".pdf"))){alert("يجب اختيار PDF لا يتجاوز 12 ميجابايت.");return;}
+        button.disabled=true;button.textContent="جارٍ الرفع...";
+        const reader=new FileReader();reader.onload=()=>{
+          google.script.run.withSuccessHandler(()=>{loadDocuments();}).withFailureHandler(err=>{button.disabled=false;button.textContent="إضافة إصدار";alert("تعذر إضافة الإصدار: "+(err&&err.message||"خطأ"));}).addDocumentVersionFromBrowser({docId:doc.Doc_ID,fileName:f.name,base64:String(reader.result||"").split(",")[1]||"",versionLabel:label.value});
+        };reader.onerror=()=>{button.disabled=false;button.textContent="إضافة إصدار";alert("تعذرت قراءة الملف.");};reader.readAsDataURL(f);
+      });
+      row.appendChild(file);row.appendChild(label);row.appendChild(button);card.appendChild(row);root.appendChild(card);
+    });
+  }
+  el("documentsRefresh").addEventListener("click",loadDocuments);
+  el("documentForm").addEventListener("submit",event=>{
+    event.preventDefault();const f=selectedDocumentFile;
+    if(!f){showDocumentStatus("اختر ملف PDF أولاً.","err");return;}
+    if(f.size>12*1024*1024||(!f.type.includes("pdf")&&!f.name.toLowerCase().endsWith(".pdf"))){showDocumentStatus("الملف يجب أن يكون PDF وألا يتجاوز 12 ميجابايت.","err");return;}
+    const button=el("docSubmit");button.disabled=true;button.textContent="جارٍ حفظ المستند...";
+    const reader=new FileReader();reader.onerror=()=>{button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تعذرت قراءة الملف.","err");};
+    reader.onload=()=>{
+      google.script.run.withSuccessHandler(result=>{
+        button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تم حفظ المستند والإصدار الأول بنجاح.","ok");
+        el("documentForm").reset();selectedDocumentFile=null;el("docFileName").textContent="لم يتم اختيار ملف";loadDocuments();
+      }).withFailureHandler(err=>{
+        button.disabled=false;button.textContent="حفظ المستند والإصدار الأول";showDocumentStatus("تعذر الحفظ: "+(err&&err.message||"خطأ غير معروف"),"err");
+      }).createDocumentFromBrowser({title:el("docTitle").value,documentType:el("docType").value,languageCode:el("docLanguage").value,description:el("docDescription").value,versionLabel:el("docVersion").value,fileName:f.name,base64:String(reader.result||"").split(",")[1]||""});
+    };reader.readAsDataURL(f);
+  });
+  loadDashboard();
+  loadDocuments();
+  el("promoteForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const fileId = el("fileId").value.trim();
+    const sha = el("sha256").value.trim().toLowerCase();
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) { showPromoteStatus("معرف الملف غير صالح.","err"); return; }
+    if (!/^[a-f0-9]{64}$/.test(sha)) { showPromoteStatus("بصمة SHA256 يجب أن تكون 64 حرفاً سداسياً.","err"); return; }
+    const button = el("promoteBtn");
+    button.disabled = true; button.textContent = "جارٍ التحقق والاعتماد...";
+    showPromoteStatus("جارٍ قراءة الملف من Drive والتحقق من البصمة...","wait");
+    google.script.run.withSuccessHandler(result => {
+      button.disabled = false; button.textContent = "اعتماد ونقل إلى Sheets";
+      showPromoteStatus("تم الاعتماد بنجاح. معرف العملية: " + (result.promotion_operation_id || "—") + " · الحالة: " + (result.status || "COMPLETED"), "ok");
+      el("promoteForm").reset();
+    }).withFailureHandler(error => {
+      button.disabled = false; button.textContent = "اعتماد ونقل إلى Sheets";
+      showPromoteStatus("فشل الاعتماد: " + (error && error.message ? error.message : "خطأ غير معروف"), "err");
+    }).promoteStagingFromBrowser({ stagingSetFileId: fileId, stagingSetSha256: sha });
+  });
+  function showPromoteStatus(message, type) {
+    const box = el("promoteStatus"); box.textContent = message; box.className = "status show " + type;
+  }
+</script>
+</body>
+</html>

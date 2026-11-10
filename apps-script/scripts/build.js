@@ -12,14 +12,30 @@ const order = [
   "repositories/SheetsRepository.js",
   "security/Auth.js",
   "validation/InputValidation.js",
+
+  // Canonical product and specification domain
+  "domain/ProductService.js",
+  "domain/ProductFamilyService.js",
+  "domain/VariantService.js",
+  "domain/AttributeService.js",
+  "domain/SpecificationService.js",
+  "domain/EffectiveSpecificationResolver.js",
+
+  // Catalog intake, worker, and human-review pipeline
   "domain/CatalogService.js",
   "domain/Ingest.js",
   "domain/WorkerIntegration.js",
   "domain/StagingPromotion.js",
   "domain/ImagePromotion.js",
+  "domain/ImageReviewIntake.js",
+
+  // Documents, backups, and design
   "domain/DocumentService.js",
   "domain/BackupService.js",
   "domain/DesignService.js",
+  "domain/DesignStudio.js",
+
+  // Public Apps Script entry points must be bundled last
   "api/Api.js",
 ];
 
