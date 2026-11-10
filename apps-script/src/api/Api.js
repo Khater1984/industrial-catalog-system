@@ -227,6 +227,18 @@ function getCatalogDashboard() {
   return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
 }
 
+/** Owner-only extraction review workspace data for the DEV browser UI. */
+function getReviewWorkspaceForBrowser() {
+  assertPrimaryUser_();
+  return ReviewWorkspace.getDashboard(100);
+}
+
+/** Owner-only status controls; this does not approve or promote staged records. */
+function updateReviewQueueStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  return ReviewWorkspace.setStatus(payload || {});
+}
+
 /** Run manually from the Apps Script editor after DEV properties are configured. */
 function initializeDevSchema() {
   assertPrimaryUser_();
