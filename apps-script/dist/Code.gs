@@ -4464,6 +4464,165 @@ function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); retur
 function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
 
 
+// ===== domain/ReviewDashboard.js =====
+/** Read-only browser projection for the human review queue. */
+var ReviewDashboard = (function () {
+  function safeUrl_(fileId) {
+    if (!fileId || typeof fileId !== "string") return "";
+    try { return DriveApp.getFileById(fileId).getUrl(); } catch (err) { return ""; }
+  }
+  function index_(rows, key) {
+    var out = {};
+    (rows || []).forEach(function (row) { if (row && row[key]) out[String(row[key])] = row; });
+    return out;
+  }
+  function short_(value, limit) {
+    var s = value === null || value === undefined ? "" : String(value);
+    return s.length > limit ? s.slice(0, limit) + "…" : s;
+  }
+  function candidateSummary_(artifact) {
+    var set = artifact && artifact.product_candidates || {};
+    function pick(list, fields) {
+      return (Array.isArray(list) ? list : []).slice(0, 30).map(function (item) {
+        var out = {};
+        fields.forEach(function (field) {
+          if (item && item[field] !== undefined && item[field] !== null) out[field] = short_(item[field], 500);
+        });
+        return out;
+      });
+    }
+    return {
+      products: pick(set.products, ["proposed_product_name", "proposed_product_reference", "source_quote", "confidence"]),
+      variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
+      specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
+      extractedText: short_(artifact && artifact.extracted_text, 1800),
+      pageNumber: artifact && artifact.page_number || "",
+      extractionMethod: artifact && artifact.extraction_method || ""
+    };
+  }
+  function getQueue() {
+    var reviews = SheetsRepository.listRecent("Review_Queue", 250);
+    var links = SheetsRepository.listAll("Review_Staging_Links");
+    var products = index_(SheetsRepository.listAll("Staging_Products"), "Staging_ID");
+    var variants = index_(SheetsRepository.listAll("Staging_Variants"), "Staging_ID");
+    var specs = index_(SheetsRepository.listAll("Staging_Specifications"), "Staging_ID");
+    var images = index_(SheetsRepository.listAll("Staging_Images"), "Staging_ID");
+    var docs = index_(SheetsRepository.listAll("Staging_Documents"), "Staging_ID");
+    var catalogs = index_(SheetsRepository.listAll("Catalogs"), "Catalog_ID");
+    var pages = index_(SheetsRepository.listAll("Catalog_Pages"), "Catalog_Page_ID");
+    var units = SheetsRepository.listAll("Run_Units");
+    var artifacts = {};
+    var linksByReview = {};
+    links.forEach(function (link) {
+      (linksByReview[link.Review_Queue_ID] || (linksByReview[link.Review_Queue_ID] = [])).push(link);
+    });
+    function artifactSummary_(id) {
+      if (!id) return null;
+      if (Object.prototype.hasOwnProperty.call(artifacts, id)) return artifacts[id];
+      try {
+        var data = JSON.parse(DriveApp.getFileById(id).getBlob().getDataAsString("UTF-8"));
+        artifacts[id] = candidateSummary_(data);
+      } catch (err) { artifacts[id] = { error: "PAGE_ARTIFACT_UNAVAILABLE" }; }
+      return artifacts[id];
+    }
+    var items = reviews.map(function (review) {
+      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 30);
+      var evidence = [], artifactId = "", runId = "", catalogId = "";
+      linked.forEach(function (link) {
+        var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
+        if (!row) return;
+        var type = products[link.Staging_ID] ? "PRODUCT" : variants[link.Staging_ID] ? "VARIANT" :
+          specs[link.Staging_ID] ? "SPECIFICATION" : images[link.Staging_ID] ? "IMAGE" : "DOCUMENT";
+        if (!artifactId && row.Raw_Extract_File_ID) artifactId = row.Raw_Extract_File_ID;
+        runId = runId || row.Run_ID || "";
+        catalogId = catalogId || row.Catalog_ID || "";
+        var page = pages[row.Catalog_Page_ID] || {};
+        evidence.push({
+          stagingId: row.Staging_ID, type: type, role: link.Review_Role || "",
+          pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
+          productName: row.Proposed_Product_Name_EN || "", productReference: row.Proposed_Product_Reference || "",
+          modelNumber: row.Proposed_Model_Number || "", modelName: row.Proposed_Model_Name || "",
+          attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
+          value: row.Value_Raw || row.Normalized_Value_JSON || "", unit: row.Unit_Raw || row.Normalized_Unit || "",
+          imageName: row.Original_File_Name || "", imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
+          imageMime: row.MIME_Type || "", imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
+          confidence: row.Confidence === undefined ? "" : row.Confidence,
+          extractionMethod: row.Extraction_Method || "", extractedText: short_(row.Extracted_Text, 700),
+          sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
+        });
+      });
+      var pageId = "";
+      var match = String(review.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      if (match) { pageId = match[1]; runId = runId || match[2]; }
+      var unit = units.find(function (u) { return u.Run_ID === runId && u.Catalog_Page_ID === pageId; });
+      if (!artifactId && unit) artifactId = unit.Output_Manifest_File_ID || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {}, page = pages[pageId] || {};
+      var artifact = artifactSummary_(artifactId);
+      if (artifact && !page.Page_Number && artifact.pageNumber) page = { Page_Number: artifact.pageNumber };
+      return {
+        reviewId: review.Review_Queue_ID, type: review.Review_Type, status: review.Review_Status,
+        priority: review.Priority, proposedAction: short_(review.Proposed_Action, 1800),
+        decisionNotes: short_(review.Decision_Notes || "", 1500), createdAt: review.Created_At || "",
+        runId: runId, catalogId: catalogId, supplierName: catalog.Supplier_Name || "",
+        catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
+        sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""), pageNumber: page.Page_Number || "",
+        pageLabel: page.Page_Label || "", pageArtifactUrl: safeUrl_(artifactId), evidence: evidence, artifact: artifact
+      };
+    });
+    var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
+    items.forEach(function (item) {
+      if (item.status === "OPEN") counts.open += 1;
+      else if (item.status === "IN_REVIEW") counts.inReview += 1;
+      else if (item.status === "DEFERRED") counts.deferred += 1;
+      else counts.closed += 1;
+    });
+    return { items: items, counts: counts, limit: 250, readOnly: true };
+  }
+  return { getQueue: getQueue };
+})();
+
+
+// ===== domain/ReviewWorkspace.js =====
+/** Controlled review-queue workflow actions; no staging approval or promotion. */
+var ReviewWorkspace = (function () {
+  var ALLOWED = { OPEN: true, IN_REVIEW: true, DEFERRED: true, REJECTED: true };
+  var TRANSITIONS = {
+    OPEN: { IN_REVIEW: true, DEFERRED: true, REJECTED: true },
+    IN_REVIEW: { OPEN: true, DEFERRED: true, REJECTED: true },
+    DEFERRED: { OPEN: true, IN_REVIEW: true, REJECTED: true },
+    REJECTED: {}
+  };
+  function fail_(code) { throw new Error(code); }
+  function updateStatus(options, actor) {
+    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
+    var next = String(options.status || "");
+    if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
+    var notes = options.notes === undefined || options.notes === null ? "" : String(options.notes).trim();
+    if (notes.length > 1500) fail_("REVIEW_NOTES_TOO_LONG");
+    if (!actor || String(actor).length > 120) fail_("REVIEW_ACTOR_MISSING");
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var current = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewId);
+      if (!current) fail_("REVIEW_NOT_FOUND");
+      var from = String(current.Review_Status || "");
+      if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
+      var now = new Date().toISOString(), patch = { Review_Status: next, Decision_Notes: notes };
+      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = String(actor);
+      if (next === "REJECTED" || next === "DEFERRED") { patch.Reviewed_At = now; patch.Reviewed_By = String(actor); }
+      if (next === "OPEN") { patch.Assigned_Actor_ID = ""; patch.Reviewed_At = ""; patch.Reviewed_By = ""; }
+      SheetsRepository.updateBy("Review_Queue", "Review_Queue_ID", options.reviewId, patch);
+      return { reviewId: options.reviewId, previousStatus: from, status: next };
+    } finally { lock.releaseLock(); }
+  }
+  return { updateStatus: updateStatus };
+})();
+
+
 // ===== api/Api.js =====
 var Api = (function () {
   function requestId_(body) {
@@ -4738,3 +4897,18 @@ function intakeImagesFromBrowser(payload) {
 function doPost(e) {
   return Api.post(e);
 }
+
+
+/** Owner-only, read-only projection of the human review queue. */
+function getReviewQueueForBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
+/** Owner-only review queue state update; never approves or promotes staging data. */
+function updateReviewStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
+}
+
