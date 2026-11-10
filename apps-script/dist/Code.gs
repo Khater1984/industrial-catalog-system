@@ -4188,7 +4188,6 @@ function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.list
 
 
 // ===== api/Api.js =====
-
 var Api = (function () {
   function requestId_(body) {
     var supplied = body && typeof body.request_id === "string" ? body.request_id.trim() : "";
@@ -4250,12 +4249,113 @@ var Api = (function () {
       if (body.protocol_version && body.protocol_version !== "1") {
         return failure_(requestId, "UNSUPPORTED_PROTOCOL_VERSION");
       }
+      var p = body.payload || {};
+      var actor = APP.ACTOR_ID;
+
       if (body.action === "catalog.register") {
-        var payload = InputValidation.catalogPayload(body.payload || {});
+        var payload = InputValidation.catalogPayload(p);
         var registered = CatalogService.register(payload);
         registered.workerDispatch = dispatchRegisteredCatalog_(registered);
         return success_(requestId, registered);
       }
+      if (body.action === "staging.promote") {
+        var promoPayload = InputValidation.promotionPayload(p);
+        var promoted = StagingPromotion.promoteReviewedStaging({
+          stagingSetFileId: promoPayload.stagingSetFileId,
+          stagingSetSha256: promoPayload.stagingSetSha256,
+          actor: actor
+        });
+        return success_(requestId, promoted);
+      }
+      if (body.action === "images.promote") {
+        var imgPayload = InputValidation.imagesPromotePayload(p);
+        var imgResult = ImagePromotion.promoteAcceptedImages({
+          images: imgPayload.images,
+          run_id: imgPayload.run_id,
+          catalog_id: imgPayload.catalog_id,
+          actor: actor
+        });
+        return success_(requestId, imgResult);
+      }
+      if (body.action === "images.intake") {
+        var intakeResult = ImageReviewIntake.intake({
+          imageManifestFileId: p.imageManifestFileId,
+          imageManifestSha256: p.imageManifestSha256,
+          driveManifestFileId: p.driveManifestFileId,
+          driveManifestSha256: p.driveManifestSha256,
+          actor: actor
+        });
+        return success_(requestId, intakeResult);
+      }
+
+      // Product domain — all validated at boundary
+      if (body.action === "product.createCompanyRecord") {
+        var pc = InputValidation.productCreatePayload(p);
+        return success_(requestId, ProductService.create(Object.assign({ actor: actor }, pc)));
+      }
+      if (body.action === "product.getWorkspace") {
+        var gw = InputValidation.idOnlyPayload(p, "productId");
+        return success_(requestId, ProductService.getWorkspace(gw.productId));
+      }
+      if (body.action === "product.search") {
+        var ps = InputValidation.productSearchPayload(p);
+        return success_(requestId, { results: ProductService.search(ps.query) });
+      }
+      if (body.action === "product.updateCompanyFields") {
+        var pu = InputValidation.productUpdatePayload(p);
+        return success_(requestId, ProductService.updateCompany(pu.productId, pu, actor));
+      }
+      if (body.action === "product.archive" || body.action === "product.reactivate") {
+        var pid = InputValidation.idOnlyPayload(p, "productId");
+        var fn = body.action === "product.archive" ? ProductService.archive : ProductService.reactivate;
+        return success_(requestId, fn(pid.productId, actor));
+      }
+      if (body.action === "family.create" || body.action === "family.updateParent" || body.action === "family.archive" || body.action === "family.reactivate") {
+        var fp = InputValidation.familyPayload(p);
+        if (body.action === "family.create") return success_(requestId, ProductFamilyService.create(fp.nameEn, fp.nameAr, fp.parentId, actor));
+        if (body.action === "family.updateParent") return success_(requestId, ProductFamilyService.updateParent(fp.familyId, fp.newParentId, actor));
+        if (body.action === "family.archive") return success_(requestId, ProductFamilyService.archive(fp.familyId, actor));
+        return success_(requestId, ProductFamilyService.reactivate(fp.familyId, actor));
+      }
+      if (body.action === "variant.createCompanyRecord") {
+        var vc = InputValidation.variantCreatePayload(p);
+        return success_(requestId, VariantService.create(vc.productId, Object.assign({ actor: actor }, vc)));
+      }
+      if (body.action === "variant.updateCompanyFields") {
+        var vu = InputValidation.variantUpdatePayload(p);
+        return success_(requestId, VariantService.updateCompany(vu.variantId, vu, actor));
+      }
+      if (body.action === "variant.archive" || body.action === "variant.reactivate") {
+        var vid = InputValidation.idOnlyPayload(p, "variantId");
+        var vfn = body.action === "variant.archive" ? VariantService.archive : VariantService.reactivate;
+        return success_(requestId, vfn(vid.variantId, actor));
+      }
+      if (body.action === "attribute.setProductValue") {
+        var ap = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.setProductValue(ap.productId, ap.attributeId, ap.valueJson, actor));
+      }
+      if (body.action === "attribute.setVariantOverride") {
+        var ao = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.setVariantOverride(ao.variantId, ao.attributeId, ao.mode, ao.valueJson, actor));
+      }
+      if (body.action === "attribute.clearVariantOverride") {
+        var ac = InputValidation.attributeSetPayload(p);
+        return success_(requestId, AttributeService.clearVariantOverride(ac.variantId, ac.attributeId, actor));
+      }
+      if (body.action === "specification.appendChange") {
+        var sc = InputValidation.specificationChangePayload(p);
+        return success_(requestId, SpecificationService.appendDraft(Object.assign({ actor: actor }, sc)));
+      }
+      if (body.action === "specification.approveChange" || body.action === "specification.rejectChange") {
+        var sid = InputValidation.idOnlyPayload(p, "changeId");
+        var sfn = body.action === "specification.approveChange" ? SpecificationService.approve : SpecificationService.reject;
+        return success_(requestId, sfn(sid.changeId, actor));
+      }
+      if (body.action === "specification.getEffective") {
+        var se = InputValidation.effectiveSpecPayload(p);
+        return success_(requestId, EffectiveSpecificationResolver.resolveEffectiveSpecifications(se.productId, se.variantId || null));
+      }
+
       return failure_(requestId, "UNSUPPORTED_ACTION");
     } catch (err) {
       return failure_(requestId, safeCode_(err));
@@ -4323,7 +4423,41 @@ function initializeDevSchema() {
   return SheetsRepository.initialize();
 }
 
+/** Owner-only endpoint for promoting a reviewed staging set from Drive. */
+function promoteStagingFromBrowser(payload) {
+  assertPrimaryUser_();
+  var validated = InputValidation.promotionPayload(payload || {});
+  return StagingPromotion.promoteReviewedStaging({
+    stagingSetFileId: validated.stagingSetFileId,
+    stagingSetSha256: validated.stagingSetSha256,
+    actor: APP.ACTOR_ID
+  });
+}
+
+/** Owner-only endpoint for promoting accepted images. */
+function promoteImagesFromBrowser(payload) {
+  assertPrimaryUser_();
+  var validated = InputValidation.imagesPromotePayload(payload || {});
+  return ImagePromotion.promoteAcceptedImages({
+    images: validated.images,
+    run_id: validated.run_id,
+    catalog_id: validated.catalog_id,
+    actor: APP.ACTOR_ID
+  });
+}
+
+/** Owner-only endpoint for image review intake. */
+function intakeImagesFromBrowser(payload) {
+  assertPrimaryUser_();
+  return ImageReviewIntake.intake({
+    imageManifestFileId: payload.imageManifestFileId,
+    imageManifestSha256: payload.imageManifestSha256,
+    driveManifestFileId: payload.driveManifestFileId,
+    driveManifestSha256: payload.driveManifestSha256,
+    actor: APP.ACTOR_ID
+  });
+}
+
 function doPost(e) {
   return Api.post(e);
 }
-
