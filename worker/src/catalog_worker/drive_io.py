@@ -1,13 +1,13 @@
 """Google Drive I/O for the hosted catalog worker.
 
-Uses Application Default Credentials (service account on Cloud Run). The service
-account must be explicitly shared on the configured Drive folder/shared drive.
-Transient Google API and transport failures use the client's bounded retry logic.
+Cloud Run can continue using Application Default Credentials. GitHub Actions
+uses a Workspace user's OAuth refresh token supplied through a repository secret.
 """
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -32,16 +32,48 @@ def _retry_count(value: int | None) -> int:
     return value
 
 
+def _google_credentials():
+    raw = os.environ.get("GOOGLE_OAUTH_CREDENTIALS_JSON", "").strip()
+    if raw:
+        try:
+            info = json.loads(raw)
+            if not isinstance(info, dict):
+                raise ValueError("OAuth credential payload must be an object")
+            required = ("client_id", "client_secret", "refresh_token", "token_uri")
+            if any(not isinstance(info.get(key), str) or not info[key].strip() for key in required):
+                raise ValueError("OAuth credential payload is incomplete")
+            from google.auth.transport.requests import Request
+            from google.oauth2.credentials import Credentials
+
+            credentials = Credentials.from_authorized_user_info(
+                info, scopes=["https://www.googleapis.com/auth/drive"]
+            )
+            credentials.refresh(Request())
+            return credentials
+        except Exception as exc:
+            raise DriveError("DRIVE_OAUTH_REFRESH_FAILED") from exc
+
+    try:
+        import google.auth
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        return credentials
+    except Exception as exc:
+        raise DriveError("DRIVE_AUTH_FAILED") from exc
+
+
 class DriveClient:
     def __init__(self, service=None, *, max_retries: int | None = None):
         self.max_retries = _retry_count(max_retries)
         if service is None:
             try:
-                import google.auth
-                credentials, _ = google.auth.default(
-                    scopes=["https://www.googleapis.com/auth/drive"]
+                service = build(
+                    "drive", "v3", credentials=_google_credentials(),
+                    cache_discovery=False,
                 )
-                service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+            except DriveError:
+                raise
             except Exception as exc:
                 raise DriveError("DRIVE_AUTH_FAILED") from exc
         self.service = service
@@ -106,12 +138,7 @@ class DriveClient:
         self, parent_id: str, name: str, content: bytes, mime_type: str,
         *, immutable: bool = True,
     ) -> tuple[str, str, str]:
-        """Upload bytes and report whether Drive created or reused the object.
-
-        The status is authoritative for the observed operation: UPLOADED means
-        this call created the object; REUSED means matching bytes already existed
-        or won a concurrent-create race.
-        """
+        """Upload bytes and report whether Drive created or reused the object."""
         if not isinstance(content, bytes):
             raise DriveError("DRIVE_UPLOAD_CONTENT_INVALID")
         digest = hashlib.sha256(content).hexdigest()
@@ -144,7 +171,6 @@ class DriveClient:
             ).execute(num_retries=self.max_retries)
             return created["id"], digest, "UPLOADED"
         except Exception as exc:
-            # A concurrent task may have created the content-addressed object.
             try:
                 for item in self.list_children(parent_id):
                     if item.get("name") == name:
