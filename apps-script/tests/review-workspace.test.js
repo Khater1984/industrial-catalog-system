@@ -200,6 +200,7 @@ test("product approval is idempotent and refuses edits after approval", () => {
   const again = ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary");
   assert.equal(again.decisionFileId, first.decisionFileId);
   assert.equal(again.reused, true);
+  assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100", identityResolution: "CREATE_NEW", matchRationale: "Changed reviewer rationale" }, "actor_primary"), /REVIEW_DECISION_ALREADY_APPROVED/);
   assert.throws(() => ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Different Product", identityResolution: "CREATE_NEW", matchRationale: "Reviewer confirmed new product identity" }, "actor_primary"), /REVIEW_DECISION_ALREADY_APPROVED/);
 });
 
