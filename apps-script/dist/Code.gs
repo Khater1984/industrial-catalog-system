@@ -3123,20 +3123,25 @@ var StagingPromotion = (function () {
           require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
         }
         var original = text_(sourceValue_(spec), 2000);
-        var assertionKey = text_(canonicalEntityId + "|" + spec.attribute_key_raw, 160);
+        var originalUnit = spec.edited && Object.prototype.hasOwnProperty.call(spec, "original_unit_raw")
+          ? text_(spec.original_unit_raw, 80) : text_(spec.unit_raw, 80);
+        var finalUnit = text_(spec.unit_raw, 80);
+        var sourceAssertionKey = text_(spec.source_assertion_key || spec.staging_id, 160);
+        var sourceRecordId = scope === "PRODUCT" ? productSourceRecordId : variantSourceRecordId;
+        var logicalAddKey = text_("ADD:" + canonicalEntityId + "|" + spec.attribute_key_raw, 180);
         if (original) {
-          var specId = stableId_("spec", assertionKey + "|" + original);
+          var specId = stableId_("spec", sourceRecordId + "|" + sourceAssertionKey);
           if (!existingBy_("Specifications", "Specification_ID", specId)) {
             appendOnce_("Specifications", {
-              Specification_ID: specId, Source_Assertion_Key: assertionKey,
+              Specification_ID: specId, Source_Assertion_Key: sourceAssertionKey,
               Source_Key_Algorithm_Version: keyVersion, Scope: scope,
               Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
               Product_ID: productId, Variant_ID: variantId,
               Attribute_Key_Source: text_(spec.attribute_key_raw, 160),
-              Attribute_Value_Source: original, Unit_Source: text_(spec.unit_raw, 80),
+              Attribute_Value_Source: original, Unit_Source: originalUnit,
               Normalized_Key: text_(spec.normalized_key || spec.attribute_key_raw, 160),
               Normalized_Value_JSON: json_(original),
-              Normalized_Unit: text_(spec.normalized_unit || spec.unit_raw, 80),
+              Normalized_Unit: text_(spec.normalized_unit || originalUnit, 80),
               Catalog_Page_ID: spec.catalog_page_id, Source_Quote: text_(spec.source_quote, 2000),
               Extraction_Run_ID: runId, Extraction_Confidence: confidence_(spec.confidence),
               Created_At: now_(), Created_By: actor
@@ -3145,12 +3150,16 @@ var StagingPromotion = (function () {
             audit_(actor, "PROMOTE", "SPECIFICATION", specId, "Accepted source specification", runId, spec);
           } else counts.skipped += 1;
           mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
-          if (spec.edited && text_(spec.value_raw, 2000) && text_(spec.value_raw, 2000) !== original) {
-            var changePayload = { before: original, after: spec.value_raw };
-            var changeId = stableId_("chg", assertionKey + "|" + original + "|" + spec.value_raw);
+          if (spec.edited && (text_(spec.value_raw, 2000) !== original || finalUnit !== originalUnit)) {
+            var changePayload = {
+              before: { value: original, unit: originalUnit },
+              after: { value: text_(spec.value_raw, 2000), unit: finalUnit }
+            };
+            var logicalSourceKey = "SRC:" + specId;
+            var changeId = stableId_("chg", logicalSourceKey + "|" + json_(changePayload));
             if (!existingBy_("Specification_Changes", "Specification_Change_ID", changeId)) {
               appendOnce_("Specification_Changes", {
-                Specification_Change_ID: changeId, Logical_Specification_Key: text_(assertionKey, 180),
+                Specification_Change_ID: changeId, Logical_Specification_Key: logicalSourceKey,
                 Sequence_No: 1, Operation: "UPDATE", Target_Specification_ID: specId,
                 Product_ID: productId, Variant_ID: variantId,
                 Attribute_Key: text_(spec.attribute_key_raw, 160),
@@ -3163,10 +3172,10 @@ var StagingPromotion = (function () {
             }
           }
         } else if (text_(spec.value_raw, 2000)) {
-          var addId = stableId_("chg", "ADD|" + assertionKey + "|" + spec.value_raw);
+          var addId = stableId_("chg", logicalAddKey + "|" + spec.value_raw);
           if (!existingBy_("Specification_Changes", "Specification_Change_ID", addId)) {
             appendOnce_("Specification_Changes", {
-              Specification_Change_ID: addId, Logical_Specification_Key: text_(assertionKey, 180),
+              Specification_Change_ID: addId, Logical_Specification_Key: logicalAddKey,
               Sequence_No: 1, Operation: "ADD", Product_ID: productId, Variant_ID: variantId,
               Attribute_Key: text_(spec.attribute_key_raw, 160), Value_JSON: json_(spec.value_raw),
               Unit_Code: text_(spec.unit_raw, 40), Change_Status: "APPROVED",
@@ -3199,6 +3208,7 @@ var StagingPromotion = (function () {
 
   return { promoteReviewedStaging: promoteReviewedStaging };
 })();
+
 
 // ===== domain/ImagePromotion.js =====
 
@@ -4809,7 +4819,8 @@ var ReviewWorkspace = (function () {
         parent_staging_variant_id: parentVariant, scope: scope,
         attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
         original_value_raw: originalValue, value_raw: finalValue,
-        original_unit_raw: text_(row.Unit_Raw, 80), unit_raw: unit,
+        original_unit_raw: originalUnit, unit_raw: unit,
+        edited: finalValue !== originalValue || unit !== originalUnit,
         edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
         source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
       };
