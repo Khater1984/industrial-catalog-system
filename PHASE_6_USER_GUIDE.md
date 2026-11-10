@@ -1,33 +1,48 @@
-# Phase 6 User Guide
+# Phase 6 User Guide — Practical Testing
 
-## Design Studio (integrated in Index.html)
+## Prerequisites
+
+1. Apps Script project deployed as a web app (or run from the editor).
+2. Google Sheets containing the existing V2.1 tables (Products, Product_Company, Variants, EffectiveSpecificationResolver data, Image_Links / Image_Assets if you want images).
+3. Local Python environment for the worker.
+
+## Step 1 — Generate a snapshot from the UI
 
 1. Open the Apps Script web app.
-2. Scroll to the **استوديو التصميم وتوليد المستندات** panel.
-3. Select or edit a Brand Identity (Apple is default).
-4. Select or create a Template.
-5. Choose document type (TDS / Product Catalog / Master Catalog).
-6. Enter product IDs (comma-separated). For model-specific output, enter mappings such as `P001=V001, P002=V004`.
-7. Set status (ORIGINAL / PRELIMINARY / FINAL) and options.
-8. Click **توليد Snapshot**.
-9. Download `snapshot.json`.
-10. Generate the PDF locally:
-    ```bash
-    catalog-pdf-render --snapshot snapshot.json --output out.pdf --report preflight.json
-    ```
+2. Scroll to **استوديو التصميم وتوليد المستندات**.
+3. Select a brand (Apple is default).
+4. Optionally create/select a template.
+5. Choose document type.
+6. Enter product IDs (e.g. `P001, P002`) or mappings (`P001=V001`).
+7. Click **توليد Snapshot**.
+8. Download `snapshot.json`.
 
-## Brand Identities
-- 5 built-in: Apple (default), 6D, Industrial, Minimal, Supplier.
-- Custom identities can be saved.
-- Colors, paper, orientation, logo preference, and watermark are stored in Script Properties.\n- Optional font file paths must point to files available to the local worker through `--asset-root`; the worker image includes DejaVu Sans as an Arabic-capable fallback.
+## Step 2 — Generate the PDF locally
 
-## Templates
-- Create, update, publish, and copy.
-- Version increments automatically.
-- Options: index, family grouping, provenance, exclude unpublished, block on conflict.
+```bash
+cd worker
+pip install -e .
+catalog-pdf-render --snapshot snapshot.json --output out.pdf --report preflight.json
+```
 
-## Important
-- No new Sheets tables (schema proposal not authorized).
+Optional: place fonts and images under a folder and pass `--asset-root ./assets`.
+
+## Notes
+
 - Specifications come from EffectiveSpecificationResolver.
-- FINAL is always blocked when ADR-040 conflicts exist; the UI cannot disable this safety rule.\n- Product/model names are read from `Product_Company` and `Variant_Company`, not from the canonical ID tables.\n- Approved product images are not yet materialized into the local snapshot; image rendering remains a separate unfinished integration.
-- Real PDF is produced by the Python worker (ReportLab).
+- FINAL is always blocked if conflicts exist.
+- Approved images appear in the snapshot as `drive_file_id`. For the PDF to include them, download the files and set `path` (or provide a local path via asset root).
+- Arabic text requires `arabic-reshaper` + `python-bidi` (already in requirements) and a font that supports Arabic (DejaVu is a fallback; custom TTF paths work better).
+
+## What you can test now
+
+- Brand selection and snapshot generation from real product data.
+- Three document types (TDS, Product Catalog, Master Catalog).
+- Conflict blocking on FINAL.
+- Local PDF generation and preflight report.
+
+## What is still limited
+
+- Images need a manual download step to appear in the PDF.
+- No automatic upload of the generated PDF back to Drive.
+- Live visual preview inside the web app is not available (download + local render).
