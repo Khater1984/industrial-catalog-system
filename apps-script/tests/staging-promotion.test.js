@@ -74,6 +74,7 @@ function stagingObject() {
     products: [{
       staging_id: "stg_prd_1", catalog_page_id: "cp_cat_demo_001_00001",
       proposed_product_name: "Plate Compactor PC Series", source_quote: "PRODUCT: Plate Compactor PC Series",
+      identity_resolution: "CREATE_NEW", canonical_product_id: "", match_rationale: "Reviewer confirmed a new product identity",
       review_status: "ACCEPTED", staging_record_hash: "a".repeat(64)
     }],
     variants: [
@@ -123,6 +124,17 @@ test("accepted records are written and rejected records are not", () => {
   assert.ok(unitOnlyChange, "unit-only edit must create a Specification_Changes row");
   assert.equal(unitOnlyChange.Unit_Code, "kVA");
   assert.match(unitOnlyChange.Reason, /Corrected unit/);
+});
+
+test("promotion refuses accepted products without an explicit identity resolution", () => {
+  const staging = stagingObject();
+  delete staging.products[0].identity_resolution;
+  const opts = makeDriveOptions(staging);
+  const ctx = buildContext(opts);
+  assert.throws(
+    () => ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 }),
+    /PROMOTION_PRODUCT_IDENTITY_DECISION_INVALID/
+  );
 });
 
 test("MATCH_EXISTING promotion links source records to an active canonical product without creating a duplicate", () => {
