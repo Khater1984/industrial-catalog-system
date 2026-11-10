@@ -107,7 +107,7 @@ function main() {
   const tableNames = Object.keys(tables);
   const columnCount = Object.values(tables).reduce((sum, columns) => sum + columns.length, 0);
   if (tableNames.length !== 52) throw new Error("SCHEMA_TABLE_COUNT_MISMATCH: " + tableNames.length);
-  if (columnCount !== 711) throw new Error("SCHEMA_COLUMN_COUNT_MISMATCH: " + columnCount);
+  if (columnCount !== 713) throw new Error("SCHEMA_COLUMN_COUNT_MISMATCH: " + columnCount);
   if (Object.keys(enums).length !== 79) throw new Error("SCHEMA_ENUM_COUNT_MISMATCH: " + Object.keys(enums).length);
 
   const output = [
