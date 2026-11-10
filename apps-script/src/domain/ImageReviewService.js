@@ -42,9 +42,10 @@ var ImageReviewService = (function () {
   function verifyStagingHash_(row) {
     require_(row && SHA_RE.test(String(row.Staging_Record_Hash || "")), "IMAGE_STAGING_HASH_MISSING");
     var copy = {};
-    Object.keys(row).forEach(function (k) {
-      if (k !== "Staging_Record_Hash" && k !== "Created_At" && k !== "Updated_At") copy[k] = row[k];
-    });
+    var mutable = { Staging_Record_Hash: true, Created_At: true, Updated_At: true,
+      Proposed_Status: true, Quality_Status: true, Candidate_Product_ID: true,
+      Candidate_Variant_ID: true, Image_Role: true };
+    Object.keys(row).forEach(function (k) { if (!mutable[k]) copy[k] = row[k]; });
     require_(sha_(Utilities.newBlob(canonicalJson_(copy)).getBytes()) === row.Staging_Record_Hash,
       "IMAGE_STAGING_HASH_MISMATCH");
   }
