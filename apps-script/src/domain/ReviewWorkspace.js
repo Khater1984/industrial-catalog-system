@@ -80,7 +80,15 @@ var ReviewWorkspace = (function () {
   }
   function getDashboard(limit) {
     var max = Math.min(200, Math.max(1, Number(limit) || 100));
-    var queues = SheetsRepository.listRecent("Review_Queue", max);
+    var allQueues = SheetsRepository.listAll("Review_Queue");
+    // Keep active work visible even when the queue has a long terminal history.
+    var active = allQueues.filter(function (q) {
+      return ["OPEN", "IN_REVIEW", "DEFERRED"].indexOf(q.Review_Status) >= 0;
+    });
+    var terminal = allQueues.filter(function (q) {
+      return ["OPEN", "IN_REVIEW", "DEFERRED"].indexOf(q.Review_Status) < 0;
+    });
+    var queues = active.concat(terminal).slice(0, max);
     var queueIds = {};
     queues.forEach(function (q) { queueIds[q.Review_Queue_ID] = true; });
     var links = SheetsRepository.listAll("Review_Staging_Links").filter(function (link) {
