@@ -85,6 +85,21 @@ var Api = (function () {
         });
         return success_(requestId, imgResult);
       }
+      if (body.action === "images.reviewDecision") {
+        var decisionResult = ImageReviewDecision.submit({
+          reviewQueueId: p.reviewQueueId,
+          decision: p.decision,
+          targetType: p.targetType,
+          targetId: p.targetId,
+          catalogApproved: p.catalogApproved,
+          dataSheetApproved: p.dataSheetApproved,
+          isPrimary: p.isPrimary,
+          catalogOrder: p.catalogOrder,
+          dataSheetOrder: p.dataSheetOrder,
+          hasAlpha: p.hasAlpha
+        });
+        return success_(requestId, decisionResult);
+      }
       if (body.action === "images.intake") {
         var intakeResult = ImageReviewIntake.intake({
           imageManifestFileId: p.imageManifestFileId,
