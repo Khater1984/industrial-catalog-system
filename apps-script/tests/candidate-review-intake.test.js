@@ -66,15 +66,20 @@ function fixture(imageExtraction) {
         getDataAsString: () => files[id].toString("utf8")
       })
     }) },
-    SheetsRepository: {
-      getBy: (table, key, value) => {
-        if (table === "Run_Log") return key === "Run_ID" && value === run.Run_ID ? run : null;
-        return (rows[table] || []).find((row) => row[key] === value) || null;
-      },
-      append: (table, record) => {
-        rows[table] = rows[table] || [];
-        rows[table].push(record);
-      }
+  };
+  vm.runInNewContext(fs.readFileSync("src/config/Schema.js", "utf8"), context);
+  vm.runInNewContext(fs.readFileSync("src/repositories/SheetsRepository.js", "utf8"), context);
+  const schemaRepository = context.SheetsRepository;
+  context.SheetsRepository = {
+    getBy: (table, key, value) => {
+      if (table === "Run_Log") return key === "Run_ID" && value === run.Run_ID ? run : null;
+      return (rows[table] || []).find((row) => row[key] === value) || null;
+    },
+    append: (table, record) => {
+      schemaRepository.validateRecord(table, record, context.TABLES[table]);
+      schemaRepository.validateEnums(table, record, context.TABLES[table]);
+      rows[table] = rows[table] || [];
+      rows[table].push(record);
     }
   };
   vm.runInNewContext(source, context);
