@@ -206,7 +206,19 @@ var ImageReviewIntake = (function () {
       MIME_Type: mime,
       File_Size_Bytes: size,
       SHA256: img.sha256,
-      Quality_Status: "NEEDS_REVIEW"
+      Quality_Status: img.quality_status === "UNASSESSED" ? "UNASSESSED" : "NEEDS_REVIEW",
+      Extracted_Text: JSON.stringify({
+        source_manifest_sha256: options.sourceManifestSha256 || "",
+        source_manifest_internal_sha256: options.sourceManifestInternalSha256 || "",
+        image_output_sha256: img.output_sha256 || "",
+        artifact_path: img.artifact_path || "",
+        metadata_status: img.metadata_status || "UNKNOWN",
+        has_alpha: img.has_alpha,
+        color_space: img.color_space || "UNKNOWN",
+        orientation: img.orientation || "UNKNOWN",
+        page_number: img.page_number || null,
+        image_index: img.image_index || null
+      })
     };
     if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
     if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
@@ -270,7 +282,11 @@ var ImageReviewIntake = (function () {
           verifyDriveFile_(driveImage.drive_file_id, { file_size_bytes: size, mime_type: mime, sha256: img.sha256 });
 
           var stagingId = stableId_("stgimg", runId + "|" + img.sha256 + "|" + img.artifact_path);
-          var staging = buildStaging_(img, driveImage, options, catalogId, runId, stagingId);
+          var stagingOptions = Object.assign({}, options, {
+            sourceManifestSha256: imageManifest.sha,
+            sourceManifestInternalSha256: imgData.manifest_sha256
+          });
+          var staging = buildStaging_(img, driveImage, stagingOptions, catalogId, runId, stagingId);
           var stagingFields = Object.keys(staging).filter(function (field) {
             return field !== "Created_At" && field !== "Updated_At";
           });

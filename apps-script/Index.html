@@ -68,6 +68,12 @@
         <div class="status" id="promoteStatus" role="status" aria-live="polite"></div>
       </form>
     </section>
+    <section class="panel" style="margin-top:18px" id="imageReviewPanel">
+      <div class="toolbar"><h3>مراجعة الصور وربطها بالمنتجات</h3><button class="refresh" id="imageReviewRefresh" type="button">تحديث المراجعة</button></div>
+      <p class="notice">تظهر هنا الصور المستخرجة من الكتالوجات. لا تنتقل الصورة إلى مكتبة الصور أو ملفات PDF إلا بعد قرار مراجعة موثق وربطها بمنتج أو موديل نشط.</p>
+      <div id="imageReviewStatus" class="status" role="status" aria-live="polite"></div>
+      <div id="imageReviewList"><div class="empty">جارٍ تحميل مهام مراجعة الصور...</div></div>
+    </section>
     <section class="panel" style="margin-top:18px">
       <div class="toolbar"><h3>مكتبة المستندات وإصداراتها</h3><button class="refresh" id="documentsRefresh" type="button">تحديث</button></div>
       <p class="notice">أضف كتيبات التشغيل والبروشورات والشهادات والضمانات. كل إصدار يُحفظ كملف مستقل ولا يستبدل الإصدار السابق.</p>
@@ -368,6 +374,112 @@
   function showPromoteStatus(message, type) {
     const box = el("promoteStatus"); box.textContent = message; box.className = "status show " + type;
   }
+</script>
+<script>
+(function(){
+  const root=document.getElementById("imageReviewList");
+  const status=document.getElementById("imageReviewStatus");
+  const refresh=document.getElementById("imageReviewRefresh");
+  function message(text,type){status.textContent=text;status.className="status show "+type;}
+  function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
+  function load(){
+    root.textContent="جارٍ تحميل مهام مراجعة الصور...";
+    google.script.run.withSuccessHandler(render).withFailureHandler(e=>{
+      root.textContent="تعذر تحميل المراجعة: "+(e&&e.message||"خطأ غير معروف");
+    }).getImageReviewQueueForBrowser();
+  }
+  function render(items){
+    root.textContent="";
+    const pending=(items||[]).filter(x=>!(x.reviewStatus==="APPROVED"&&x.proposedStatus==="PROMOTED"));
+    if(!pending.length){root.appendChild(node("div","empty","لا توجد صور بانتظار المراجعة أو استكمال الترقية."));return;}
+    pending.forEach(item=>{
+      const card=node("article","");
+      card.style.cssText="display:grid;grid-template-columns:minmax(110px,180px) minmax(0,1fr);gap:14px;border:1px solid var(--line);border-radius:12px;padding:13px;margin:12px 0;background:#fbfcfd";
+      const media=node("div","");
+      if(item.previewDataUrl){
+        const img=node("img","");img.src=item.previewDataUrl;img.alt=item.fileName||"صورة مستخرجة";
+        img.style.cssText="width:100%;max-height:180px;object-fit:contain;background:#eef2f5;border-radius:8px";
+        media.appendChild(img);
+      }else{
+        media.appendChild(node("div","empty","المعاينة غير متاحة"));
+      }
+      if(item.driveUrl){
+        const a=node("a","","فتح الصورة في Drive");a.href=item.driveUrl;a.target="_blank";a.rel="noopener";a.style.cssText="display:block;margin-top:8px;font-size:12px;color:var(--accent)";
+        media.appendChild(a);
+      }
+      card.appendChild(media);
+      const body=node("div","");
+      body.appendChild(node("strong","",item.fileName||item.stagingId));
+      body.appendChild(node("div","notice","المهمة: "+item.reviewQueueId+" · الحالة: "+item.reviewStatus+" · "+item.width+"×"+item.height+" · "+item.size+" bytes"));
+      body.appendChild(node("div","notice","SHA256: "+item.sha256));
+      if(item.reviewStatus==="APPROVED"){
+        body.appendChild(node("div","notice","تم تسجيل الاعتماد؛ لم تكتمل الترقية بعد."));
+        const retry=node("button","refresh","استكمال الترقية إلى مكتبة الصور");
+        retry.type="button";retry.addEventListener("click",()=>{
+          retry.disabled=true;retry.textContent="جارٍ الترقية...";
+          google.script.run.withSuccessHandler(result=>{
+            message("تم ربط الصورة بالهدف المعتمد. "+result.imageId,"ok");load();
+          }).withFailureHandler(e=>{
+            retry.disabled=false;retry.textContent="إعادة محاولة الترقية";
+            message("تعذرت الترقية: "+(e&&e.message||"خطأ غير معروف"),"err");
+          }).promoteReviewedImageFromBrowser(item.reviewQueueId);
+        });
+        body.appendChild(retry);
+      }else{
+        const target=node("select","");
+        target.style.cssText="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;margin:8px 0";
+        target.appendChild(new Option("اختر المنتج أو الموديل المستهدف",""));
+        (item.targets||[]).forEach(t=>target.appendChild(new Option((t.type==="VARIANT"?"موديل · ":"منتج · ")+t.label,t.type+"|"+t.id)));
+        const controls=node("div","");
+        controls.style.cssText="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:7px 0";
+        function check(label,checked){const wrap=node("label","");wrap.style.cssText="display:flex;gap:5px;align-items:center";const input=node("input","");input.type="checkbox";input.checked=!!checked;wrap.appendChild(input);wrap.appendChild(document.createTextNode(label));controls.appendChild(wrap);return input;}
+        const catalog=check("اعتماد للكتالوج",false);
+        const datasheet=check("اعتماد لـ TDS",false);
+        const primary=check("صورة رئيسية",false);
+        const actions=node("div","");actions.style.cssText="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px";
+        const approve=node("button","refresh","اعتماد وربط");approve.type="button";
+        const reject=node("button","refresh","رفض الصورة");reject.type="button";
+        reject.style.color="var(--bad)";
+        approve.addEventListener("click",()=>{
+          const chosen=target.value.split("|");
+          if(chosen.length!==2||!chosen[0]||!chosen[1]){message("اختر المنتج أو الموديل أولاً.","err");return;}
+          if(!catalog.checked&&!datasheet.checked){message("اختر موضع استخدام واحداً على الأقل.","err");return;}
+          approve.disabled=true;reject.disabled=true;approve.textContent="جارٍ تسجيل الاعتماد...";
+          google.script.run.withSuccessHandler(()=>{
+            google.script.run.withSuccessHandler(result=>{
+              message("تم اعتماد الصورة وربطها بنجاح: "+result.imageId,"ok");load();
+            }).withFailureHandler(e=>{
+              message("سُجل قرار الاعتماد، لكن الترقية تحتاج إعادة محاولة: "+(e&&e.message||"خطأ"),"err");load();
+            }).promoteReviewedImageFromBrowser(item.reviewQueueId);
+          }).withFailureHandler(e=>{
+            approve.disabled=false;reject.disabled=false;approve.textContent="اعتماد وربط";
+            message("تعذر تسجيل القرار: "+(e&&e.message||"خطأ غير معروف"),"err");
+          }).submitImageReviewDecisionFromBrowser({
+            reviewQueueId:item.reviewQueueId,decision:"APPROVED",
+            targetType:chosen[0],targetId:chosen[1],
+            catalogApproved:catalog.checked,dataSheetApproved:datasheet.checked,
+            isPrimary:primary.checked,catalogOrder:0,dataSheetOrder:0
+          });
+        });
+        reject.addEventListener("click",()=>{
+          if(!confirm("هل تريد رفض هذه الصورة؟"))return;
+          approve.disabled=true;reject.disabled=true;
+          google.script.run.withSuccessHandler(()=>{
+            message("تم حفظ قرار رفض الصورة.","ok");load();
+          }).withFailureHandler(e=>{
+            approve.disabled=false;reject.disabled=false;
+            message("تعذر حفظ قرار الرفض: "+(e&&e.message||"خطأ غير معروف"),"err");
+          }).submitImageReviewDecisionFromBrowser({reviewQueueId:item.reviewQueueId,decision:"REJECTED"});
+        });
+        actions.appendChild(approve);actions.appendChild(reject);
+        body.appendChild(target);body.appendChild(controls);body.appendChild(actions);
+      }
+      card.appendChild(body);root.appendChild(card);
+    });
+  }
+  refresh.addEventListener("click",load);
+  load();
+})();
 </script>
 </body>
 </html>

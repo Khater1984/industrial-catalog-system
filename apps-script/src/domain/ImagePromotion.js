@@ -1,118 +1,186 @@
-/** Promotes accepted image staging records into Image_Assets / Image_Links.
-
-Images must already exist in Drive. This module refuses incomplete image metadata
-instead of writing invalid rows that violate Schema V2.1.
-*/
+/** Secure image promotion.
+ * The browser supplies only a Review_Queue_ID. All image metadata and approval
+ * facts are loaded from server-side Sheets/Drive records and verified here.
+ */
 var ImagePromotion = (function () {
+  var SHA_RE = /^[a-f0-9]{64}$/;
+  function fail_(code) { throw new Error(code); }
+  function require_(ok, code) { if (!ok) fail_(code); }
   function now_() { return new Date().toISOString(); }
   function sha_(value) {
-    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value).map(function (b) {
-      var n = b < 0 ? b + 256 : b, hex = n.toString(16);
-      return hex.length === 1 ? "0" + hex : hex;
+    var bytes = typeof value === "string" ? Utilities.newBlob(value, "text/plain").getBytes() : value;
+    return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, bytes).map(function (b) {
+      var n = b < 0 ? b + 256 : b, h = n.toString(16);
+      return h.length === 1 ? "0" + h : h;
     }).join("");
   }
   function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
-  function text_(value, limit) {
-    var text = value === undefined || value === null ? "" : String(value).trim();
-    return text.length > limit ? text.slice(0, limit) : text;
+  function text_(v, code, max) {
+    require_(typeof v === "string" && v.trim().length > 0, code);
+    var s = v.trim(); require_(s.length <= max, code); return s;
   }
-  function require_(condition, code) {
-    if (!condition) throw new Error(code);
+  function canonical_(value) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") { require_(isFinite(value), "IMAGE_SOURCE_MANIFEST_INVALID"); return value; }
+    if (Array.isArray(value)) return value.map(canonical_);
+    if (value && Object.prototype.toString.call(value) === "[object Object]") {
+      var out = {};
+      Object.keys(value).sort().forEach(function (key) {
+        require_(value[key] !== undefined, "IMAGE_SOURCE_MANIFEST_INVALID");
+        out[key] = canonical_(value[key]);
+      });
+      return out;
+    }
+    fail_("IMAGE_SOURCE_MANIFEST_INVALID");
   }
-  function appendOnce_(table, record) { return SheetsRepository.append(table, record); }
-  function existingBy_(table, column, value) {
-    return value ? SheetsRepository.getBy(table, column, value) : null;
+  function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
+  function withoutKey_(value, key) {
+    var out = {};
+    Object.keys(value).forEach(function (name) { if (name !== key) out[name] = value[name]; });
+    return out;
   }
-
-  function promoteAcceptedImages(options) {
-    require_(options && Array.isArray(options.images), "IMAGE_PROMOTION_IMAGES_INVALID");
-    var actor = options.actor || APP.ACTOR_ID;
-    var catalogId = text_(options.catalog_id, 128);
-    require_(catalogId, "IMAGE_CATALOG_ID_REQUIRED");
-    var counts = { assets: 0, links: 0, skipped: 0 };
-    var allowedMimeTypes = {
-      "image/jpeg": true, "image/png": true, "image/webp": true,
-      "image/gif": true, "image/tiff": true, "image/bmp": true,
-      "image/jp2": true, "image/jpx": true, "image/x-ms-bmp": true
-    };
-
-    options.images.forEach(function (img) {
-      if (!img || img.review_status !== "ACCEPTED") {
-        counts.skipped += 1;
-        return;
-      }
-
-      var digest = text_(img.sha256, 64).toLowerCase();
-      require_(/^[a-f0-9]{64}$/.test(digest), "IMAGE_SHA256_INVALID");
-      var driveFileId = text_(img.drive_file_id, 120);
-      require_(driveFileId, "IMAGE_DRIVE_FILE_ID_REQUIRED");
-      var originalName = text_(img.original_name, 255);
-      var mimeType = text_(img.mime_type, 100).toLowerCase();
-      var width = img.width_px;
-      var height = img.height_px;
-      var fileSize = img.file_size_bytes;
-      require_(originalName && allowedMimeTypes[mimeType], "IMAGE_FILE_METADATA_REQUIRED");
-      require_(typeof width === "number" && Number.isSafeInteger(width) && width > 0 && width <= 50000, "IMAGE_WIDTH_REQUIRED");
-      require_(typeof height === "number" && Number.isSafeInteger(height) && height > 0 && height <= 50000, "IMAGE_HEIGHT_REQUIRED");
-      require_(width * height <= 100000000, "IMAGE_PIXEL_LIMIT_EXCEEDED");
-      require_(typeof fileSize === "number" && Number.isSafeInteger(fileSize) && fileSize > 0 && fileSize <= 26214400, "IMAGE_FILE_SIZE_REQUIRED");
-      require_(typeof img.has_alpha === "boolean", "IMAGE_ALPHA_FLAG_REQUIRED");
-
-      var imageId = stableId_("img", digest);
-      var existingAsset = existingBy_("Image_Assets", "Image_ID", imageId);
-      if (!existingAsset) {
-        appendOnce_("Image_Assets", {
-          Image_ID: imageId,
-          Original_File_ID: driveFileId,
-          Original_File_Name: originalName,
-          MIME_Type: mimeType,
-          Width_PX: width,
-          Height_PX: height,
-          File_Size_Bytes: fileSize,
-          Has_Alpha: Boolean(img.has_alpha),
-          Orientation: "NORMALIZED",
-          SHA256: digest,
-          Source_Type: "CATALOG_EMBEDDED",
-          Source_Catalog_ID: catalogId,
-          Source_Catalog_Page_ID: text_(img.catalog_page_id, 120),
-          Source_Page_Label: text_(img.page_number, 80),
-          Quality_Status: "UNASSESSED",
-          Lifecycle_Status: "ACTIVE",
-          Created_At: now_(),
-          Created_By: actor
-        });
-        counts.assets += 1;
-      }
-
-      // Create a missing link even when the asset already exists (safe retry).
-      if (img.target_type || img.target_id) {
-        require_(img.target_type === "PRODUCT" || img.target_type === "VARIANT", "IMAGE_TARGET_TYPE_INVALID");
-        require_(text_(img.target_id, 120), "IMAGE_TARGET_ID_REQUIRED");
-        var linkId = stableId_("imgl", imageId + "|" + img.target_type + "|" + img.target_id);
-        if (!existingBy_("Image_Links", "Image_Link_ID", linkId)) {
-          appendOnce_("Image_Links", {
-            Image_Link_ID: linkId,
-            Image_ID: imageId,
-            Target_Type: img.target_type,
-            Target_ID: text_(img.target_id, 120),
-            Is_Primary: false,
-            Catalog_Approved: false,
-            DataSheet_Approved: false,
-            Catalog_Order: 0,
-            DataSheet_Order: 0,
-            Link_Status: "CANDIDATE",
-            Created_At: now_(),
-            Created_By: actor,
-            Updated_At: now_(),
-            Updated_By: actor
-          });
-          counts.links += 1;
-        }
-      }
+  function verifyImageSource_(staging, digest, width, height, size, mime) {
+    var metadata;
+    try { metadata = JSON.parse(String(staging.Extracted_Text || "")); } catch (e) { fail_("IMAGE_SOURCE_METADATA_INVALID"); }
+    require_(metadata && SHA_RE.test(String(metadata.source_manifest_sha256 || "")), "IMAGE_SOURCE_MANIFEST_SHA_MISSING");
+    require_(SHA_RE.test(String(metadata.source_manifest_internal_sha256 || "")), "IMAGE_SOURCE_MANIFEST_CHECKSUM_MISSING");
+    var file;
+    try { file = DriveApp.getFileById(staging.Raw_Extract_File_ID); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_NOT_FOUND"); }
+    var raw = file.getBlob().getBytes();
+    require_(sha_(raw) === metadata.source_manifest_sha256, "IMAGE_SOURCE_MANIFEST_SHA_MISMATCH");
+    var manifest;
+    try { manifest = JSON.parse(file.getBlob().getDataAsString("UTF-8")); } catch (e) { fail_("IMAGE_SOURCE_MANIFEST_INVALID"); }
+    require_(manifest && manifest.manifest_version === 1 && Array.isArray(manifest.images), "IMAGE_SOURCE_MANIFEST_INVALID");
+    require_(manifest.manifest_sha256 === metadata.source_manifest_internal_sha256, "IMAGE_SOURCE_MANIFEST_IDENTITY_MISMATCH");
+    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(manifest, "manifest_sha256")), "application/json").getBytes()) === manifest.manifest_sha256,
+      "IMAGE_SOURCE_MANIFEST_CHECKSUM_INVALID");
+    require_(manifest.catalog_id === staging.Catalog_ID && manifest.run_id === staging.Run_ID, "IMAGE_SOURCE_MANIFEST_SCOPE_MISMATCH");
+    var matches = manifest.images.filter(function (img) {
+      return img && img.sha256 === digest && img.artifact_path === metadata.artifact_path;
     });
-
-    return { status: "COMPLETED", counts: counts };
+    require_(matches.length === 1, "IMAGE_SOURCE_RECORD_NOT_UNIQUE");
+    var source = matches[0];
+    var sourceCopy = withoutKey_(withoutKey_(source, "drive_file_id"), "drive_sha256");
+    require_(SHA_RE.test(String(source.output_sha256 || "")), "IMAGE_SOURCE_RECORD_CHECKSUM_MISSING");
+    require_(sha_(Utilities.newBlob(canonicalJson_(withoutKey_(sourceCopy, "output_sha256")), "application/json").getBytes()) === source.output_sha256,
+      "IMAGE_SOURCE_RECORD_CHECKSUM_INVALID");
+    require_(source.metadata_status === "COMPLETED", "IMAGE_SOURCE_METADATA_INCOMPLETE");
+    require_(typeof source.has_alpha === "boolean", "IMAGE_SOURCE_ALPHA_METADATA_MISSING");
+    require_(Number(source.width_px) === width && Number(source.height_px) === height, "IMAGE_SOURCE_DIMENSIONS_MISMATCH");
+    require_(Number(source.file_size_bytes) === size && source.mime_type === mime, "IMAGE_SOURCE_FILE_METADATA_MISMATCH");
+    require_(source.sha256 === digest, "IMAGE_SOURCE_DIGEST_MISMATCH");
+    require_(metadata.image_output_sha256 === source.output_sha256, "IMAGE_SOURCE_STAGING_CHECKSUM_MISMATCH");
+    require_(metadata.artifact_path === source.artifact_path, "IMAGE_SOURCE_ARTIFACT_PATH_MISMATCH");
+    require_(metadata.has_alpha === source.has_alpha, "IMAGE_SOURCE_ALPHA_MISMATCH");
+    return source;
   }
+  function promoteReviewedImage(options) {
+    require_(options && /^[A-Za-z0-9_.-]{1,120}$/.test(String(options.reviewQueueId || "")), "IMAGE_REVIEW_ID_REQUIRED");
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+    var review = SheetsRepository.getBy("Review_Queue", "Review_Queue_ID", options.reviewQueueId);
+    require_(review, "IMAGE_REVIEW_NOT_FOUND");
+    require_(review.Review_Type === "IMAGE_QUALITY", "IMAGE_REVIEW_TYPE_INVALID");
+    require_(review.Review_Status === "APPROVED", "IMAGE_REVIEW_NOT_APPROVED");
+    require_(review.Decision_JSON_File_ID && SHA_RE.test(String(review.Decision_SHA256 || "")), "IMAGE_DECISION_EVIDENCE_MISSING");
+    require_(review.Reviewed_Payload_Hash && SHA_RE.test(String(review.Reviewed_Payload_Hash)), "IMAGE_REVIEWED_HASH_MISSING");
+    require_(review.Reviewed_By && review.Reviewed_At, "IMAGE_REVIEW_ACTOR_OR_TIME_MISSING");
 
-  return { promoteAcceptedImages: promoteAcceptedImages };
+    var decisionFile;
+    try { decisionFile = DriveApp.getFileById(review.Decision_JSON_File_ID); } catch (e) { fail_("IMAGE_DECISION_FILE_NOT_FOUND"); }
+    var decisionBytes = decisionFile.getBlob().getBytes();
+    require_(sha_(decisionBytes) === review.Decision_SHA256, "IMAGE_DECISION_FILE_SHA_MISMATCH");
+    var decision;
+    try { decision = JSON.parse(decisionFile.getBlob().getDataAsString("UTF-8")); } catch (e) { fail_("IMAGE_DECISION_JSON_INVALID"); }
+    require_(decision && decision.schema_version === 1, "IMAGE_DECISION_SCHEMA_INVALID");
+    require_(decision.review_queue_id === review.Review_Queue_ID, "IMAGE_DECISION_REVIEW_MISMATCH");
+    require_(decision.decision === "APPROVED", "IMAGE_DECISION_NOT_APPROVED");
+    require_(decision.reviewed_by === review.Reviewed_By, "IMAGE_DECISION_ACTOR_MISMATCH");
+    require_(String(decision.reviewed_at) === String(review.Reviewed_At instanceof Date ? review.Reviewed_At.toISOString() : review.Reviewed_At), "IMAGE_DECISION_TIME_MISMATCH");
+
+    var links = (SheetsRepository.listAll("Review_Staging_Links") || []).filter(function (r) {
+      return r.Review_Queue_ID === review.Review_Queue_ID && r.Review_Role === "PRIMARY";
+    });
+    require_(links.length === 1, "IMAGE_REVIEW_PRIMARY_STAGING_LINK_INVALID");
+    var staging = SheetsRepository.getBy("Staging_Images", "Staging_ID", links[0].Staging_ID);
+    require_(staging, "IMAGE_STAGING_NOT_FOUND");
+    require_(decision.staging_id === staging.Staging_ID, "IMAGE_DECISION_STAGING_MISMATCH");
+    require_(staging.Staging_Record_Hash === review.Reviewed_Payload_Hash, "IMAGE_STAGING_REVIEW_HASH_MISMATCH");
+    require_(decision.reviewed_payload_sha256 === staging.Staging_Record_Hash, "IMAGE_DECISION_PAYLOAD_HASH_MISMATCH");
+
+    var targetType = text_(decision.target_type, "IMAGE_DECISION_TARGET_TYPE_REQUIRED", 20);
+    var targetId = text_(decision.target_id, "IMAGE_DECISION_TARGET_ID_REQUIRED", 120);
+    require_(targetType === "PRODUCT" || targetType === "VARIANT", "IMAGE_DECISION_TARGET_TYPE_INVALID");
+    require_(typeof decision.catalog_approved === "boolean" && typeof decision.datasheet_approved === "boolean", "IMAGE_DECISION_APPROVAL_FLAGS_INVALID");
+    require_(decision.catalog_approved || decision.datasheet_approved, "IMAGE_DECISION_HAS_NO_USAGE_APPROVAL");
+    var mime = text_(staging.MIME_Type, "IMAGE_STAGING_MIME_MISSING", 100).toLowerCase();
+    var allowed = {"image/jpeg":1,"image/png":1,"image/webp":1,"image/gif":1,"image/tiff":1,"image/bmp":1,"image/jp2":1,"image/jpx":1,"image/x-ms-bmp":1};
+    require_(allowed[mime] === 1, "IMAGE_STAGING_MIME_UNSUPPORTED");
+    var width = Number(staging.Width_PX), height = Number(staging.Height_PX), size = Number(staging.File_Size_Bytes);
+    require_(Number.isSafeInteger(width) && width > 0 && width <= 50000, "IMAGE_WIDTH_INVALID");
+    require_(Number.isSafeInteger(height) && height > 0 && height <= 50000, "IMAGE_HEIGHT_INVALID");
+    require_(width * height <= 100000000, "IMAGE_PIXEL_LIMIT_EXCEEDED");
+    require_(Number.isSafeInteger(size) && size > 0 && size <= 26214400, "IMAGE_SIZE_INVALID");
+    var digest = text_(staging.SHA256, "IMAGE_SHA_MISSING", 64).toLowerCase();
+    require_(SHA_RE.test(digest), "IMAGE_SHA_INVALID");
+    var sourceImage = verifyImageSource_(staging, digest, width, height, size, mime);
+    var driveId = text_(staging.Proposed_Image_File_ID, "IMAGE_DRIVE_FILE_ID_MISSING", 200);
+    require_(/^[A-Za-z0-9_-]{10,200}$/.test(driveId), "IMAGE_DRIVE_FILE_ID_INVALID");
+    var driveFile;
+    try { driveFile = DriveApp.getFileById(driveId); } catch (e) { fail_("IMAGE_DRIVE_FILE_NOT_FOUND"); }
+    require_(driveFile.getSize() === size, "IMAGE_DRIVE_SIZE_MISMATCH");
+    require_(driveFile.getMimeType() === mime, "IMAGE_DRIVE_MIME_MISMATCH");
+    require_(sha_(driveFile.getBlob().getBytes()) === digest, "IMAGE_DRIVE_SHA_MISMATCH");
+
+    var imageId = stableId_("img", digest);
+    var asset = SheetsRepository.getBy("Image_Assets", "Image_ID", imageId);
+    if (!asset) {
+      SheetsRepository.append("Image_Assets", {
+        Image_ID: imageId, Original_File_ID: driveId,
+        Original_File_Name: text_(staging.Original_File_Name, "IMAGE_NAME_MISSING", 255),
+        MIME_Type: mime, Width_PX: width, Height_PX: height,
+        File_Size_Bytes: size, Has_Alpha: sourceImage.has_alpha,
+        Color_Space: ["SRGB", "DISPLAY_P3", "CMYK", "GRAYSCALE", "UNKNOWN"].indexOf(sourceImage.color_space) >= 0 ? sourceImage.color_space : "UNKNOWN",
+        Orientation: ["NORMALIZED", "EXIF_ROTATED", "UNKNOWN"].indexOf(sourceImage.orientation) >= 0 ? sourceImage.orientation : "UNKNOWN",
+        SHA256: digest,
+        Source_Type: "CATALOG_EMBEDDED", Source_Catalog_ID: staging.Catalog_ID,
+        Source_Catalog_Page_ID: staging.Catalog_Page_ID || "",
+        Source_Page_Label: sourceImage.page_number ? String(sourceImage.page_number) : "",
+        Quality_Status: "ACCEPTABLE", Lifecycle_Status: "ACTIVE",
+        Created_At: now_(), Created_By: options.actor || APP.ACTOR_ID
+      });
+    } else {
+      require_(asset.SHA256 === digest && asset.Original_File_ID === driveId, "IMAGE_ASSET_IDENTITY_CONFLICT");
+    }
+
+    var link = ImageManagement.linkToTarget(imageId, targetType, targetId, {
+      actor: options.actor || APP.ACTOR_ID,
+      catalogApproved: decision.catalog_approved,
+      dataSheetApproved: decision.datasheet_approved,
+      linkStatus: "ACTIVE",
+      isPrimary: false,
+      catalogOrder: Number.isSafeInteger(decision.catalog_order) ? decision.catalog_order : 0,
+      dataSheetOrder: Number.isSafeInteger(decision.datasheet_order) ? decision.datasheet_order : 0
+    });
+    // Idempotent replay also repairs a previously-created candidate link instead
+    // of treating its existence as proof that it is already publication-ready.
+    ImageManagement.setApproval(link.linkId, {
+      actor: options.actor || APP.ACTOR_ID,
+      catalogApproved: decision.catalog_approved,
+      dataSheetApproved: decision.datasheet_approved,
+      linkStatus: "ACTIVE"
+    });
+    if (decision.is_primary === true) ImageManagement.setPrimary(link.linkId, options.actor || APP.ACTOR_ID);
+    SheetsRepository.updateBy("Staging_Images", "Staging_ID", staging.Staging_ID, {
+      Proposed_Status: "PROMOTED",
+      Quality_Status: "ACCEPTABLE",
+      Updated_At: now_()
+    });
+    return { status: "COMPLETED", reviewQueueId: review.Review_Queue_ID, stagingId: staging.Staging_ID, imageId: imageId, link: link };
+    } finally {
+      lock.releaseLock();
+    }
+  }
+  return { promoteReviewedImage: promoteReviewedImage };
 })();

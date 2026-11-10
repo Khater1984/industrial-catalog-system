@@ -77,15 +77,27 @@ var Api = (function () {
         });
         return success_(requestId, promoted);
       }
-      if (body.action === "images.promote") {
-        var imgPayload = InputValidation.imagesPromotePayload(p);
-        var imgResult = ImagePromotion.promoteAcceptedImages({
-          images: imgPayload.images,
-          run_id: imgPayload.run_id,
-          catalog_id: imgPayload.catalog_id,
+      if (body.action === "images.promoteReviewed") {
+        var reviewPayload = InputValidation.idOnlyPayload(p, "reviewQueueId");
+        var imgResult = ImagePromotion.promoteReviewedImage({
+          reviewQueueId: reviewPayload.reviewQueueId,
           actor: actor
         });
         return success_(requestId, imgResult);
+      }
+      if (body.action === "images.reviewDecision") {
+        var decisionResult = ImageReviewDecision.submit({
+          reviewQueueId: p.reviewQueueId,
+          decision: p.decision,
+          targetType: p.targetType,
+          targetId: p.targetId,
+          catalogApproved: p.catalogApproved,
+          dataSheetApproved: p.dataSheetApproved,
+          isPrimary: p.isPrimary,
+          catalogOrder: p.catalogOrder,
+          dataSheetOrder: p.dataSheetOrder,
+        });
+        return success_(requestId, decisionResult);
       }
       if (body.action === "images.intake") {
         var intakeResult = ImageReviewIntake.intake({
@@ -279,18 +291,6 @@ function promoteStagingFromBrowser(payload) {
   });
 }
 
-/** Owner-only endpoint for promoting accepted images. */
-function promoteImagesFromBrowser(payload) {
-  assertPrimaryUser_();
-  var validated = InputValidation.imagesPromotePayload(payload || {});
-  return ImagePromotion.promoteAcceptedImages({
-    images: validated.images,
-    run_id: validated.run_id,
-    catalog_id: validated.catalog_id,
-    actor: APP.ACTOR_ID
-  });
-}
-
 /** Owner-only endpoint for image review intake. */
 function intakeImagesFromBrowser(payload) {
   assertPrimaryUser_();
@@ -299,6 +299,92 @@ function intakeImagesFromBrowser(payload) {
     imageManifestSha256: payload.imageManifestSha256,
     driveManifestFileId: payload.driveManifestFileId,
     driveManifestSha256: payload.driveManifestSha256,
+    actor: APP.ACTOR_ID
+  });
+}
+
+/** Owner-only image review queue projection for the browser UI. */
+function getImageReviewQueueForBrowser() {
+  assertPrimaryUser_();
+  var reviews = (SheetsRepository.listAll("Review_Queue") || []).filter(function (r) {
+    return r.Review_Type === "IMAGE_QUALITY" &&
+      ["OPEN", "IN_REVIEW", "APPROVED"].indexOf(r.Review_Status) >= 0;
+  });
+  var links = SheetsRepository.listAll("Review_Staging_Links") || [];
+  var targets = [];
+  (SheetsRepository.listAll("Products") || []).forEach(function (p) {
+    if (p.Lifecycle_Status !== "ACTIVE") return;
+    var company = SheetsRepository.getBy("Product_Company", "Product_ID", p.Product_ID) || {};
+    targets.push({ type: "PRODUCT", id: p.Product_ID, label: company.Product_Name_EN || p.Product_ID });
+  });
+  (SheetsRepository.listAll("Variants") || []).forEach(function (v) {
+    if (v.Lifecycle_Status !== "ACTIVE") return;
+    var company = SheetsRepository.getBy("Variant_Company", "Variant_ID", v.Variant_ID) || {};
+    var parent = SheetsRepository.getBy("Product_Company", "Product_ID", v.Product_ID) || {};
+    targets.push({ type: "VARIANT", id: v.Variant_ID,
+      label: (parent.Product_Name_EN || v.Product_ID) + " / " + (company.Model_Name_EN || v.Variant_ID) });
+  });
+  return reviews.map(function (review) {
+    var primary = links.filter(function (x) {
+      return x.Review_Queue_ID === review.Review_Queue_ID && x.Review_Role === "PRIMARY";
+    });
+    var staging = primary.length === 1
+      ? SheetsRepository.getBy("Staging_Images", "Staging_ID", primary[0].Staging_ID) : null;
+    var previewDataUrl = "";
+    var driveUrl = "";
+    if (staging && staging.Proposed_Image_File_ID) {
+      try {
+        var file = DriveApp.getFileById(staging.Proposed_Image_File_ID);
+        driveUrl = file.getUrl();
+        var thumbnail = file.getThumbnail();
+        if (thumbnail) {
+          previewDataUrl = "data:" + thumbnail.getContentType() + ";base64," +
+            Utilities.base64Encode(thumbnail.getBytes());
+        }
+      } catch (e) {}
+    }
+    return {
+      reviewQueueId: review.Review_Queue_ID,
+      reviewStatus: review.Review_Status,
+      stagingId: staging ? staging.Staging_ID : "",
+      proposedStatus: staging ? staging.Proposed_Status : "",
+      fileName: staging ? staging.Original_File_Name : "",
+      mimeType: staging ? staging.MIME_Type : "",
+      width: staging ? staging.Width_PX : "",
+      height: staging ? staging.Height_PX : "",
+      size: staging ? staging.File_Size_Bytes : "",
+      sha256: staging ? staging.SHA256 : "",
+      previewDataUrl: previewDataUrl,
+      driveUrl: driveUrl
+    };
+  }).filter(function (x) { return Boolean(x.stagingId); }).map(function (x) {
+    x.targets = targets;
+    return x;
+  });
+}
+
+/** Owner-only decision endpoint; server derives staging from the review link. */
+function submitImageReviewDecisionFromBrowser(payload) {
+  assertPrimaryUser_();
+  payload = payload || {};
+  return ImageReviewDecision.submit({
+    reviewQueueId: payload.reviewQueueId,
+    decision: payload.decision,
+    targetType: payload.targetType,
+    targetId: payload.targetId,
+    catalogApproved: payload.catalogApproved,
+    dataSheetApproved: payload.dataSheetApproved,
+    isPrimary: payload.isPrimary,
+    catalogOrder: payload.catalogOrder,
+    dataSheetOrder: payload.dataSheetOrder,
+  });
+}
+
+/** Owner-only retry-safe promotion endpoint. */
+function promoteReviewedImageFromBrowser(reviewQueueId) {
+  assertPrimaryUser_();
+  return ImagePromotion.promoteReviewedImage({
+    reviewQueueId: reviewQueueId,
     actor: APP.ACTOR_ID
   });
 }

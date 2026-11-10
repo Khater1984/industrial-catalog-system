@@ -8,7 +8,7 @@ const apiSource = fs.readFileSync("src/api/Api.js", "utf8");
 
 function createApiContext(overrides = {}) {
   let uuid = 0;
-  const calls = { auth: 0, register: [], imagePromotions: [] };
+  const calls = { auth: 0, register: [], imagePromotions: [], imageDecisions: [] };
   const context = {
     APP: { VERSION: "test", SCHEMA_VERSION: "2.1", ENVIRONMENT: "TEST" },
     Utilities: { getUuid: () => "test-uuid-" + (++uuid) },
@@ -30,9 +30,15 @@ function createApiContext(overrides = {}) {
       }
     },
     ImagePromotion: {
-      promoteAcceptedImages: (payload) => {
+      promoteReviewedImage: (payload) => {
         calls.imagePromotions.push(payload);
-        return { status: "COMPLETED", counts: { assets: 1, links: 0, skipped: 0 } };
+        return { status: "COMPLETED", reviewQueueId: payload.reviewQueueId };
+      }
+    },
+    ImageReviewDecision: {
+      submit: (payload) => {
+        calls.imageDecisions.push(payload);
+        return { status: payload.decision, reviewQueueId: payload.reviewQueueId };
       }
     },
     ...overrides
@@ -131,49 +137,61 @@ test("post maps validation errors to stable safe error codes", () => {
 });
 
 
-test("images.promote validates payloads before calling the promotion domain", () => {
-  const { api, calls } = createApiContext();
-  const invalid = api.post({
-    postData: {
-      contents: JSON.stringify({
-        protocol_version: "1",
-        action: "images.promote",
-        payload: { catalog_id: "catalog_test", images: [{ review_status: "ACCEPTED", width_px: "100" }] }
-      })
-    }
-  });
-  assert.equal(invalid.ok, false);
-  assert.equal(invalid.error.code, "VALIDATION_REQUIRED");
-  assert.equal(calls.imagePromotions.length, 0);
-});
-
-test("images.promote forwards only validated image fields", () => {
+test("legacy client-supplied images.promote action is disabled", () => {
   const { api, calls } = createApiContext();
   const result = api.post({
     postData: {
       contents: JSON.stringify({
         protocol_version: "1",
         action: "images.promote",
-        payload: {
-          catalog_id: "catalog_test",
-          run_id: "run_test",
-          images: [{
-            review_status: "ACCEPTED",
-            sha256: "b".repeat(64),
-            drive_file_id: "drive-file-id-123456",
-            original_name: "pump.png",
-            mime_type: "image/png",
-            width_px: 100,
-            height_px: 80,
-            file_size_bytes: 1000,
-            has_alpha: false,
-            ignored_extra: "not-allowed"
-          }]
-        }
+        payload: { catalog_id: "catalog_test", images: [{ review_status: "ACCEPTED" }] }
       })
     }
   });
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "VALIDATION_UNKNOWN_FIELD");
+  assert.equal(result.error.code, "UNSUPPORTED_ACTION");
   assert.equal(calls.imagePromotions.length, 0);
+});
+
+test("images.promoteReviewed accepts only a review queue identifier", () => {
+  const { api, calls } = createApiContext();
+  const result = api.post({
+    postData: {
+      contents: JSON.stringify({
+        protocol_version: "1",
+        action: "images.promoteReviewed",
+        payload: { reviewQueueId: "revimg_1234567890abcdef" }
+      })
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls.imagePromotions.length, 1);
+  assert.equal(calls.imagePromotions[0].reviewQueueId, "revimg_1234567890abcdef");
+  assert.equal(calls.imagePromotions[0].actor, undefined);
+  assert.equal(Object.keys(calls.imagePromotions[0]).length, 2);
+});
+
+test("images.reviewDecision routes the human decision to the persisted decision service", () => {
+  const { api, calls } = createApiContext();
+  const result = api.post({
+    postData: {
+      contents: JSON.stringify({
+        protocol_version: "1",
+        action: "images.reviewDecision",
+        payload: {
+          reviewQueueId: "revimg_1234567890abcdef",
+          decision: "APPROVED",
+          targetType: "PRODUCT",
+          targetId: "product_1",
+          catalogApproved: true,
+          dataSheetApproved: false,
+          isPrimary: true
+        }
+      })
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.equal(calls.imageDecisions.length, 1);
+  assert.equal(calls.imageDecisions[0].reviewQueueId, "revimg_1234567890abcdef");
+  assert.equal(calls.imageDecisions[0].decision, "APPROVED");
 });
