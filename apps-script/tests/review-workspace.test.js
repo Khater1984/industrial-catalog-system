@@ -5,6 +5,24 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 const source = fs.readFileSync("src/domain/ReviewWorkspace.js", "utf8");
 
+
+function rewriteDecision(ctx, edit) {
+  const queueRow = ctx.queue[0];
+  const file = ctx.files[queueRow.Decision_JSON_File_ID];
+  const decision = JSON.parse(file.content);
+  edit(decision);
+  const content = JSON.stringify(decision);
+  file.content = content;
+  file.getBlob = () => ({
+    getBytes: () => Array.from(Buffer.from(content, "utf8")),
+    getDataAsString: () => content
+  });
+  const digest = crypto.createHash("sha256").update(Buffer.from(content, "utf8")).digest("hex");
+  queueRow.Decision_SHA256 = digest;
+  queueRow.Reviewed_Payload_Hash = digest;
+  return decision;
+}
+
 function fixture() {
   const queue = [{
     Review_Queue_ID: "rev_product_123456", Review_Type: "PRODUCT_MATCH",
@@ -121,4 +139,73 @@ test("Staging Set builder refuses runs without approved product decisions", () =
 test("review status transitions cannot mark a task approved without an immutable decision", () => {
   const ctx = fixture();
   assert.throws(() => ctx.service.updateStatus({ reviewId: "rev_product_123456", status: "APPROVED" }, "actor_primary"), /REVIEW_STATUS_INVALID/);
+});
+
+
+test("Staging Set accepts explicitly linked model/spec candidates with a consistent parent chain", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  const productStagingId = ctx.service.approveProductReview
+    ? JSON.parse(ctx.files[ctx.queue[0].Decision_JSON_File_ID].content).products[0].staging_id
+    : "";
+  rewriteDecision(ctx, decision => {
+    decision.variants.push({
+      staging_id: "stg_variant_123456", parent_staging_product_id: productStagingId,
+      proposed_model_number: "DG100", review_status: "ACCEPTED"
+    });
+    decision.specifications.push({
+      staging_id: "stg_spec_123456", parent_staging_product_id: productStagingId,
+      parent_staging_variant_id: "stg_variant_123456", scope: "VARIANT",
+      attribute_key_raw: "Power", value_raw: "100", unit_raw: "kW", review_status: "ACCEPTED"
+    });
+  });
+  const result = ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary");
+  assert.equal(result.variants, 1);
+  assert.equal(result.specifications, 1);
+});
+
+test("Staging Set rejects specifications linked to a variant under a different product", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  rewriteDecision(ctx, decision => {
+    const productStagingId = decision.products[0].staging_id;
+    decision.products.push({
+      staging_id: "stg_product_other", catalog_page_id: "page_test_0002",
+      proposed_product_name: "Other Product", review_status: "ACCEPTED"
+    });
+    decision.variants.push({
+      staging_id: "stg_variant_123456", parent_staging_product_id: productStagingId,
+      proposed_model_number: "DG100", review_status: "ACCEPTED"
+    });
+    decision.specifications.push({
+      staging_id: "stg_spec_123456", parent_staging_product_id: "stg_product_other",
+      parent_staging_variant_id: "stg_variant_123456", scope: "VARIANT",
+      attribute_key_raw: "Power", value_raw: "100", review_status: "ACCEPTED"
+    });
+  });
+  assert.throws(
+    () => ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary"),
+    /REVIEW_SPECIFICATION_PARENT_MISMATCH/
+  );
+});
+
+test("Staging Set refuses specifications without an explicit supported scope", () => {
+  const ctx = fixture();
+  ctx.service.approveProductReview({ reviewId: "rev_product_123456", productName: "Industrial Generator DG-100" }, "actor_primary");
+  rewriteDecision(ctx, decision => {
+    const productStagingId = decision.products[0].staging_id;
+    decision.variants.push({
+      staging_id: "stg_variant_123456", parent_staging_product_id: productStagingId,
+      proposed_model_number: "DG100", review_status: "ACCEPTED"
+    });
+    decision.specifications.push({
+      staging_id: "stg_spec_123456", parent_staging_product_id: productStagingId,
+      parent_staging_variant_id: "stg_variant_123456", scope: "",
+      attribute_key_raw: "Power", value_raw: "100", review_status: "ACCEPTED"
+    });
+  });
+  assert.throws(
+    () => ctx.service.buildStagingSetForRun("run_test_123456", "actor_primary"),
+    /REVIEW_SPECIFICATION_SCOPE_REQUIRED/
+  );
 });
