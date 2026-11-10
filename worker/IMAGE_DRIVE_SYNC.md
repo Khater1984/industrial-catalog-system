@@ -21,6 +21,12 @@ export CATALOG_WORKER_IMAGE_DRIVE_FOLDER_ID=your-drive-folder-id
 
 Uses the existing `DriveClient` and Application Default Credentials. The service identity must have access to the configured folder.
 
+## Placement identity and duplicate bytes
+
+- Each image occurrence on a PDF page has its own artifact path containing the page number and image index. Repeated placement of the same image therefore remains a distinct, auditable page occurrence.
+- The binary artifact is still content-addressed by SHA-256. When two occurrences have identical bytes, Drive stores one immutable file and later occurrences receive the same Drive file ID with status `REUSED`.
+- This distinction is intentional: occurrence records preserve page evidence; the asset hash prevents unnecessary duplicate binary storage.
+
 ## Upload and retry behavior
 
 - Images use content-addressed filenames: `{sha256}{extension}`.
