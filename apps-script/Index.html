@@ -498,6 +498,8 @@
           const parentVariant=document.createElement("select");parentVariant.className="review-filter";
           const noParent=document.createElement("option");noParent.value="";noParent.textContent="اختر الموديل الأب";parentVariant.appendChild(noParent);
           variantControls.forEach(x=>{const option=document.createElement("option");option.value=x.ev.stagingId;option.textContent=[x.ev.modelNumber,x.ev.modelName].filter(Boolean).join(" · ")||x.ev.stagingId;parentVariant.appendChild(option);});
+          parentVariant.disabled=true;
+          scope.addEventListener("change",()=>{parentVariant.disabled=scope.value!=="VARIANT";if(scope.value!=="VARIANT")parentVariant.value="";});
           const value=document.createElement("input");value.type="text";value.className="review-notes";value.value=ev.value||"";value.placeholder="القيمة النهائية";
           const unit=document.createElement("input");unit.type="text";unit.className="review-notes";unit.value=ev.unit||"";unit.placeholder="الوحدة";
           const reason=document.createElement("input");reason.type="text";reason.className="review-notes";reason.placeholder="سبب تعديل القيمة (إلزامي عند تغييرها)";
@@ -527,6 +529,8 @@
           const specifications=specControls.filter(x=>x.decision.value).map(x=>({stagingId:x.ev.stagingId,reviewStatus:x.decision.value,parentProductStagingId:primaryProductEvidence.stagingId,scope:x.decision.value==="ACCEPTED"?x.scope.value:"",parentVariantStagingId:x.decision.value==="ACCEPTED"&&x.scope.value==="VARIANT"?x.parentVariant.value.trim():"",valueRaw:x.value.value,unitRaw:x.unit.value,editReason:x.reason.value}));
           if(variantControls.some(x=>!x.decision.value)||specControls.some(x=>!x.decision.value)){alert("يجب تحديد قبول أو رفض كل موديل ومواصفة ظاهرة قبل الحفظ.");return;}
           if(specifications.some(x=>x.reviewStatus==="ACCEPTED"&&!x.scope)){alert("حدد نطاق كل مواصفة مقبولة.");return;}
+          if(specifications.some(x=>x.reviewStatus==="ACCEPTED"&&x.scope==="VARIANT"&&!variants.some(v=>v.stagingId===x.parentVariantStagingId&&v.reviewStatus==="ACCEPTED"))){alert("اختر موديلًا مقبولًا للمواصفة، ولا يمكن ربطها بموديل مرفوض أو غير محسوم.");return;}
+          if(specControls.some(c=>c.decision.value==="ACCEPTED"&&(c.value.value.trim()!==String(c.ev.value||"").trim()||c.unit.value.trim()!==String(c.ev.unit||"").trim())&&!c.reason.value.trim())){alert("أدخل سبب التعديل عند تغيير قيمة المواصفة أو وحدتها.");return;}
           approveReviewProduct(item.id,productName.value,notes.value,approve,variants,specifications);
         });
         decisionActions.appendChild(approve);
@@ -557,7 +561,7 @@
   }
   function approveReviewProduct(reviewId,productName,notes,button,variants,specifications) {
     if(!productName.trim()){alert("أدخل اسم المنتج بالإنجليزية أولاً.");return;}
-    if(!confirm("سيُحفظ قرار قبول اسم المنتج في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
+    if(!confirm("سيُحفظ قرار المنتج والموديلات والمواصفات في ملف مراجعة مستقل. لن تُنقل البيانات إلى المنتجات الأساسية الآن. هل تريد المتابعة؟"))return;
     button.disabled=true;
     google.script.run.withSuccessHandler(result=>{
       const box=el("reviewStatus");box.textContent="تم اعتماد مرشح المنتج وحفظ قرار المراجعة. لم يتم ترحيل المنتج إلى البيانات الأساسية.";box.className="status show ok";
