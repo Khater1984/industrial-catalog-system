@@ -38,6 +38,7 @@ var ImageReviewService = (function () {
   }
   function canonicalJson_(value) { return JSON.stringify(canonical_(value)); }
   function payloadHash_(value) { return sha_(Utilities.newBlob(canonicalJson_(value)).getBytes()); }
+  function stableId_(prefix, seed) { return prefix + "_" + sha_(String(seed)).slice(0, 16); }
   function verifyStagingHash_(row) {
     require_(row && SHA_RE.test(String(row.Staging_Record_Hash || "")), "IMAGE_STAGING_HASH_MISSING");
     var copy = {};
@@ -144,13 +145,13 @@ var ImageReviewService = (function () {
         drive_file_id: staging.Proposed_Image_File_ID, original_name: staging.Original_File_Name,
         mime_type: staging.MIME_Type, width_px: staging.Width_PX, height_px: staging.Height_PX,
         file_size_bytes: staging.File_Size_Bytes, has_alpha: staging.Has_Alpha,
-        catalog_page_id: staging.Catalog_Page_ID || "", page_number: Number(staging.Source_Page_Label || 0) || 1,
+        catalog_page_id: staging.Catalog_Page_ID || "", page_number: Number(staging.Page_Number || 0) || 1,
         target_type: target.type, target_id: target.id
       };
       ImagePromotion.promoteAcceptedImages({
         images: [imagePayload], run_id: staging.Run_ID, catalog_id: staging.Catalog_ID, actor: actor
       });
-      var imageId = "img_" + String(staging.SHA256).toLowerCase().slice(0, 16);
+      var imageId = stableId_("img", String(staging.SHA256).toLowerCase());
       var linked = ImageManagement.linkToTarget(imageId, target.type, target.id, { actor: actor });
       ImageManagement.setApproval(linked.linkId, {
         catalogApproved: catalogApproved, dataSheetApproved: dataSheetApproved,
