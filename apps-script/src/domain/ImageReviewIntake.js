@@ -211,6 +211,7 @@ var ImageReviewIntake = (function () {
         source_manifest_sha256: options.sourceManifestSha256 || "",
         source_manifest_internal_sha256: options.sourceManifestInternalSha256 || "",
         image_output_sha256: img.output_sha256 || "",
+        artifact_path: img.artifact_path || "",
         metadata_status: img.metadata_status || "UNKNOWN",
         has_alpha: img.has_alpha,
         color_space: img.color_space || "UNKNOWN",
