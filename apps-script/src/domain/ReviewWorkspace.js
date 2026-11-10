@@ -109,7 +109,8 @@ var ReviewWorkspace = (function () {
         parent_staging_variant_id: parentVariant, scope: scope,
         attribute_key_raw: text_(row.Attribute_Key_Raw, 160),
         original_value_raw: originalValue, value_raw: finalValue,
-        original_unit_raw: text_(row.Unit_Raw, 80), unit_raw: unit,
+        original_unit_raw: originalUnit, unit_raw: unit,
+        edited: finalValue !== originalValue || unit !== originalUnit,
         edit_reason: reason, source_assertion_key: text_(row.Source_Assertion_Key, 200),
         source_quote: text_(row.Extracted_Text, 4000), review_status: input.reviewStatus
       };
