@@ -2413,10 +2413,10 @@ var CandidateReviewIntake = (function () {
       Review_Queue_ID: reviewId, Review_Type: "PRODUCT_MATCH", Priority: "NORMAL",
       Review_Status: "OPEN",
       Proposed_Action: "Verify this extracted product name against the source page before any promotion.",
-      Decision_JSON_File_ID: page.artifact_file_id, Created_At: createdAt, Created_By: actor
+      Created_At: createdAt, Created_By: actor
     };
     if (ensure_("Review_Queue", "Review_Queue_ID", review,
-      ["Review_Type", "Priority", "Proposed_Action", "Decision_JSON_File_ID", "Created_By"],
+      ["Review_Type", "Priority", "Proposed_Action", "Created_By"],
       "CANDIDATE_REVIEW_CONFLICT")) counts.review_items += 1;
     var link = {
       Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + stagingId),
@@ -2426,8 +2426,9 @@ var CandidateReviewIntake = (function () {
     if (ensure_("Review_Staging_Links", "Review_Staging_Link_ID", link,
       ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"],
       "CANDIDATE_REVIEW_LINK_CONFLICT")) counts.review_links += 1;
+    return stagingId;
   }
-  function createAmbiguityReview_(page, artifact, manifest, actor, counts) {
+  function createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, counts) {
     var candidates = artifact.product_candidates || {};
     var variants = Array.isArray(candidates.variants) ? candidates.variants : [];
     var specs = Array.isArray(candidates.specifications) ? candidates.specifications : [];
@@ -2437,12 +2438,22 @@ var CandidateReviewIntake = (function () {
     var review = {
       Review_Queue_ID: reviewId, Review_Type: "EXTRACTION_AMBIGUITY", Priority: "NORMAL",
       Review_Status: "OPEN",
-      Proposed_Action: "Resolve the parent product/model for extracted model and specification candidates. The source-page artifact contains the unassigned candidates; no parent relationship was inferred.",
-      Decision_JSON_File_ID: page.artifact_file_id, Created_At: createdAt, Created_By: actor
+      Proposed_Action: "Resolve parent product/model for model and specification candidates on page " + page.catalog_page_id + " in run " + manifest.run_id + ". Inspect the page artifact referenced by Run_Units; no parent relationship was inferred.",
+      Created_At: createdAt, Created_By: actor
     };
     if (ensure_("Review_Queue", "Review_Queue_ID", review,
-      ["Review_Type", "Priority", "Proposed_Action", "Decision_JSON_File_ID", "Created_By"],
+      ["Review_Type", "Priority", "Proposed_Action", "Created_By"],
       "CANDIDATE_AMBIGUITY_REVIEW_CONFLICT")) counts.review_items += 1;
+    (productStagingIds || []).forEach(function (stagingId) {
+      var link = {
+        Review_Staging_Link_ID: stableId_("rsl", reviewId + "|" + stagingId + "|EVIDENCE"),
+        Review_Queue_ID: reviewId, Staging_ID: stagingId, Review_Role: "EVIDENCE",
+        Created_At: createdAt, Created_By: actor
+      };
+      if (ensure_("Review_Staging_Links", "Review_Staging_Link_ID", link,
+        ["Review_Queue_ID", "Staging_ID", "Review_Role", "Created_By"],
+        "CANDIDATE_EVIDENCE_LINK_CONFLICT")) counts.review_links += 1;
+    });
   }
   function intakeRun(options) {
     require_(options && typeof options.runId === "string" && typeof options.resultManifestFileId === "string",
@@ -2477,10 +2488,11 @@ var CandidateReviewIntake = (function () {
         var products = Array.isArray(candidateSet.products) ? candidateSet.products : [];
         var variants = Array.isArray(candidateSet.variants) ? candidateSet.variants : [];
         var specs = Array.isArray(candidateSet.specifications) ? candidateSet.specifications : [];
+        var productStagingIds = [];
         products.forEach(function (candidate, index) {
-          createProduct_(candidate, page, artifact, manifest, actor, index, counts);
+          productStagingIds.push(createProduct_(candidate, page, artifact, manifest, actor, index, counts));
         });
-        createAmbiguityReview_(page, artifact, manifest, actor, counts);
+        createAmbiguityReview_(page, artifact, manifest, actor, productStagingIds, counts);
         counts.pages += 1;
         counts.variants_unassigned += variants.length;
         counts.specifications_unassigned += specs.length;
