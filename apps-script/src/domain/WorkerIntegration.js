@@ -211,8 +211,9 @@ function dispatchRegisteredCatalog_(registered) {
     var message = String(err && err.message ? err.message : "WORKER_DISPATCH_FAILED");
     var match = message.match(/^([A-Z][A-Z0-9_]{2,80})/);
     var code = match ? match[1] : "WORKER_DISPATCH_FAILED";
-    if (code === "WORKER_REJECTED") registered.status = "FAILED";
-    return { configured: true, accepted: false, retryable: code !== "WORKER_REJECTED", run_id: registered.runId,
+    var rejected = code === "WORKER_REJECTED" || code === "GITHUB_WORKFLOW_REJECTED";
+    if (rejected) registered.status = "FAILED";
+    return { configured: true, accepted: false, retryable: !rejected, run_id: registered.runId,
       error_code: code };
   }
 }
