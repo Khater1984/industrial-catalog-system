@@ -61,7 +61,7 @@ test("browser-called Apps Script functions are present in deployment bundle", ()
 });
 
 test("all inline JavaScript in the main UI parses successfully", () => {
-  const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+  const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   assert.ok(scripts.length > 0, "No inline scripts found in Index.html");
 
   scripts.forEach((match, index) => {
