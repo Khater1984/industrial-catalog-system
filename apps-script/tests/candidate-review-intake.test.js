@@ -121,7 +121,7 @@ test("candidate intake is idempotent across poller retries", () => {
   assert.equal(ctx.rows.Staging_Variants.length, 1);
   assert.equal(ctx.rows.Staging_Specifications.length, 1);
   assert.equal(ctx.rows.Review_Queue.length, 2);
-  assert.equal(ctx.rows.Review_Staging_Links.length, 4);
+  assert.equal(ctx.rows.Review_Staging_Links.length, 6);
 });
 
 test("candidate intake rejects artifacts with altered bytes or identity", () => {
