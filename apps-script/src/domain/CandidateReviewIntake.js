@@ -1,9 +1,9 @@
-/** Conservative intake of worker product candidates into human review.
+/** Conservative intake of worker product, model, and specification candidates.
  *
- * Product candidates are staged as NEEDS_REVIEW. Model/spec candidates remain
- * attached to their immutable page artifact until a human establishes parent
- * relationships; this module never guesses product/model ownership or promotes
- * records into canonical tables.
+ * All candidates are staged as NEEDS_REVIEW. Model/product and specification
+ * parent links remain blank until a reviewer explicitly assigns them; this
+ * module never guesses ownership, scope, or canonical identity and never
+ * promotes records into canonical tables.
  */
 var CandidateReviewIntake = (function () {
   var SHA_RE = /^[a-f0-9]{64}$/;
