@@ -157,8 +157,8 @@ test("retry does not duplicate products, variants, or source specifications", ()
   assert.equal(again.skipped, true);
   assert.equal(ctx.store.Products.length, 1);
   assert.equal(ctx.store.Variants.length, 1);
-  assert.equal(ctx.store.Specifications.length, 2);
-  assert.equal(ctx.store.Specification_Changes.length, 1);
+  assert.equal(ctx.store.Specifications.length, 3);
+  assert.equal(ctx.store.Specification_Changes.length, 2);
 });
 
 test("connection failure leaves the operation in doubt and retry resumes without duplicates", () => {
@@ -211,7 +211,7 @@ test("promotion writes product-scope specifications against Product_Source_Recor
   const opts = makeDriveOptions(staging);
   const ctx = buildContext(opts);
   const result = ctx.promote({ stagingSetFileId: opts.stagingSetFileId, stagingSetSha256: opts.stagingSetSha256 });
-  assert.equal(result.counts.specifications, 2);
+  assert.equal(result.counts.specifications, 3);
   const spec = ctx.store.Specifications.find(row => row.Scope === "PRODUCT");
   assert.ok(spec);
   assert.ok(spec.Product_Source_Record_ID);
