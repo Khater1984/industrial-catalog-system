@@ -4464,9 +4464,139 @@ function buildSnapshotFromDomainForBrowser(config) { assertPrimaryUser_(); retur
 function listIssuesForBrowser() { assertPrimaryUser_(); return DesignStudio.listIssues(); }
 
 
+// ===== domain/ReviewDashboard.js =====
+/**
+ * Read-only browser projection for the human review queue.
+ * This module never changes review decisions or canonical records.
+ */
+var ReviewDashboard = (function () {
+  function safeUrl_(fileId) {
+    if (!fileId || typeof fileId !== "string") return "";
+    try { return DriveApp.getFileById(fileId).getUrl(); } catch (err) { return ""; }
+  }
+  function index_(rows, key) {
+    var out = {};
+    (rows || []).forEach(function (row) { if (row && row[key]) out[String(row[key])] = row; });
+    return out;
+  }
+  function short_(value, limit) {
+    var s = value === null || value === undefined ? "" : String(value);
+    return s.length > limit ? s.slice(0, limit) + "…" : s;
+  }
+  function candidateSummary_(artifact) {
+    var set = artifact && artifact.product_candidates || {};
+    function pick(list, fields) {
+      return (Array.isArray(list) ? list : []).slice(0, 30).map(function (item) {
+        var out = {};
+        fields.forEach(function (field) { if (item && item[field] !== undefined && item[field] !== null) out[field] = short_(item[field], 500); });
+        return out;
+      });
+    }
+    return {
+      products: pick(set.products, ["proposed_product_name", "proposed_product_reference", "source_quote", "confidence"]),
+      variants: pick(set.variants, ["proposed_model_number", "proposed_model_name", "source_quote", "confidence"]),
+      specifications: pick(set.specifications, ["attribute_key_raw", "value_raw", "unit_raw", "source_quote", "confidence"]),
+      extractedText: short_(artifact && artifact.extracted_text, 1800),
+      pageNumber: artifact && artifact.page_number || "",
+      extractionMethod: artifact && artifact.extraction_method || ""
+    };
+  }
+  function getQueue() {
+    var reviews = SheetsRepository.listRecent("Review_Queue", 250);
+    var links = SheetsRepository.listAll("Review_Staging_Links");
+    var products = index_(SheetsRepository.listAll("Staging_Products"), "Staging_ID");
+    var variants = index_(SheetsRepository.listAll("Staging_Variants"), "Staging_ID");
+    var specs = index_(SheetsRepository.listAll("Staging_Specifications"), "Staging_ID");
+    var images = index_(SheetsRepository.listAll("Staging_Images"), "Staging_ID");
+    var docs = index_(SheetsRepository.listAll("Staging_Documents"), "Staging_ID");
+    var catalogs = index_(SheetsRepository.listAll("Catalogs"), "Catalog_ID");
+    var pages = index_(SheetsRepository.listAll("Catalog_Pages"), "Catalog_Page_ID");
+    var units = SheetsRepository.listAll("Run_Units");
+    var linksByReview = {};
+    links.forEach(function (link) {
+      (linksByReview[link.Review_Queue_ID] || (linksByReview[link.Review_Queue_ID] = [])).push(link);
+    });
+    var items = reviews.map(function (review) {
+      var linked = (linksByReview[review.Review_Queue_ID] || []).slice(0, 30);
+      var evidence = [];
+      var artifactId = "";
+      linked.forEach(function (link) {
+        var row = products[link.Staging_ID] || variants[link.Staging_ID] || specs[link.Staging_ID] || images[link.Staging_ID] || docs[link.Staging_ID];
+        if (!row) return;
+        var type = products[link.Staging_ID] ? "PRODUCT" : variants[link.Staging_ID] ? "VARIANT" :
+          specs[link.Staging_ID] ? "SPECIFICATION" : images[link.Staging_ID] ? "IMAGE" : "DOCUMENT";
+        if (!artifactId && row.Raw_Extract_File_ID) artifactId = row.Raw_Extract_File_ID;
+        var page = pages[row.Catalog_Page_ID] || {};
+        evidence.push({
+          stagingId: row.Staging_ID, type: type, role: link.Review_Role || "",
+          pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
+          productName: row.Proposed_Product_Name_EN || "",
+          productReference: row.Proposed_Product_Reference || "",
+          modelNumber: row.Proposed_Model_Number || "",
+          modelName: row.Proposed_Model_Name || "",
+          attribute: row.Attribute_Key_Raw || row.Normalized_Key || "",
+          value: row.Value_Raw || row.Normalized_Value_JSON || "",
+          unit: row.Unit_Raw || row.Normalized_Unit || "",
+          imageName: row.Original_File_Name || "",
+          imageFileUrl: safeUrl_(row.Proposed_Image_File_ID || ""),
+          imageMime: row.MIME_Type || "",
+          imageWidth: row.Width_PX || "", imageHeight: row.Height_PX || "",
+          confidence: row.Confidence === undefined ? "" : row.Confidence,
+          extractionMethod: row.Extraction_Method || "",
+          extractedText: short_(row.Extracted_Text, 700),
+          sourceArtifactUrl: safeUrl_(row.Raw_Extract_File_ID || "")
+        });
+      });
+      var pageId = "";
+      var match = String(review.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      if (match) pageId = match[1];
+      var runId = match ? match[2] : (evidence[0] && products[evidence[0].stagingId] ? products[evidence[0].stagingId].Run_ID : "");
+      var unit = units.find(function (u) { return u.Run_ID === runId && u.Catalog_Page_ID === pageId; });
+      if (!artifactId && unit) artifactId = unit.Output_Manifest_File_ID || "";
+      var catalogId = (evidence[0] && (products[evidence[0].stagingId] || variants[evidence[0].stagingId] || specs[evidence[0].stagingId] || images[evidence[0].stagingId] || docs[evidence[0].stagingId]).Catalog_ID) || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {};
+      var page = pages[pageId] || {};
+      var artifactSummary = null;
+      if (artifactId) {
+        try {
+          var artifact = JSON.parse(DriveApp.getFileById(artifactId).getBlob().getDataAsString("UTF-8"));
+          artifactSummary = candidateSummary_(artifact);
+          if (!pageId && artifact.catalog_page_id) pageId = artifact.catalog_page_id;
+          if (!page.Page_Number && artifact.page_number) page = { Page_Number: artifact.page_number };
+        } catch (err) { artifactSummary = { error: "PAGE_ARTIFACT_UNAVAILABLE" }; }
+      }
+      return {
+        reviewId: review.Review_Queue_ID, type: review.Review_Type,
+        status: review.Review_Status, priority: review.Priority,
+        proposedAction: short_(review.Proposed_Action, 1800),
+        decisionNotes: short_(review.Decision_Notes || "", 1500),
+        createdAt: review.Created_At || "", runId: runId, catalogId: catalogId,
+        supplierName: catalog.Supplier_Name || "", catalogTitle: catalog.Catalog_Title || catalog.Source_File_Name || "",
+        sourcePdfUrl: safeUrl_(catalog.Source_File_ID || ""),
+        pageNumber: page.Page_Number || "", pageLabel: page.Page_Label || "",
+        pageArtifactUrl: safeUrl_(artifactId), evidence: evidence, artifact: artifactSummary
+      };
+    });
+    var counts = { total: items.length, open: 0, inReview: 0, deferred: 0, closed: 0 };
+    items.forEach(function (item) {
+      if (item.status === "OPEN") counts.open += 1;
+      else if (item.status === "IN_REVIEW") counts.inReview += 1;
+      else if (item.status === "DEFERRED") counts.deferred += 1;
+      else counts.closed += 1;
+    });
+    return { items: items, counts: counts, limit: 250, readOnly: true };
+  }
+  return { getQueue: getQueue };
+})();
+
+
 // ===== domain/ReviewWorkspace.js =====
-/** Read-only review workspace and controlled queue-state updates.
- * This module never approves staging records or promotes canonical data.
+/** Controlled review-queue workflow actions.
+ * Status updates are operational only: they never approve staging data or promote canonical records.
  */
 var ReviewWorkspace = (function () {
   var ALLOWED = { OPEN: true, IN_REVIEW: true, DEFERRED: true, REJECTED: true };
@@ -4478,8 +4608,9 @@ var ReviewWorkspace = (function () {
   };
   function fail_(code) { throw new Error(code); }
   function text_(value, limit) {
-    var s = value === null || value === undefined ? "" : String(value);
-    return s.length > limit ? s.slice(0, limit) : s;
+    var s = value === null || value === undefined ? "" : String(value).trim();
+    if (s.length > limit) fail_("REVIEW_NOTES_TOO_LONG");
+    return s;
   }
   function fileUrl_(id) {
     if (!id || !/^[A-Za-z0-9_-]{10,200}$/.test(String(id))) return "";
@@ -4505,35 +4636,33 @@ var ReviewWorkspace = (function () {
     }
     return cache[fileId];
   }
-  function stagingRecord_(id, tables) {
-    var names = ["Staging_Products", "Staging_Variants", "Staging_Specifications", "Staging_Images", "Staging_Documents"];
-    for (var i = 0; i < names.length; i++) {
-      var record = (tables[names[i]] || []).find(function (r) { return r.Staging_ID === id; });
-      if (record) return { type: names[i], record: record };
-    }
-    return null;
-  }
   function getInbox() {
     var queue = SheetsRepository.listAll("Review_Queue");
     var links = SheetsRepository.listAll("Review_Staging_Links");
-    var tables = {
-      Staging_Products: SheetsRepository.listAll("Staging_Products"),
-      Staging_Variants: SheetsRepository.listAll("Staging_Variants"),
-      Staging_Specifications: SheetsRepository.listAll("Staging_Specifications"),
-      Staging_Images: SheetsRepository.listAll("Staging_Images"),
-      Staging_Documents: SheetsRepository.listAll("Staging_Documents")
-    };
+    var tableNames = ["Staging_Products", "Staging_Variants", "Staging_Specifications", "Staging_Images", "Staging_Documents"];
+    var tables = {};
+    tableNames.forEach(function (name) { tables[name] = SheetsRepository.listAll(name); });
+    var catalogs = {};
+    SheetsRepository.listAll("Catalogs").forEach(function (row) { catalogs[row.Catalog_ID] = row; });
+    var pages = {};
+    SheetsRepository.listAll("Catalog_Pages").forEach(function (row) { pages[row.Catalog_Page_ID] = row; });
+    var runUnits = SheetsRepository.listAll("Run_Units");
     var artifactCache = {};
     var items = queue.filter(function (q) { return ALLOWED[q.Review_Status] === true; }).slice(0, 100).map(function (q) {
-      var related = links.filter(function (l) { return l.Review_Queue_ID === q.Review_Queue_ID; }).map(function (link) {
-        var found = stagingRecord_(link.Staging_ID, tables);
+      var related = links.filter(function (link) { return link.Review_Queue_ID === q.Review_Queue_ID; }).map(function (link) {
+        var found = null;
+        for (var i = 0; i < tableNames.length; i++) {
+          var rows = tables[tableNames[i]];
+          var record = rows.find(function (row) { return row.Staging_ID === link.Staging_ID; });
+          if (record) { found = { type: tableNames[i], record: record }; break; }
+        }
         if (!found) return { stagingId: link.Staging_ID, role: link.Review_Role, missing: true };
         var r = found.record;
-        var artifact = readArtifact_(r.Raw_Extract_File_ID, artifactCache);
         return {
           stagingId: r.Staging_ID, role: link.Review_Role, table: found.type,
           status: r.Proposed_Status || r.Quality_Status || "",
           productName: text_(r.Proposed_Product_Name_EN || "", 300),
+          productReference: text_(r.Proposed_Product_Reference || "", 160),
           modelNumber: text_(r.Proposed_Model_Number || "", 160),
           modelName: text_(r.Proposed_Model_Name || "", 250),
           attribute: text_(r.Attribute_Key_Raw || "", 160),
@@ -4542,15 +4671,39 @@ var ReviewWorkspace = (function () {
           quote: text_(r.Extracted_Text || "", 4000),
           pageId: text_(r.Catalog_Page_ID || "", 120),
           runId: text_(r.Run_ID || "", 120),
+          catalogId: text_(r.Catalog_ID || "", 120),
           confidence: r.Confidence || "",
+          extractionMethod: text_(r.Extraction_Method || "", 40),
           fileUrl: fileUrl_(r.Proposed_Image_File_ID || r.Proposed_Document_File_ID || ""),
-          artifact: artifact
+          artifact: readArtifact_(r.Raw_Extract_File_ID, artifactCache)
         };
       });
+      var match = String(q.Proposed_Action || "").match(/page ([^ ]+) in run ([^ .]+)/i);
+      var runId = (related[0] && related[0].runId) || (match && match[2]) || "";
+      var pageId = (related[0] && related[0].pageId) || (match && match[1]) || "";
+      var unit = runUnits.find(function (row) { return row.Run_ID === runId && row.Catalog_Page_ID === pageId; });
+      var pageArtifact = null;
+      if (unit && unit.Output_Manifest_File_ID && !related.some(function (link) { return link.artifact; })) {
+        pageArtifact = readArtifact_(unit.Output_Manifest_File_ID, artifactCache);
+      }
+      var catalogId = (related[0] && related[0].catalogId) || "";
+      if (!catalogId && runId) {
+        var run = SheetsRepository.getBy("Run_Log", "Run_ID", runId);
+        catalogId = run && run.Catalog_ID || "";
+      }
+      var catalog = catalogs[catalogId] || {};
+      var page = pages[pageId] || {};
       return {
         id: q.Review_Queue_ID, type: q.Review_Type, priority: q.Priority,
         status: q.Review_Status, action: text_(q.Proposed_Action || "", 500),
         notes: text_(q.Decision_Notes || "", 1500), createdAt: q.Created_At || "",
+        runId: runId, catalogId: catalogId, pageId: pageId,
+        pageNumber: page.Page_Number || (pageArtifact && pageArtifact.pageNumber) || "",
+        pageLabel: page.Page_Label || "",
+        supplierName: text_(catalog.Supplier_Name || "", 160),
+        catalogTitle: text_(catalog.Catalog_Title || catalog.Source_File_Name || "", 240),
+        sourcePdfUrl: fileUrl_(catalog.Source_File_ID || ""),
+        pageArtifact: pageArtifact,
         links: related
       };
     });
@@ -4565,10 +4718,13 @@ var ReviewWorkspace = (function () {
     };
   }
   function updateStatus(options, actor) {
-    if (!options || typeof options.reviewId !== "string" || !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
+    if (!options || typeof options.reviewId !== "string" ||
+        !/^[A-Za-z0-9_-]{8,160}$/.test(options.reviewId)) fail_("REVIEW_ID_INVALID");
     var next = String(options.status || "");
     if (!ALLOWED[next]) fail_("REVIEW_STATUS_INVALID");
     var notes = text_(options.notes || "", 1500);
+    var reviewer = text_(actor || "", 120);
+    if (!reviewer) fail_("REVIEW_ACTOR_MISSING");
     var lock = LockService.getScriptLock();
     lock.waitLock(30000);
     try {
@@ -4578,10 +4734,10 @@ var ReviewWorkspace = (function () {
       if (!TRANSITIONS[from] || !TRANSITIONS[from][next]) fail_("REVIEW_TRANSITION_NOT_ALLOWED");
       var now = new Date().toISOString();
       var patch = { Review_Status: next, Decision_Notes: notes };
-      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = actor;
+      if (next === "IN_REVIEW") patch.Assigned_Actor_ID = reviewer;
       if (next === "REJECTED" || next === "DEFERRED") {
         patch.Reviewed_At = now;
-        patch.Reviewed_By = actor;
+        patch.Reviewed_By = reviewer;
       }
       if (next === "OPEN") {
         patch.Assigned_Actor_ID = "";
@@ -4828,12 +4984,6 @@ function getCatalogDashboard() {
   return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
 }
 
-/** Owner-only, read-only projection of the human review queue. */
-function getReviewQueueForBrowser() {
-  assertPrimaryUser_();
-  return ReviewDashboard.getQueue();
-}
-
 /** Run manually from the Apps Script editor after DEV properties are configured. */
 function initializeDevSchema() {
   assertPrimaryUser_();
@@ -4879,12 +5029,19 @@ function doPost(e) {
   return Api.post(e);
 }
 
-
 /** Owner-only review inbox data for the DEV dashboard. */
 function getReviewInboxFromBrowser() {
   assertPrimaryUser_();
   return ReviewWorkspace.getInbox();
 }
+
+/** Owner-only review queue state update; this does not approve or promote staging data. */
+function updateReviewStatusFromBrowser(payload) {
+  assertPrimaryUser_();
+  if (!payload || Object.prototype.toString.call(payload) !== "[object Object]") throw new Error("REVIEW_PAYLOAD_INVALID");
+  return ReviewWorkspace.updateStatus(payload, APP.ACTOR_ID);
+}
+
 
 /** Owner-only review queue state update; this does not approve or promote staging data. */
 function updateReviewStatusFromBrowser(payload) {
