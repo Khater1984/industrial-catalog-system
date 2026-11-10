@@ -178,19 +178,23 @@ var StagingPromotion = (function () {
         var hash = product.staging_record_hash || sha_(product.staging_id);
         var decision = decision_("PRODUCT", "STAGING_PRODUCT", product.staging_id, hash, productId, actor, "",
           identityResolution, canonicalCandidateId, product.match_rationale);
-        if (identityResolution === "CREATE_NEW" && !existingBy_("Products", "Product_ID", productId)) {
-          appendOnce_("Products", {
-            Product_ID: productId, Lifecycle_Status: "ACTIVE",
-            Canonical_Notes: "",
-            Created_At: now_(), Created_By: actor
-          });
-          appendOnce_("Product_Company", {
-            Product_ID: productId, Product_Name_EN: "", Product_Name_AR: "",
-            Company_Description: "", Manufacturer_or_Product_Brand_Label: "",
-            Product_Family_ID: "", Company_Notes: "",
-            Updated_At: now_(), Updated_By: actor
-          });
-          counts.products += 1;
+        if (identityResolution === "CREATE_NEW") {
+          if (!existingBy_("Products", "Product_ID", productId)) {
+            appendOnce_("Products", {
+              Product_ID: productId, Lifecycle_Status: "ACTIVE",
+              Canonical_Notes: "",
+              Created_At: now_(), Created_By: actor
+            });
+            counts.products += 1;
+          }
+          if (!existingBy_("Product_Company", "Product_ID", productId)) {
+            appendOnce_("Product_Company", {
+              Product_ID: productId, Product_Name_EN: "", Product_Name_AR: "",
+              Company_Description: "", Manufacturer_or_Product_Brand_Label: "",
+              Product_Family_ID: "", Company_Notes: "",
+              Updated_At: now_(), Updated_By: actor
+            });
+          }
         }
         var sourceId = stableId_("psr", sourceKey);
         appendOnce_("Product_Source_Records", {
