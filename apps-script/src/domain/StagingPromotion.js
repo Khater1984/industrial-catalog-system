@@ -253,6 +253,9 @@ var StagingPromotion = (function () {
           require_(false, "PROMOTION_SPEC_SCOPE_UNSUPPORTED");
         }
         var original = text_(sourceValue_(spec), 2000);
+        var originalUnit = spec.edited && Object.prototype.hasOwnProperty.call(spec, "original_unit_raw")
+          ? text_(spec.original_unit_raw, 80) : text_(spec.unit_raw, 80);
+        var finalUnit = text_(spec.unit_raw, 80);
         var sourceAssertionKey = text_(spec.source_assertion_key || spec.staging_id, 160);
         var sourceRecordId = scope === "PRODUCT" ? productSourceRecordId : variantSourceRecordId;
         var logicalAddKey = text_("ADD:" + canonicalEntityId + "|" + spec.attribute_key_raw, 180);
@@ -265,10 +268,10 @@ var StagingPromotion = (function () {
               Product_Source_Record_ID: productSourceRecordId, Variant_Source_Record_ID: variantSourceRecordId,
               Product_ID: productId, Variant_ID: variantId,
               Attribute_Key_Source: text_(spec.attribute_key_raw, 160),
-              Attribute_Value_Source: original, Unit_Source: text_(spec.unit_raw, 80),
+              Attribute_Value_Source: original, Unit_Source: originalUnit,
               Normalized_Key: text_(spec.normalized_key || spec.attribute_key_raw, 160),
               Normalized_Value_JSON: json_(original),
-              Normalized_Unit: text_(spec.normalized_unit || spec.unit_raw, 80),
+              Normalized_Unit: text_(spec.normalized_unit || originalUnit, 80),
               Catalog_Page_ID: spec.catalog_page_id, Source_Quote: text_(spec.source_quote, 2000),
               Extraction_Run_ID: runId, Extraction_Confidence: confidence_(spec.confidence),
               Created_At: now_(), Created_By: actor
@@ -277,10 +280,13 @@ var StagingPromotion = (function () {
             audit_(actor, "PROMOTE", "SPECIFICATION", specId, "Accepted source specification", runId, spec);
           } else counts.skipped += 1;
           mapping_(operationId, "SPECIFICATION", spec.staging_id, "SPECIFICATION", specId, scope, canonicalEntityId, "", spec);
-          if (spec.edited && text_(spec.value_raw, 2000) && text_(spec.value_raw, 2000) !== original) {
-            var changePayload = { before: original, after: spec.value_raw };
+          if (spec.edited && (text_(spec.value_raw, 2000) !== original || finalUnit !== originalUnit)) {
+            var changePayload = {
+              before: { value: original, unit: originalUnit },
+              after: { value: text_(spec.value_raw, 2000), unit: finalUnit }
+            };
             var logicalSourceKey = "SRC:" + specId;
-            var changeId = stableId_("chg", logicalSourceKey + "|" + original + "|" + spec.value_raw);
+            var changeId = stableId_("chg", logicalSourceKey + "|" + json_(changePayload));
             if (!existingBy_("Specification_Changes", "Specification_Change_ID", changeId)) {
               appendOnce_("Specification_Changes", {
                 Specification_Change_ID: changeId, Logical_Specification_Key: logicalSourceKey,
