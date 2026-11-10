@@ -11,12 +11,17 @@ var CandidateReviewIntake = (function () {
   function require_(condition, code) { if (!condition) fail_(code); }
   function now_() { return new Date().toISOString(); }
   function canonical_(value) {
-    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (value === null || typeof value === "boolean") return value;
+    if (typeof value === "string") return value.normalize ? value.normalize("NFC") : value;
     if (typeof value === "number") { if (!isFinite(value)) fail_("CANDIDATE_NONFINITE_NUMBER"); return value; }
     if (Array.isArray(value)) return value.map(canonical_);
     if (value && Object.prototype.toString.call(value) === "[object Object]") {
       var out = {};
-      Object.keys(value).sort().forEach(function (key) { out[key] = canonical_(value[key]); });
+      Object.keys(value).forEach(function (key) {
+        var normalizedKey = key.normalize ? key.normalize("NFC") : key;
+        if (Object.prototype.hasOwnProperty.call(out, normalizedKey)) fail_("CANDIDATE_CANONICAL_KEY_COLLISION");
+        out[normalizedKey] = canonical_(value[key]);
+      });
       return out;
     }
     fail_("CANDIDATE_VALUE_UNSUPPORTED");
