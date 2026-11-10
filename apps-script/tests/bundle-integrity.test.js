@@ -64,6 +64,11 @@ test("browser-called Apps Script functions are present in deployment bundle", ()
   }
 });
 
+test("deployment HTML is synchronized with the reviewed source UI", () => {
+  const deployedHtml = fs.readFileSync(path.join(root, "dist", "Index.html"), "utf8");
+  assert.equal(deployedHtml, html, "dist/Index.html must match Index.html exactly");
+});
+
 test("all inline JavaScript in the main UI parses successfully", () => {
   const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   assert.ok(scripts.length > 0, "No inline scripts found in Index.html");
