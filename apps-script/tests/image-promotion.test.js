@@ -119,6 +119,7 @@ function harness(overrides = {}) {
       computeDigest: (_alg, bytes) => Array.from(crypto.createHash("sha256").update(Buffer.from(bytes.map(b => b < 0 ? b + 256 : b))).digest()),
       newBlob: value => ({ getBytes: () => Array.from(Buffer.from(String(value), "utf8")) })
     },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     DriveApp: { getFileById: id => { if (!drive[id]) throw new Error("NOT_FOUND"); return drive[id]; } },
     SheetsRepository: {
       getBy(table, key, value) { return (store[table] || []).find(x => String(x[key]) === String(value)) || null; },
