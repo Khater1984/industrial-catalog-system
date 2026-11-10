@@ -227,6 +227,12 @@ function getCatalogDashboard() {
   return { catalogs: catalogs, runs: runs, totalCount: sheet ? Math.max(0, sheet.getLastRow() - 1) : 0 };
 }
 
+/** Owner-only, read-only projection of the human review queue. */
+function getReviewQueueForBrowser() {
+  assertPrimaryUser_();
+  return ReviewDashboard.getQueue();
+}
+
 /** Run manually from the Apps Script editor after DEV properties are configured. */
 function initializeDevSchema() {
   assertPrimaryUser_();
