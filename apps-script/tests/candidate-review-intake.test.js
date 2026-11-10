@@ -96,7 +96,7 @@ test("candidate intake stages products and queues unresolved model/spec evidence
   assert.equal(ctx.rows.Staging_Products.some((row) => /[\u0600-\u06FF]/.test(row.Proposed_Product_Name_EN)), false);
   const arabicEvidence = ctx.rows.Staging_Products.find((row) => row.Extracted_Text === "مولد كهربائي");
   assert.ok(arabicEvidence);
-  assert.equal(arabicEvidence.Proposed_Product_Name_EN, "");
+  assert.equal(arabicEvidence.Proposed_Product_Name_EN, "UNASSIGNED");
   assert.equal(ctx.rows.Staging_Variants, undefined);
   assert.equal(ctx.rows.Staging_Specifications, undefined);
   assert.equal(ctx.rows.Review_Queue.length, 2);
