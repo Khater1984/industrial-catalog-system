@@ -209,6 +209,8 @@ var ImageReviewIntake = (function () {
       Quality_Status: "NEEDS_REVIEW"
     };
     if (img.catalog_page_id) record.Catalog_Page_ID = requireText_(img.catalog_page_id, "IMAGE_PAGE_ID_INVALID", 120);
+    if (img.page_number !== null && img.page_number !== undefined) record.Page_Number = requireInteger_(img.page_number, "IMAGE_PAGE_NUMBER_INVALID", 1);
+    if (typeof img.has_alpha === "boolean") record.Has_Alpha = img.has_alpha;
     if (typeof img.extractor_version === "string" && img.extractor_version.trim()) {
       record.Extraction_Tool_Version = requireText_(img.extractor_version, "IMAGE_EXTRACTOR_VERSION_INVALID", 120);
     }
